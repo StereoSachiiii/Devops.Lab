@@ -1,0 +1,21 @@
+{
+  "name": "devops-learning-platform",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build:web": "npm run build --workspace=apps/web",
+    "lint": "npm run lint --workspaces"
+  },
+  "devDependencies": {
+    "eslint": "^10.3.0",
+    "prettier": "^3.8.3",
+    "turbo": "^2.9.9",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
+  }
+}

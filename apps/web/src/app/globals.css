@@ -1,0 +1,51 @@
+/* DevOps Learning Platform - Custom Styles */
+
+:root {
+  --font-outfit: 'Outfit', sans-serif;
+  --font-inter: 'Inter', sans-serif;
+  --sidebar-width: 260px;
+  --bg-color: #0a0a0a;
+  --text-color: #ededed;
+  --border-color: #333;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-inter);
+  background-color: var(--bg-color);
+  color: var(--text-color);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Basic Flexbox Layout */
+.layout-root {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  border-right: 1px solid var(--border-color);
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  padding: 2rem 1rem;
+}
+
+.main-content {
+  flex: 1;
+  padding: 2rem;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-outfit);
+}
