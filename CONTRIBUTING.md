@@ -17,7 +17,7 @@
 - **Observability**: New services must include OpenTelemetry instrumentation via `@devops/observability`.
 - **ADRs**: Major architectural changes require a new record in `docs/adr/`. Follow the existing numbering.
 
-## Service Ownership
-- **Sanira**: Sandbox worker (Go) and Challenge logic.
-- **Pabodha**: Next.js UI and Progress/Auth services.
-- **sachin**: Infrastructure, CI/CD, and Messaging orchestration.
+## Service Ownership (MVP Phase)
+- **Sanira**: `services/challenge`, `services/sandbox`
+- **Pabodha**: `apps/web`, `services/auth`
+- **sachin**: `infra/*`, `packages/*`
