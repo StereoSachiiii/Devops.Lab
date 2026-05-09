@@ -1,10 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "CommonJS",
+    "module": "nodenext",
     "lib": ["ES2022"],
     "outDir": "./dist",
-    "rootDir": "./src",
+
     
     /* Aggressive Strictness */
     "strict": true,
@@ -32,8 +32,17 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "node"
+    "moduleResolution": "nodenext",
+    "baseUrl": ".",
+    "paths": {
+      "@devops/db": ["../../packages/db"],
+      "@devops/types": ["../../packages/types"],
+      "@devops/messaging": ["../../packages/messaging"],
+      "@prisma/client": ["../../node_modules/@prisma/client"]
+    }
+
   },
+
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

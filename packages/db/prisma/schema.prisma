@@ -3,7 +3,10 @@
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/client"
 }
+
+
 
 datasource db {
   provider = "postgresql"
@@ -17,9 +20,21 @@ model User {
   role          Role      @default(LEARNER)
   xp            Int       @default(0)
   submissions   Submission[]
+  completions   Completion[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
+
+model Completion {
+  userId    String
+  nodeId    String
+  user      User     @relation(fields: [userId], references: [id])
+  node      Node     @relation(fields: [nodeId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@id([userId, nodeId])
+}
+
 
 model Challenge {
   id          String    @id @default(cuid())
@@ -29,7 +44,46 @@ model Challenge {
   category    Category
   tags        String[]
   xp          Int
+  moduleId    String?
+  module      Module?   @relation(fields: [moduleId], references: [id])
   submissions Submission[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model LearningPath {
+  id          String    @id @default(cuid())
+  title       String
+  description String
+  slug        String    @unique
+  modules     Module[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Module {
+  id             String         @id @default(cuid())
+  title          String
+  description    String
+  order          Int
+  pathId         String
+  path           LearningPath   @relation(fields: [pathId], references: [id])
+  challenges     Challenge[]
+  incidents      IncidentMetadata[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model IncidentMetadata {
+  id          String    @id @default(cuid())
+  title       String
+  description String
+  scenario    String    // The "broken spec" for simulation
+  postMortem  String    // The explanatory material
+  difficulty  Difficulty
+  xp          Int
+  moduleId    String
+  module      Module    @relation(fields: [moduleId], references: [id])
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -44,6 +98,36 @@ model Submission {
   challengeId String
   challenge   Challenge @relation(fields: [challengeId], references: [id])
   createdAt   DateTime  @default(now())
+}
+
+enum NodeType {
+  CONCEPT
+  SCENARIO
+  QUIZ
+}
+
+model Node {
+  id          String    @id @default(cuid())
+  type        NodeType
+  title       String
+  description String
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  
+  // Relations
+  outgoing    Edge[]       @relation("from")
+  incoming    Edge[]       @relation("to")
+  completions Completion[]
+}
+
+
+model Edge {
+  fromId String
+  toId   String
+  from   Node   @relation("from", fields: [fromId], references: [id])
+  to     Node   @relation("to", fields: [toId], references: [id])
+
+  @@id([fromId, toId])
 }
 
 enum Role {
@@ -75,3 +159,4 @@ enum SubmissionStatus {
   COMPLETED
   FAILED
 }
+
