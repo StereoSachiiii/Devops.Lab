@@ -1,0 +1,58 @@
+# Curriculum Manifest v1.0
+
+paths:
+  - slug: devops-foundations
+    title: DevOps Foundations
+    description: "Master the core principles of DevOps, from Docker to Kubernetes."
+    modules:
+      - id: mod-1
+        title: Containerization with Docker
+        description: "Learn how to package applications securely."
+        order: 1
+      - id: mod-2
+        title: Orchestration with Kubernetes
+        description: "Scale and manage containerized workloads."
+        order: 2
+
+nodes:
+  - id: node-ephamerality
+    type: CONCEPT
+    title: Ephamerality
+    description: "The property of infrastructure where any component can be destroyed and rebuilt without data loss."
+  
+  - id: node-redis
+    type: CONCEPT
+    title: Redis Basics
+    description: "Understanding key-value storage, eviction policies, and basic data structures."
+
+  - id: node-bucket4j
+    type: CONCEPT
+    title: Bucket4j
+    description: "Token bucket algorithm implementation for rate limiting in Java/JVM."
+
+  - id: node-rate-limiter-debug
+    type: SCENARIO
+    title: Rate Limiter Debug
+    description: "The rate limiter is leaking tokens. Find the race condition in the Redis script."
+    metadata:
+      postMortemRef: "inc-123"
+    prerequisites:
+      - node-ephamerality
+      - node-redis
+      - node-bucket4j
+
+  - id: node-kubernetes-networking
+    type: CONCEPT
+    title: K8s Networking
+    description: "Pod-to-pod communication, services, and ingress controllers."
+    prerequisites:
+      - node-ephamerality
+
+  - id: node-dns-outage-debug
+    type: SCENARIO
+    title: DNS Outage Debug
+    description: "A microservice cannot reach the database. Find out why."
+    metadata:
+      scenario: '{"namespace": "prod", "broken": "CoreDNS configmap"}'
+    prerequisites:
+      - node-kubernetes-networking
