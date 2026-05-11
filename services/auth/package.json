@@ -7,8 +7,11 @@
     "dev": "ts-node src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
   },
+
   "dependencies": {
     "@devops/db": "*",
     "@devops/messaging": "*",
