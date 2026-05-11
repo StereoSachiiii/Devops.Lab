@@ -17,13 +17,21 @@ model User {
   id            String    @id @default(cuid())
   name          String?
   email         String    @unique
+  password      String?   // Optional for OAuth users
   role          Role      @default(LEARNER)
   xp            Int       @default(0)
+  
+  // Auth & Verification
+  emailVerified DateTime?
+  githubId      String?   @unique
+  googleId      String?   @unique
+  
   submissions   Submission[]
   completions   Completion[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
+
 
 model Completion {
   userId    String
