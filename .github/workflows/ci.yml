@@ -28,6 +28,8 @@ jobs:
 
       - name: Generate Prisma Client
         run: npx turbo run generate --filter=@devops/db
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
 
       - name: Lint
         run: npx turbo run lint --filter=...[HEAD~2]
@@ -37,4 +39,5 @@ jobs:
 
       - name: Test
         run: npx turbo run test --filter=...[HEAD~2]
-
+        env:
+          NODE_ENV: test

@@ -22,6 +22,7 @@
     "@fastify/oauth2": "^7.8.0",
     "@fastify/type-provider-typebox": "^4.0.0",
     "@sinclair/typebox": "^0.32.15",
+    "fastify-plugin": "^4.5.1",
 
     "argon2": "^0.40.1",
     "dotenv": "^16.4.5",
