@@ -10,19 +10,23 @@ vi.mock('argon2', () => ({
 }));
 
 // ── Mock @fastify/redis ─────────────────────────────────────────────────────
+// ── Mock @fastify/redis ─────────────────────────────────────────────────────
 vi.mock('@fastify/redis', () => {
-  return {
-    default: async function mockRedisPlugin(fastify: any) {
-      if (!fastify.hasDecorator('redis')) {
-        fastify.decorate('redis', {
-          get: vi.fn(),
-          set: vi.fn(),
-          incr: vi.fn(),
-          expire: vi.fn(),
-          del: vi.fn(),
-        });
-      }
+  const plugin = async function mockRedisPlugin(fastify: any) {
+    if (!fastify.hasDecorator('redis')) {
+      fastify.decorate('redis', {
+        get: vi.fn(),
+        set: vi.fn(),
+        incr: vi.fn(),
+        expire: vi.fn(),
+        del: vi.fn(),
+      });
     }
+  };
+  (plugin as any)[Symbol.for('skip-override')] = true;
+
+  return {
+    default: plugin
   };
 });
 
