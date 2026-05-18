@@ -302,3 +302,36 @@ components:
             description: |
               Caller-specified timeout. The sandbox worker enforces its own
               MAX_TIMEOUT_SECS cap regardless of this value.
+
+    SessionStarted:
+      name: SessionStarted
+      title: Sandbox Session Started
+      payload:
+        type: object
+        required: [type, sessionId, userId, challengeId]
+        properties:
+          type:
+            type: string
+            const: "session.started"
+          sessionId:
+            type: string
+          userId:
+            type: string
+          challengeId:
+            type: string
+
+    SessionEnded:
+      name: SessionEnded
+      title: Sandbox Session Ended
+      payload:
+        type: object
+        required: [type, sessionId, reason]
+        properties:
+          type:
+            type: string
+            const: "session.ended"
+          sessionId:
+            type: string
+          reason:
+            type: string
+            enum: [completed, terminated, expired]
