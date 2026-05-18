@@ -41,7 +41,7 @@ jobs:
         run: npx turbo run typecheck --filter=...[HEAD~2]
 
       - name: Create Neon Branch
-        if: github.event_name == 'pull_request' && secrets.NEON_API_KEY != ''
+        if: github.event_name == 'pull_request'
         uses: neondatabase/create-branch-action@v5
         id: neon_branch
         with:
