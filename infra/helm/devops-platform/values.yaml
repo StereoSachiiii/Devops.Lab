@@ -1,0 +1,28 @@
+global:
+  environment: production
+
+sandboxService:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/your-username/sandbox-service
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 8090
+
+challengeService:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/your-username/challenge-service
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 3000
+
+apiGateway:
+  enabled: true
+  image:
+    repository: kong
+    tag: 3.6.1-ubuntu

@@ -26,6 +26,9 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Validate AsyncAPI Contract
+        run: npx @asyncapi/cli validate docs/contracts/events.yaml
+
       - name: Generate Prisma Client
         run: npx turbo run generate --filter=@devops/db
         env:
@@ -37,7 +40,68 @@ jobs:
       - name: Typecheck
         run: npx turbo run typecheck --filter=...[HEAD~2]
 
+      - name: Create Neon Branch
+        if: github.event_name == 'pull_request'
+        uses: neondatabase/create-branch-action@v5
+        id: neon_branch
+        with:
+          project_id: ${{ secrets.NEON_PROJECT_ID }}
+          branch_name: pr-${{ github.event.pull_request.number }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+
       - name: Test
         run: npx turbo run test --filter=...[HEAD~2]
         env:
           NODE_ENV: test
+          DATABASE_URL: ${{ steps.neon_branch.outputs.db_url || 'postgresql://placeholder:placeholder@localhost:5432/placeholder' }}
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+  build-and-deploy:
+    name: Build & Deploy
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Docker images
+        run: |
+          echo "Building images..."
+          # Build and push sandbox-service
+          docker build -t ghcr.io/${{ github.repository }}/sandbox-service:${{ github.sha }} -f services/sandbox/Dockerfile .
+          docker push ghcr.io/${{ github.repository }}/sandbox-service:${{ github.sha }}
+          docker tag ghcr.io/${{ github.repository }}/sandbox-service:${{ github.sha }} ghcr.io/${{ github.repository }}/sandbox-service:latest
+          docker push ghcr.io/${{ github.repository }}/sandbox-service:latest
+          
+          # Build and push content-service
+          docker build -t ghcr.io/${{ github.repository }}/content-service:${{ github.sha }} -f services/content/Dockerfile .
+          docker push ghcr.io/${{ github.repository }}/content-service:${{ github.sha }}
+          docker tag ghcr.io/${{ github.repository }}/content-service:${{ github.sha }} ghcr.io/${{ github.repository }}/content-service:latest
+          docker push ghcr.io/${{ github.repository }}/content-service:latest
+          
+      - name: Trigger ArgoCD Sync
+        run: |
+          echo "Triggering ArgoCD sync..."
+          curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+          rm argocd-linux-amd64
+          argocd app sync devops-learning-platform --auth-token ${{ secrets.ARGOCD_AUTH_TOKEN }} --server ${{ secrets.ARGOCD_SERVER }} --grpc-web
