@@ -9,6 +9,23 @@ vi.mock('argon2', () => ({
   },
 }));
 
+// ── Mock @fastify/redis ─────────────────────────────────────────────────────
+vi.mock('@fastify/redis', () => {
+  return {
+    default: async function mockRedisPlugin(fastify: any) {
+      if (!fastify.hasDecorator('redis')) {
+        fastify.decorate('redis', {
+          get: vi.fn(),
+          set: vi.fn(),
+          incr: vi.fn(),
+          expire: vi.fn(),
+          del: vi.fn(),
+        });
+      }
+    }
+  };
+});
+
 // ── Mock @devops/db ─────────────────────────────────────────────────────────
 vi.mock('@devops/db', () => {
   const mockPrisma = {
