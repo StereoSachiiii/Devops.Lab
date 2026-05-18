@@ -1,5 +1,5 @@
 {
-  "name": "@devops/auth-service",
+  "name": "@devops/notification-service",
   "version": "0.1.0",
   "private": true,
   "main": "dist/index.js",
@@ -11,21 +11,9 @@
     "lint": "echo 'Skip lint'",
     "typecheck": "tsc --noEmit"
   },
-
   "dependencies": {
-    "@devops/db": "*",
     "@devops/messaging": "*",
-    "@fastify/cookie": "^9.3.1",
-
     "@fastify/cors": "^9.0.1",
-    "@fastify/jwt": "^8.0.1",
-    "@fastify/oauth2": "^7.8.0",
-    "@fastify/redis": "^6.1.1",
-    "@fastify/type-provider-typebox": "^4.0.0",
-    "@sinclair/typebox": "^0.32.15",
-    "fastify-plugin": "^4.5.1",
-
-    "argon2": "^0.40.1",
     "dotenv": "^16.4.5",
     "fastify": "^4.26.2"
   },
