@@ -1,10 +1,10 @@
 {
-  "name": "@devops/content-service",
+  "name": "@devops/auth-service",
   "version": "0.1.0",
   "private": true,
   "main": "dist/index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "ts-node src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
@@ -12,22 +12,26 @@
     "typecheck": "tsc --noEmit"
   },
 
-
   "dependencies": {
     "@devops/db": "*",
     "@devops/messaging": "*",
-    "@devops/types": "*",
-    "@prisma/client": "^6.0.0",
-    "fastify": "^4.26.2",
+    "@fastify/cookie": "^9.3.1",
+
     "@fastify/cors": "^9.0.1",
-    "dotenv": "^16.4.5"
+    "@fastify/jwt": "^8.0.1",
+    "@fastify/oauth2": "^7.8.0",
+    "@fastify/type-provider-typebox": "^4.0.0",
+    "@sinclair/typebox": "^0.32.15",
+    "fastify-plugin": "^4.5.1",
+
+    "argon2": "^0.40.1",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.26.2"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
-    "ts-node-dev": "^2.0.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.4.5",
-    "vitest": "^1.4.0"
+    "vitest": "^1.5.0"
   }
-
 }
-
