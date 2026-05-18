@@ -41,9 +41,58 @@ services:
     image: rabbitmq:3-management
     container_name: rabbitmq
     ports:
-      - "5672:5672"   # AMQP
-      - "15672:15672" # Management UI
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  sandbox-worker:
+    build:
+      context: ./services/sandbox
+      dockerfile: Dockerfile
+    container_name: sandbox-worker
+    ports:
+      - "8090:8090"  # WebSocket terminal + validate endpoint
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      HTTP_PORT: "8090"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      SESSION_QUEUE: sandbox.sessions
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_CLIENT_ID: sandbox-worker
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      SESSION_TTL_MINS: "60"
+      MAX_MEMORY_MB: "512"
+      MAX_CPUS: "1.0"
+      DOCKER_NETWORK_MODE: "none"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - workers

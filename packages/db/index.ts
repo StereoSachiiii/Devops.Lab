@@ -1,3 +1,4 @@
-import { PrismaClient, Node, Edge, NodeType } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+export type { User, Role } from '@prisma/client';
 
-export { PrismaClient, Node, Edge, NodeType };
+export { PrismaClient };

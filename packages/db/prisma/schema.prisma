@@ -28,6 +28,7 @@ model User {
   
   submissions   Submission[]
   completions   Completion[]
+  sessions      LabSession[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -52,11 +53,31 @@ model Challenge {
   category    Category
   tags        String[]
   xp          Int
+  dockerImage String    // e.g. "ghcr.io/devops-platform/nginx-basics:latest"
   moduleId    String?
   module      Module?   @relation(fields: [moduleId], references: [id])
   submissions Submission[]
+  sessions    LabSession[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+model LabSession {
+  id          String    @id @default(cuid()) // equals the sessionId in Redis/sandbox
+  userId      String
+  challengeId String
+  user        User      @relation(fields: [userId], references: [id])
+  challenge   Challenge @relation(fields: [challengeId], references: [id])
+  status      SessionStatus @default(ACTIVE)
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+}
+
+enum SessionStatus {
+  ACTIVE
+  COMPLETED
+  EXPIRED
+  TERMINATED
 }
 
 model LearningPath {
