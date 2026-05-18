@@ -85,18 +85,21 @@ jobs:
 
       - name: Build and Push Docker images
         run: |
+          # Docker requires repository names to be strictly lowercase
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          
           echo "Building images..."
           # Build and push sandbox-service
-          docker build -t ghcr.io/${{ github.repository }}/sandbox-service:${{ github.sha }} -f services/sandbox/Dockerfile .
-          docker push ghcr.io/${{ github.repository }}/sandbox-service:${{ github.sha }}
-          docker tag ghcr.io/${{ github.repository }}/sandbox-service:${{ github.sha }} ghcr.io/${{ github.repository }}/sandbox-service:latest
-          docker push ghcr.io/${{ github.repository }}/sandbox-service:latest
+          docker build -t ghcr.io/${REPO_LOWER}/sandbox-service:${{ github.sha }} -f services/sandbox/Dockerfile .
+          docker push ghcr.io/${REPO_LOWER}/sandbox-service:${{ github.sha }}
+          docker tag ghcr.io/${REPO_LOWER}/sandbox-service:${{ github.sha }} ghcr.io/${REPO_LOWER}/sandbox-service:latest
+          docker push ghcr.io/${REPO_LOWER}/sandbox-service:latest
           
           # Build and push content-service
-          docker build -t ghcr.io/${{ github.repository }}/content-service:${{ github.sha }} -f services/content/Dockerfile .
-          docker push ghcr.io/${{ github.repository }}/content-service:${{ github.sha }}
-          docker tag ghcr.io/${{ github.repository }}/content-service:${{ github.sha }} ghcr.io/${{ github.repository }}/content-service:latest
-          docker push ghcr.io/${{ github.repository }}/content-service:latest
+          docker build -t ghcr.io/${REPO_LOWER}/content-service:${{ github.sha }} -f services/content/Dockerfile .
+          docker push ghcr.io/${REPO_LOWER}/content-service:${{ github.sha }}
+          docker tag ghcr.io/${REPO_LOWER}/content-service:${{ github.sha }} ghcr.io/${REPO_LOWER}/content-service:latest
+          docker push ghcr.io/${REPO_LOWER}/content-service:latest
           
       - name: Trigger ArgoCD Sync
         run: |
