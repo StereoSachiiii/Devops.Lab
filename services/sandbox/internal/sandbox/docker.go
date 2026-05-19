@@ -22,6 +22,7 @@ type DockerProvider struct {
 	networkMode string
 	memoryBytes int64
 	nanoCPUs    int64
+	runtime     string
 	log         *slog.Logger
 }
 
@@ -31,11 +32,26 @@ func NewDockerProvider(networkMode string, memoryMB int, maxCPUs float64, log *s
 	if err != nil {
 		return nil, fmt.Errorf("docker: client init failed: %w", err)
 	}
+
+	runtime := ""
+	info, err := cli.Info(context.Background())
+	if err == nil {
+		if _, ok := info.Runtimes["runsc"]; ok {
+			runtime = "runsc"
+			log.Info("gVisor runtime 'runsc' detected and enabled for secure sandboxing")
+		} else {
+			log.Warn("gVisor runtime 'runsc' not found in Docker. Falling back to default runtime (insecure).")
+		}
+	} else {
+		log.Warn("Failed to query Docker info for runtimes. Falling back to default runtime.", "error", err)
+	}
+
 	return &DockerProvider{
 		client:      cli,
 		networkMode: networkMode,
 		memoryBytes: int64(memoryMB) * 1024 * 1024,
 		nanoCPUs:    int64(maxCPUs * 1_000_000_000),
+		runtime:     runtime,
 		log:         log,
 	}, nil
 }
@@ -56,6 +72,7 @@ func (d *DockerProvider) Provision(ctx context.Context, imageName string) (strin
 		},
 		NetworkDisabled: true,
 	}, &container.HostConfig{
+		Runtime:        d.runtime,
 		NetworkMode:    container.NetworkMode(d.networkMode),
 		ReadonlyRootfs: false, // lab environments need a writable FS
 		AutoRemove:     false,
@@ -66,6 +83,7 @@ func (d *DockerProvider) Provision(ctx context.Context, imageName string) (strin
 		CapDrop:     []string{"ALL"},
 		SecurityOpt: []string{"no-new-privileges:true"},
 	}, nil, nil, "")
+
 	if err != nil {
 		return "", fmt.Errorf("docker: container create failed: %w", err)
 	}
