@@ -1,0 +1,13 @@
+{
+  "name": "@devops/eslint-config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "dependencies": {
+    "typescript-eslint": "^8.0.0"
+  },
+  "peerDependencies": {
+    "eslint": ">=9.0.0"
+  }
+}

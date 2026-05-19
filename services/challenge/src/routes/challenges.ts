@@ -1,7 +1,5 @@
-import { Type } from '@sinclair/typebox';
-import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import { randomUUID } from 'crypto';
 import type { FastifyInstance } from 'fastify';
+import { randomUUID } from 'crypto';
 import { SessionStartedEvent, SessionEndedEvent } from '@devops/messaging';
 import '../types.js';
 
