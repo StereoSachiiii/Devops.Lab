@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 
 interface GithubUser {
   id: number;
-  email: string | null;   // nullable — GitHub users can hide their email
+  email: string | null;   
   name: string | null;
 }
 
@@ -24,10 +24,7 @@ interface GoogleUser {
   verified_email: boolean;
 }
 
-/**
- * Fetches the primary verified email from the GitHub /user/emails endpoint.
- * Falls back to the profile email if present.
- */
+
 async function resolveGithubEmail(accessToken: string, profileEmail: string | null): Promise<string | null> {
   if (profileEmail) return profileEmail;
 
@@ -45,7 +42,6 @@ async function resolveGithubEmail(accessToken: string, profileEmail: string | nu
  *  GET /login/google/callback
  */
 export const oauthRoutes = fp(async (fastify: FastifyInstance) => {
-  // ── GitHub Callback ────────────────────────────────────────────────────────
   fastify.get('/login/github/callback', async (request: FastifyRequest, reply: FastifyReply) => {
     const { token } = await fastify.github.getAccessTokenFromAuthorizationCodeFlow(request);
 
@@ -54,7 +50,6 @@ export const oauthRoutes = fp(async (fastify: FastifyInstance) => {
     });
     const ghUser = await userRes.json() as GithubUser;
 
-    // Resolve email — GitHub users can hide it from the profile endpoint
     const email = await resolveGithubEmail(token.access_token, ghUser.email);
     if (!email) {
       return reply.status(400).send({
@@ -72,11 +67,10 @@ export const oauthRoutes = fp(async (fastify: FastifyInstance) => {
           email,
           name: ghUser.name ?? null,
           githubId: ghUser.id.toString(),
-          emailVerified: new Date(), // OAuth emails are verified by the provider
+          emailVerified: new Date(),
         },
       });
 
-      // Emit registration event for new GitHub OAuth users
       try {
         await fastify.messaging.emit(
           new UserRegisteredEvent({ userId: user.id, email: user.email, name: user.name })
@@ -94,7 +88,6 @@ export const oauthRoutes = fp(async (fastify: FastifyInstance) => {
       .redirect(`${frontendUrl}/auth/callback?success=true`);
   });
 
-  // ── Google Callback ────────────────────────────────────────────────────────
   fastify.get('/login/google/callback', async (request: FastifyRequest, reply: FastifyReply) => {
     const { token } = await fastify.google.getAccessTokenFromAuthorizationCodeFlow(request);
 

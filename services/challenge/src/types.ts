@@ -1,5 +1,6 @@
 import { PrismaClient } from '@devops/db';
 import { RabbitMQService } from '@devops/messaging';
+import type { FastifyRequest, FastifyReply } from 'fastify';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -7,6 +8,6 @@ declare module 'fastify' {
     rabbit: RabbitMQService;
     sessionQueue: string;
     sessionTTLMins: number;
-    authenticate: (request: any, reply: any) => Promise<void>;
+    authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 }

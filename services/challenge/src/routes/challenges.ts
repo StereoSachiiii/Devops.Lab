@@ -1,7 +1,5 @@
-import { Type } from '@sinclair/typebox';
-import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { randomUUID } from 'crypto';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { SessionStartedEvent, SessionEndedEvent } from '@devops/messaging';
 import '../types.js';
 
@@ -40,8 +38,8 @@ export async function challengeRoutes(app: FastifyInstance) {
   });
 
   // ── POST /api/challenges/:id/start ───────────────────────────────────────
-  app.post('/challenges/:id/start', { preHandler: [app.authenticate] }, async (req, reply) => {
-    const user = (req as any).user as { sub: string };
+  app.post('/challenges/:id/start', { preHandler: [app.authenticate] }, async (req: FastifyRequest, reply) => {
+    const user = req.user as { sub: string };
     const { id } = req.params as { id: string };
 
     const challenge = await a.prisma.challenge.findUnique({

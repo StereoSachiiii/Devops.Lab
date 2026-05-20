@@ -1,5 +1,8 @@
-import { buildApp } from './app';
+import { initObservability } from '@devops/observability';
 
+initObservability('auth-service');
+
+import { buildApp } from './app';
 const fastify = buildApp();
 const port = Number(process.env['PORT']) || 3002;
 

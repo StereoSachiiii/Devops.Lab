@@ -19,7 +19,7 @@ const LoginSchema = Type.Object({
 });
 
 /**
- * Core auth routes:
+ * Core auth routes
  *  GET  /health
  *  POST /register
  *  POST /login
@@ -27,12 +27,10 @@ const LoginSchema = Type.Object({
  *  POST /logout
  */
 export const authRoutes = fp(async (fastify: FastifyInstance) => {
-  // ── Health ─────────────────────────────────────────────────────────────────
   fastify.get('/health', async () => {
     return { status: 'ok', service: 'auth-service' };
   });
 
-  // ── Register ───────────────────────────────────────────────────────────────
   fastify.post(
     '/register',
     { schema: { body: RegisterSchema } },
@@ -54,7 +52,6 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
         },
       });
 
-      // Emit Kafka events — fire-and-forget, never block the response
       try {
         await fastify.messaging.emit(
           new UserRegisteredEvent({ userId: user.id, email: user.email, name: user.name })
@@ -63,7 +60,7 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
           new EmailVerificationRequestedEvent({
             userId: user.id,
             email: user.email,
-            token: crypto.randomUUID(), // Owned by notification-service; token is disposable here
+            token: crypto.randomUUID(),
           })
         );
       } catch (err) {
@@ -78,22 +75,44 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
     }
   );
 
-  // ── Login ──────────────────────────────────────────────────────────────────
   fastify.post(
     '/login',
     { schema: { body: LoginSchema } },
     async (request: FastifyRequest<{ Body: Static<typeof LoginSchema> }>, reply: FastifyReply) => {
       const { email, password } = request.body;
 
+      const lockoutKey = `auth:lockout:${email}`;
+      const failsKey = `auth:fails:${email}`;
+
+      const isLocked = await fastify.redis.get(lockoutKey);
+      if (isLocked) {
+        return reply.status(429).send({ error: 'Account locked due to too many failed attempts. Try again later.' });
+      }
+
       const user = await prisma.user.findUnique({ where: { email } });
+
+      const handleFail = async () => {
+        const fails = await fastify.redis.incr(failsKey);
+        if (fails === 1) {
+          await fastify.redis.expire(failsKey, 15 * 60); 
+        }
+        if (fails >= 5) {
+          await fastify.redis.set(lockoutKey, '1', 'EX', 15 * 60);
+        }
+      };
+
       if (!user?.password) {
+        await handleFail();
         return reply.status(401).send({ error: 'Invalid credentials' });
       }
 
       const valid = await argon2.verify(user.password, password);
       if (!valid) {
+        await handleFail();
         return reply.status(401).send({ error: 'Invalid credentials' });
       }
+
+      await fastify.redis.del(failsKey);
 
       const token = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role });
 
@@ -103,7 +122,6 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
     }
   );
 
-  // ── Me ─────────────────────────────────────────────────────────────────────
   fastify.get(
     '/me',
     { onRequest: [async (request) => { await request.jwtVerify(); }] },
@@ -131,7 +149,6 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
     }
   );
 
-  // ── Logout ─────────────────────────────────────────────────────────────────
   fastify.post('/logout', async (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.clearCookie('token', { path: '/' }).send({ success: true });
   });

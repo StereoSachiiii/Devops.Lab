@@ -22,10 +22,15 @@ export const initObservability = (serviceName: string) => {
 
   logger.info({ serviceName }, 'Observability initialized');
 
-  process.on('SIGTERM', () => {
+  const shutdown = () => {
     sdk.shutdown()
       .then(() => logger.info('Observability shut down'))
       .catch((err) => logger.error(err, 'Error shutting down observability'))
       .finally(() => process.exit(0));
-  });
+  };
+
+  // SIGTERM is sent by Docker/Kubernetes when stopping a container
+  process.on('SIGTERM', shutdown);
+  // SIGINT is sent when you press Ctrl+C in your Windows/Mac/Linux terminal
+  process.on('SIGINT', shutdown);
 };

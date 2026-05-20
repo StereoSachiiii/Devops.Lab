@@ -5,18 +5,9 @@ import cookie from '@fastify/cookie';
 import oauth2 from '@fastify/oauth2';
 import { MessagingService } from '@devops/messaging';
 
-/**
- * Registers all core auth plugins:
- *  - @fastify/cookie
- *  - @fastify/jwt
- *  - @fastify/oauth2 (GitHub + Google)
- *  - MessagingService (Kafka producer)
- */
 export const authPlugin = fp(async (fastify: FastifyInstance) => {
-  // ── Cookies ────────────────────────────────────────────────────────────────
   await fastify.register(cookie);
 
-  // ── JWT ────────────────────────────────────────────────────────────────────
   await fastify.register(jwt, {
     secret: process.env['JWT_SECRET'] || 'super-secret-development-key',
     sign: {
@@ -28,7 +19,6 @@ export const authPlugin = fp(async (fastify: FastifyInstance) => {
     },
   });
 
-  // ── Kafka Messaging ────────────────────────────────────────────────────────
   const messaging = new MessagingService();
   fastify.decorate('messaging', messaging);
 
@@ -41,7 +31,6 @@ export const authPlugin = fp(async (fastify: FastifyInstance) => {
     await messaging.disconnect();
   });
 
-  // ── GitHub OAuth ───────────────────────────────────────────────────────────
   await fastify.register(oauth2, {
     name: 'github',
     credentials: {
@@ -56,7 +45,6 @@ export const authPlugin = fp(async (fastify: FastifyInstance) => {
     scope: ['user:email'],
   });
 
-  // ── Google OAuth ───────────────────────────────────────────────────────────
   await fastify.register(oauth2, {
     name: 'google',
     credentials: {

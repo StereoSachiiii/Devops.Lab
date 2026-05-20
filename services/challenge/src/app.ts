@@ -33,7 +33,7 @@ export async function buildApp(opts: AppOptions) {
   app.decorate('sessionTTLMins', opts.sessionTTLMins);
 
   // ── Auth guard ───────────────────────────────────────────────────────────────
-  app.decorate('authenticate', async function (request: any, reply: any) {
+  app.decorate('authenticate', async function (request: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) {
     try {
       await request.jwtVerify();
     } catch {

@@ -7,12 +7,10 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "vitest run",
-    "lint": "echo 'Skip lint'",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },
-
-
   "dependencies": {
     "@devops/db": "*",
     "@devops/messaging": "*",
@@ -26,8 +24,7 @@
     "@types/node": "^20.12.7",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.4.5",
-    "vitest": "^1.4.0"
+    "vitest": "^1.4.0",
+    "@devops/eslint-config": "*"
   }
-
 }
-
