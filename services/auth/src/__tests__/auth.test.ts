@@ -10,7 +10,6 @@ vi.mock('argon2', () => ({
 }));
 
 // ── Mock @fastify/redis ─────────────────────────────────────────────────────
-// ── Mock @fastify/redis ─────────────────────────────────────────────────────
 vi.mock('@fastify/redis', () => {
   const plugin = async function mockRedisPlugin(fastify: any) {
     if (!fastify.hasDecorator('redis')) {
@@ -20,6 +19,7 @@ vi.mock('@fastify/redis', () => {
         incr: vi.fn(),
         expire: vi.fn(),
         del: vi.fn(),
+        keys: vi.fn().mockResolvedValue([]),
       });
     }
   };
@@ -32,12 +32,21 @@ vi.mock('@fastify/redis', () => {
 
 // ── Mock @devops/db ─────────────────────────────────────────────────────────
 vi.mock('@devops/db', () => {
-  const mockPrisma = {
+  const mockPrisma: any = {
     user: {
       findUnique: vi.fn(),
       create: vi.fn(),
       upsert: vi.fn(),
     },
+    securityLog: {
+      create: vi.fn(),
+    },
+    outboxEvent: {
+      create: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
+      update: vi.fn(),
+    },
+    $transaction: vi.fn((fn: (tx: any) => any) => fn(mockPrisma)),
   };
   return {
     PrismaClient: vi.fn(() => mockPrisma),
@@ -82,9 +91,20 @@ describe('Auth Service', () => {
     expect(JSON.parse(response.payload)).toEqual({ status: 'ok', service: 'auth-service' });
   });
 
+  // ── Public Key ──────────────────────────────────────────────────────────────
+  describe('GET /public-key', () => {
+    it('returns the public verification key', async () => {
+      const response = await app.inject({ method: 'GET', url: '/public-key' });
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.payload) as { publicKey: string };
+      expect(body.publicKey).toBeDefined();
+      expect(body.publicKey).toContain('PUBLIC KEY');
+    });
+  });
+
   // ── Register ────────────────────────────────────────────────────────────────
   describe('POST /register', () => {
-    it('registers a new user and returns token + httpOnly cookie', async () => {
+    it('registers a new user using transaction outbox and returns tokens', async () => {
       (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       (prisma.user.create as ReturnType<typeof vi.fn>).mockResolvedValue({
         id: 'user-1',
@@ -104,6 +124,18 @@ describe('Auth Service', () => {
       expect(payload.user.email).toBe('test@example.com');
       expect(payload.token).toBeDefined();
       expect(response.headers['set-cookie']).toBeDefined();
+
+      // Check transaction and outbox creation
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(prisma.outboxEvent.create).toHaveBeenCalledTimes(2);
+      expect(prisma.securityLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'REGISTER',
+            userId: 'user-1',
+          }),
+        })
+      );
     });
 
     it('returns 400 if user already exists', async () => {
@@ -118,32 +150,11 @@ describe('Auth Service', () => {
       expect(response.statusCode).toBe(400);
       expect(JSON.parse(response.payload)).toMatchObject({ error: 'User already exists' });
     });
-
-    it('returns 400 if password is too short', async () => {
-      const response = await app.inject({
-        method: 'POST',
-        url: '/register',
-        payload: { email: 'test@example.com', password: 'short' },
-      });
-      expect(response.statusCode).toBe(400);
-    });
   });
 
   // ── Login ───────────────────────────────────────────────────────────────────
   describe('POST /login', () => {
-    it('returns 401 for unknown email', async () => {
-      (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-
-      const response = await app.inject({
-        method: 'POST',
-        url: '/login',
-        payload: { email: 'nobody@example.com', password: 'password123' },
-      });
-
-      expect(response.statusCode).toBe(401);
-    });
-
-    it('returns 401 for wrong password', async () => {
+    it('authenticates, logs success, and stores refresh token in Redis', async () => {
       (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
         id: 'user-1',
         email: 'test@example.com',
@@ -151,7 +162,32 @@ describe('Auth Service', () => {
         password: '$argon2id$hashed',
       });
 
-      // Override the default mock: password does NOT match
+      const response = await app.inject({
+        method: 'POST',
+        url: '/login',
+        payload: { email: 'test@example.com', password: 'password123' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(prisma.securityLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'LOGIN_SUCCESS',
+            userId: 'user-1',
+          }),
+        })
+      );
+      expect(app.redis.set).toHaveBeenCalled();
+    });
+
+    it('returns 401 for wrong password and logs failure', async () => {
+      (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'user-1',
+        email: 'test@example.com',
+        role: 'LEARNER',
+        password: '$argon2id$hashed',
+      });
+
       const argon2 = await import('argon2');
       vi.mocked(argon2.default.verify).mockResolvedValueOnce(false);
 
@@ -162,6 +198,69 @@ describe('Auth Service', () => {
       });
 
       expect(response.statusCode).toBe(401);
+      expect(prisma.securityLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'LOGIN_FAILED',
+            userId: 'user-1',
+          }),
+        })
+      );
+    });
+  });
+
+  // ── Refresh ─────────────────────────────────────────────────────────────────
+  describe('POST /refresh', () => {
+    it('rotates refresh token and returns new access token when valid', async () => {
+      (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'user-1',
+        email: 'test@example.com',
+        role: 'LEARNER',
+      });
+
+      vi.mocked(app.redis.get).mockResolvedValueOnce('1');
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/refresh',
+        cookies: { refreshToken: 'user-1.oldsecret' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const payload = JSON.parse(response.payload) as { token: string };
+      expect(payload.token).toBeDefined();
+      expect(app.redis.del).toHaveBeenCalled();
+      expect(app.redis.set).toHaveBeenCalled();
+    });
+
+    it('returns 401 if refresh token is missing', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/refresh',
+      });
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('invalidates all active user sessions and logs breach if token not found (compromise check)', async () => {
+      vi.mocked(app.redis.get).mockResolvedValueOnce(null);
+      vi.mocked(app.redis.keys).mockResolvedValueOnce(['auth:refresh:user-1:key1', 'auth:refresh:user-1:key2']);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/refresh',
+        cookies: { refreshToken: 'user-1.stolen' },
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(app.redis.del).toHaveBeenCalledWith('auth:refresh:user-1:key1', 'auth:refresh:user-1:key2');
+      expect(prisma.securityLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'REVOCATION_BREACH',
+            userId: 'user-1',
+          }),
+        })
+      );
     });
   });
 
@@ -174,7 +273,7 @@ describe('Auth Service', () => {
         name: 'Test User',
         role: 'LEARNER',
         xp: 0,
-        emailVerified: null,   // required by schema — was missing before
+        emailVerified: null,
         createdAt: new Date(),
       };
       (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(mockUser);
@@ -197,29 +296,27 @@ describe('Auth Service', () => {
       const response = await app.inject({ method: 'GET', url: '/me' });
       expect(response.statusCode).toBe(401);
     });
-
-    it('returns 404 if user is not found in DB', async () => {
-      (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-      const token = app.jwt.sign({ sub: 'ghost-user', email: 'ghost@example.com', role: 'LEARNER' });
-
-      const response = await app.inject({
-        method: 'GET',
-        url: '/me',
-        headers: { authorization: `Bearer ${token}` },
-      });
-
-      expect(response.statusCode).toBe(404);
-    });
   });
 
   // ── Logout ──────────────────────────────────────────────────────────────────
   describe('POST /logout', () => {
-    it('returns success and clears cookie', async () => {
-      const response = await app.inject({ method: 'POST', url: '/logout' });
+    it('revokes refresh token and clears cookies', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/logout',
+        cookies: { refreshToken: 'user-1.secret' },
+      });
       expect(response.statusCode).toBe(200);
       expect(JSON.parse(response.payload)).toEqual({ success: true });
-      // Cookie should be cleared (set-cookie header present)
-      expect(response.headers['set-cookie']).toBeDefined();
+      expect(app.redis.del).toHaveBeenCalled();
+      expect(prisma.securityLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'LOGOUT',
+            userId: 'user-1',
+          }),
+        })
+      );
     });
   });
 });

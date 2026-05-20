@@ -189,3 +189,21 @@ enum SubmissionStatus {
   FAILED
 }
 
+model SecurityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String   // e.g., "REGISTER", "LOGIN_SUCCESS", "LOGIN_FAILED", "LOCKOUT", "LOGOUT"
+  ip        String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+model OutboxEvent {
+  id        String   @id @default(cuid())
+  eventType String   // e.g., "UserRegisteredEvent", "EmailVerificationRequestedEvent"
+  payload   Json
+  processed Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
