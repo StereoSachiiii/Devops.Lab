@@ -31,3 +31,35 @@ inspired by->https://aws.amazon.com/blogs/database/multi-tenant-data-isolation-w
 
 for reference->
 https://www.youtube.com/watch?v=OwCgDPa0DnA by milan jovanovic
+
+something like this 
+ALTER TABLE "LabSession" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "tenant_isolation" ON "LabSession" 
+USING (user_id = current_setting('app.current_user_id', true));
+
+
+** then 
+const extendedPrisma = prisma.$extends
+  model: 
+    $allModels: 
+      async withUser<T>(userId: string, callback: (tx: any) => Promise<T>) 
+        return prisma.$transaction(async (tx) => 
+            Set the session variable securely
+           await tx.$executeRaw`SELECT set_config('app.current_user_id', ${userId}, true)`;
+           Run the actual queries
+           return callback(tx);
+
+** then 
+app.get('/sessions', async (req, reply) => {
+   const userId = req.user.sub;
+   
+   
+   const sessions = await prisma.labSession.withUser(userId, async (tx) => {
+       return tx.findMany(); 
+   });
+   
+   return reply.send(sessions);
+});
+
+
+drop all where clauses (if i dont become too anxious since its my first time handrolling rls without supabase)
