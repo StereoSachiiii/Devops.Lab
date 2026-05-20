@@ -80,7 +80,7 @@ export const oauthRoutes = fp(async (fastify: FastifyInstance) => {
       }
     }
 
-    const jwtToken = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role });
+    const jwtToken = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role, iss: 'devops-platform' });
     const frontendUrl = process.env['FRONTEND_URL'] || 'http://localhost:3000';
 
     return reply
@@ -119,7 +119,7 @@ export const oauthRoutes = fp(async (fastify: FastifyInstance) => {
       }
     }
 
-    const jwtToken = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role });
+    const jwtToken = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role, iss: 'devops-platform' });
     const frontendUrl = process.env['FRONTEND_URL'] || 'http://localhost:3000';
 
     return reply

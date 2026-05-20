@@ -67,7 +67,7 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
         fastify.log.error(err, 'Failed to emit identity events');
       }
 
-      const token = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role });
+      const token = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role, iss: 'devops-platform' });
 
       return reply
         .setCookie('token', token, { httpOnly: true, path: '/', sameSite: 'lax', secure: process.env['NODE_ENV'] === 'production' })
@@ -114,7 +114,7 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
 
       await fastify.redis.del(failsKey);
 
-      const token = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role });
+      const token = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role, iss: 'devops-platform' });
 
       return reply
         .setCookie('token', token, { httpOnly: true, path: '/', sameSite: 'lax', secure: process.env['NODE_ENV'] === 'production' })
