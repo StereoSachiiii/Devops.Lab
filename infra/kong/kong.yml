@@ -1,0 +1,80 @@
+_format_version: "3.0"
+_transform: true
+
+# Global plugins that apply to every route
+plugins:
+  - name: rate-limiting
+    config:
+      minute: 60
+      limit_by: credential  # Limits by JWT user. Falls back to IP for public routes (e.g., auth-service) to stop brute-forcing
+      policy: redis         # Use Redis instead of local memory for distributed rate limiting
+      redis_host: redis     # Points to the 'redis' service in docker-compose.yml
+      redis_port: 6379
+      redis_database: 1     # Using DB 1 so we don't clash with session data in DB 0
+
+services:
+  - name: challenge-service
+    url: http://challenge-service:3000
+    routes:
+      - name: challenge-routes
+        paths:
+          - /api/challenge
+    # Protect challenge-service with JWT validation
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+
+  - name: sandbox-worker
+    url: http://sandbox-worker:8090
+    routes:
+      - name: sandbox-routes
+        paths:
+          - /api/sandbox
+          - /sessions
+          - /validate
+    # Protect sandbox with JWT validation
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+
+  - name: auth-service
+    url: http://auth-service:3000
+    routes:
+      - name: auth-routes
+        paths:
+          - /api/auth
+    # Auth service stays public (no JWT plugin) so users can actually log in!
+    # But we apply a much stricter IP-based rate limit specifically to mitigate brute-force guessing
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 5         # Extremely strict: Max 5 login attempts per minute per IP
+          limit_by: ip      # Enforce purely by IP (since they aren't authenticated yet)
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
+          redis_database: 1
+
+  - name: content-service
+    url: http://content-service:3001
+    routes:
+      - name: content-routes
+        paths:
+          - /api/content
+    # Protect content-service with JWT validation
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+
+consumers:
+  - username: devops-auth-consumer
+    jwt_secrets:
+      - key: devops-platform
+        secret: dev-jwt-secret-key-change-in-prod
+
