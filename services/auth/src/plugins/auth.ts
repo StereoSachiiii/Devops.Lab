@@ -5,13 +5,34 @@ import cookie from '@fastify/cookie';
 import oauth2 from '@fastify/oauth2';
 import { MessagingService } from '@devops/messaging';
 
+import crypto from 'crypto';
+
 export const authPlugin = fp(async (fastify: FastifyInstance) => {
   await fastify.register(cookie);
 
+  let privateKey = process.env['JWT_PRIVATE_KEY'];
+  let publicKey = process.env['JWT_PUBLIC_KEY'];
+
+  if (!privateKey || !publicKey) {
+    const { privateKey: priv, publicKey: pub } = crypto.generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+    privateKey = priv;
+    publicKey = pub;
+  }
+
+  fastify.decorate('jwtPublicKey', publicKey);
+
   await fastify.register(jwt, {
-    secret: process.env['JWT_SECRET'] || 'super-secret-development-key',
+    secret: {
+      private: privateKey,
+      public: publicKey,
+    },
     sign: {
-      expiresIn: '7d',
+      algorithm: 'RS256',
+      expiresIn: '15m', // Access token expires in 15 minutes
     },
     cookie: {
       cookieName: 'token',

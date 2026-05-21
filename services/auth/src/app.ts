@@ -7,6 +7,7 @@ import type { OAuth2Namespace } from '@fastify/oauth2';
 import type { MessagingService } from '@devops/messaging';
 import { authPlugin } from './plugins/auth.js';
 import { redisPlugin } from './plugins/redis.js';
+import { outboxPlugin } from './plugins/outbox.js';
 import { authRoutes } from './routes/auth.js';
 import { oauthRoutes } from './routes/oauth.js';
 
@@ -18,6 +19,7 @@ declare module 'fastify' {
     google: OAuth2Namespace;
     messaging: MessagingService;
     redis: import('@fastify/redis').FastifyRedis;
+    jwtPublicKey: string;
   }
 }
 
@@ -31,6 +33,7 @@ export function buildApp() {
   // Plugins first JWT, cookies, OAuth, Kafka, Redis
   fastify.register(authPlugin);
   fastify.register(redisPlugin);
+  fastify.register(outboxPlugin);
 
   // Routes
   fastify.register(authRoutes);
