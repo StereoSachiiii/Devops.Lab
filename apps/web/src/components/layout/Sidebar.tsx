@@ -29,37 +29,42 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="sidebar">
-      <div>
-        <div className="logo-container">
-          <Terminal />
+    <aside className="w-64 h-screen border-r border-neutral-800 p-6 flex flex-col justify-between">
+      <div className="flex flex-col gap-6">
+        <div className="flex items-center gap-2">
+          <Terminal size={20} />
           <span>DevOps.lab</span>
         </div>
 
-        <nav className="nav-menu">
+        <nav className="flex flex-col gap-2">
           {menuItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className={pathname === item.href ? "active" : ""}
+              className={`flex items-center gap-2 p-2 ${
+                pathname === item.href ? "border border-neutral-700" : ""
+              }`}
             >
-              <item.icon />
-              {item.label}
+              <item.icon size={18} />
+              <span>{item.label}</span>
             </Link>
           ))}
         </nav>
+      </div>
 
-        <div className="secondary-menu">
-          {secondaryItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-            >
-              <item.icon />
-              {item.label}
-            </Link>
-          ))}
-        </div>
+      <div className="flex flex-col gap-2">
+        {secondaryItems.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`flex items-center gap-2 p-2 ${
+              pathname === item.href ? "border border-neutral-700" : ""
+            }`}
+          >
+            <item.icon size={18} />
+            <span>{item.label}</span>
+          </Link>
+        ))}
       </div>
     </aside>
   );
