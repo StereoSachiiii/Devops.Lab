@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { apiClient } from "@/lib/apiClient";
+import { getErrorMessage } from "@/lib/errors";
 import Editor from "@monaco-editor/react";
 import { Cpu, BarChart, Clock, Shield, Play, CheckCircle, XCircle } from "lucide-react";
 
@@ -107,8 +108,7 @@ export default function ChallengeWorkspacePage({ params }: PageProps) {
       setSession(res);
       localStorage.setItem(`session_${id}`, JSON.stringify(res));
     } catch (err: unknown) {
-      const error = err as Error;
-      setValidationError(error.message || "Failed to start sandbox session.");
+      setValidationError(getErrorMessage(err, "Failed to start sandbox session."));
     } finally {
       setIsStarting(false);
     }
@@ -124,8 +124,7 @@ export default function ChallengeWorkspacePage({ params }: PageProps) {
       setValidationResult(null);
       setValidationError(null);
     } catch (err: unknown) {
-      const error = err as Error;
-      setValidationError(error.message || "Failed to terminate sandbox session.");
+      setValidationError(getErrorMessage(err, "Failed to terminate sandbox session."));
     } finally {
       setIsTerminating(false);
     }
@@ -145,8 +144,7 @@ export default function ChallengeWorkspacePage({ params }: PageProps) {
       const data = await response.json();
       setValidationResult(data);
     } catch (err: unknown) {
-      const error = err as Error;
-      setValidationError(error.message || "Failed to validate solution.");
+      setValidationError(getErrorMessage(err, "Failed to validate solution."));
     } finally {
       setIsValidating(false);
     }

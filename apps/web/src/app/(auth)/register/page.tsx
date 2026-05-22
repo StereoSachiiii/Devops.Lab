@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import Link from "next/link";
 import { apiClient } from "@/lib/apiClient";
 import { useAuth } from "@/providers/AuthProvider";
+import { getErrorMessage } from "@/lib/errors";
 
 interface RegisterFormInputs {
   name?: string;
@@ -28,8 +29,7 @@ export default function RegisterPage() {
       });
       await mutate();
     } catch (err: unknown) {
-      const error = err as Error;
-      setErrorMsg(error.message || "Failed to register");
+      setErrorMsg(getErrorMessage(err, "Failed to register"));
     }
   };
 

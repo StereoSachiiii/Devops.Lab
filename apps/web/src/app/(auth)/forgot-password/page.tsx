@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import Link from "next/link";
 import { apiClient } from "@/lib/apiClient";
+import { getErrorMessage } from "@/lib/errors";
 
 interface ForgotFormInputs {
   email: string;
@@ -23,8 +24,7 @@ export default function ForgotPasswordPage() {
       });
       setSuccess(true);
     } catch (err: unknown) {
-      const error = err as Error;
-      setErrorMsg(error.message || "Something went wrong");
+      setErrorMsg(getErrorMessage(err, "Failed to send reset link"));
     }
   };
 

@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import Link from "next/link";
 import { apiClient } from "@/lib/apiClient";
 import { useAuth } from "@/providers/AuthProvider";
+import { getErrorMessage } from "@/lib/errors";
 
 interface LoginFormInputs {
   email?: string;
@@ -38,8 +39,7 @@ export default function LoginPage() {
         await mutate();
       }
     } catch (err: unknown) {
-      const error = err as Error;
-      setErrorMsg(error.message || "Failed to log in");
+      setErrorMsg(getErrorMessage(err, "Failed to log in"));
     }
   };
 
@@ -52,8 +52,7 @@ export default function LoginPage() {
       });
       await mutate();
     } catch (err: unknown) {
-      const error = err as Error;
-      setErrorMsg(error.message || "Invalid MFA code");
+      setErrorMsg(getErrorMessage(err, "Invalid MFA code"));
     }
   };
 

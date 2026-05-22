@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiClient } from "@/lib/apiClient";
+import { getErrorMessage } from "@/lib/errors";
 
 function VerifyEmailForm() {
   const searchParams = useSearchParams();
@@ -30,9 +31,8 @@ function VerifyEmailForm() {
         }
       } catch (err: unknown) {
         if (active) {
-          const error = err as Error;
           setStatus("error");
-          setErrorMsg(error.message || "Invalid or expired token.");
+          setErrorMsg(getErrorMessage(err, "Invalid or expired token."));
         }
       }
     }

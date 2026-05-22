@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useAuth } from "@/providers/AuthProvider";
 import { apiClient } from "@/lib/apiClient";
+import { getErrorMessage } from "@/lib/errors";
 
 interface MfaSetupResponse {
   secret: string;
@@ -38,8 +39,7 @@ export default function SettingsPage() {
       await mutate();
       setProfileMsg({ type: "success", text: "Profile updated successfully." });
     } catch (err: unknown) {
-      const error = err as Error;
-      setProfileMsg({ type: "error", text: error.message || "Failed to update profile." });
+      setProfileMsg({ type: "error", text: getErrorMessage(err, "Failed to update profile.") });
     }
   };
 
@@ -49,8 +49,7 @@ export default function SettingsPage() {
       const res = await apiClient.post<MfaSetupResponse>("/api/auth/mfa/setup");
       setMfaSetup(res);
     } catch (err: unknown) {
-      const error = err as Error;
-      setMfaMsg({ type: "error", text: error.message || "Failed to initialize MFA setup." });
+      setMfaMsg({ type: "error", text: getErrorMessage(err, "Failed to initialize MFA setup.") });
     }
   };
 
@@ -62,8 +61,7 @@ export default function SettingsPage() {
       setMfaSetup(null);
       setMfaMsg({ type: "success", text: "MFA enabled successfully." });
     } catch (err: unknown) {
-      const error = err as Error;
-      setMfaMsg({ type: "error", text: error.message || "Invalid verification code." });
+      setMfaMsg({ type: "error", text: getErrorMessage(err, "Invalid verification code.") });
     }
   };
 

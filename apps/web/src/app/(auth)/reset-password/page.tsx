@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiClient } from "@/lib/apiClient";
+import { getErrorMessage } from "@/lib/errors";
 
 interface ResetFormInputs {
   newPassword?: string;
@@ -32,8 +33,7 @@ function ResetPasswordForm() {
       });
       setSuccess(true);
     } catch (err: unknown) {
-      const error = err as Error;
-      setErrorMsg(error.message || "Failed to reset password.");
+      setErrorMsg(getErrorMessage(err, "Failed to reset password."));
     }
   };
 

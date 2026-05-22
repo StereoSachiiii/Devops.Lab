@@ -1,3 +1,5 @@
+import { ApiError } from "./errors";
+
 let refreshPromise: Promise<boolean> | null = null;
 
 async function refreshTokens(): Promise<boolean> {
@@ -44,13 +46,15 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (!response.ok) {
     let errorMsg = "Request failed";
+    let code: string | undefined;
     try {
       const errorData = await response.json();
-      errorMsg = errorData.error || errorMsg;
+      errorMsg = errorData.error || errorData.message || errorMsg;
+      code = errorData.code;
     } catch {
       // Ignore if response is not JSON
     }
-    throw new Error(errorMsg);
+    throw new ApiError(errorMsg, response.status, code);
   }
 
   if (response.status === 204) {
