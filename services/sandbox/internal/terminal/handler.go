@@ -2,11 +2,18 @@ package terminal
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 
@@ -25,6 +32,60 @@ var upgrader = websocket.Upgrader{
 		return strings.HasPrefix(origin, "http://localhost") ||
 			strings.HasPrefix(origin, "https://devops-platform.io")
 	},
+}
+
+// Claims represents the parsed claims from the Fastify-issued JWT.
+type Claims struct {
+	Subject   string `json:"sub"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	Issuer    string `json:"iss"`
+	ExpiresAt int64  `json:"exp"`
+}
+
+// VerifyJWT parses and verifies HS256 signature and checks standard claims.
+func VerifyJWT(tokenString string, secret string) (*Claims, error) {
+	parts := strings.Split(tokenString, ".")
+	if len(parts) != 3 {
+		return nil, errors.New("invalid token format")
+	}
+
+	// 1. Verify signature
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(parts[0] + "." + parts[1]))
+	expectedSignature := mac.Sum(nil)
+
+	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		return nil, errors.New("failed to decode signature")
+	}
+
+	if subtle.ConstantTimeCompare(signature, expectedSignature) != 1 {
+		return nil, errors.New("invalid signature")
+	}
+
+	// 2. Decode payload
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, errors.New("failed to decode payload")
+	}
+
+	var claims Claims
+	if err := json.Unmarshal(payloadBytes, &claims); err != nil {
+		return nil, errors.New("failed to unmarshal claims")
+	}
+
+	// 3. Verify expiration
+	if claims.ExpiresAt > 0 && time.Now().Unix() > claims.ExpiresAt {
+		return nil, errors.New("token is expired")
+	}
+
+	// 4. Verify issuer
+	if claims.Issuer != "devops-platform" {
+		return nil, errors.New("invalid issuer")
+	}
+
+	return &claims, nil
 }
 
 // Handler returns an HTTP handler for WebSocket terminal connections.
@@ -50,7 +111,8 @@ func Handler(mgr *session.Manager, docker sandbox.SandboxProvider, jwtSecret str
 		// ── Validate JWT before upgrading to WebSocket ────────────────────────
 		// Auth header: "Authorization: Bearer <token>"
 		// This must happen BEFORE the upgrade — after upgrade we can't send HTTP errors.
-		if err := validateJWT(r, jwtSecret); err != nil {
+		claims, err := validateJWT(r, jwtSecret)
+		if err != nil {
 			log.Warn("WebSocket auth failed", "sessionId", sessionID, "error", err)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
@@ -66,6 +128,18 @@ func Handler(mgr *session.Manager, docker sandbox.SandboxProvider, jwtSecret str
 		}
 		if sessionData == nil {
 			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+
+		// ── Ownership check ───────────────────────────────────────────────────
+		// Ensure the user connecting is the one who started the session.
+		if claims.Subject != sessionData.UserID {
+			log.Warn("Forbidden session access attempt",
+				"sessionId", sessionID,
+				"ownerId", sessionData.UserID,
+				"requestedBy", claims.Subject,
+			)
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 
@@ -104,37 +178,28 @@ func Handler(mgr *session.Manager, docker sandbox.SandboxProvider, jwtSecret str
 	}
 }
 
-// validateJWT extracts and validates the Bearer token from the Authorization header.
-// Returns an error if the token is missing or invalid.
-func validateJWT(r *http.Request, secret string) error {
+// validateJWT extracts and validates the Bearer token from the Authorization header or query param.
+// Returns the claims if successful, or an error if invalid.
+func validateJWT(r *http.Request, secret string) (*Claims, error) {
 	auth := r.Header.Get("Authorization")
 	if auth == "" {
 		// Also check query param for browser clients that can't set headers
 		auth = r.URL.Query().Get("token")
 	}
 	if auth == "" {
-		return fmt.Errorf("no authorization token")
+		return nil, fmt.Errorf("no authorization token")
 	}
 
 	token := strings.TrimPrefix(auth, "Bearer ")
 	if token == "" {
-		return fmt.Errorf("empty token")
+		return nil, fmt.Errorf("empty token")
 	}
 
-	// TODO: replace with real JWT validation (e.g. golang-jwt/jwt)
-	// For MVP, the auth-service signs tokens with the same JWT_SECRET.
-	// This check is a placeholder — hook in real validation before prod.
-	if secret == "" || token == "" {
-		return fmt.Errorf("JWT validation not configured")
+	if secret == "" {
+		return nil, fmt.Errorf("JWT validation not configured")
 	}
 
-	// Real validation would look like:
-	// claims, err := jwt.ParseWithClaims(token, &Claims{}, func(t *jwt.Token) (any, error) {
-	//     return []byte(secret), nil
-	// })
-	_ = secret
-	_ = token
-	return nil // placeholder — swap with real JWT lib
+	return VerifyJWT(token, secret)
 }
 
 // extractSessionID parses the sessionID from paths like /sessions/{id}/terminal.
@@ -153,3 +218,4 @@ func parseUint(s string, fallback uint) uint {
 	}
 	return fallback
 }
+

@@ -150,6 +150,29 @@ describe('Auth Service', () => {
       );
     });
 
+    it('registers successfully even if message broker fails to emit events', async () => {
+      (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (prisma.user.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'user-2',
+        email: 'test2@example.com',
+        name: 'Test User 2',
+        role: 'LEARNER',
+      });
+
+      // Mock messaging emit to reject
+      vi.spyOn(app.messaging, 'emit').mockRejectedValue(new Error('Broker offline'));
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/register',
+        payload: { email: 'test2@example.com', password: 'password123', name: 'Test User 2' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const payload = JSON.parse(response.payload) as { token: string; user: { email: string } };
+      expect(payload.user.email).toBe('test2@example.com');
+    });
+
     it('returns 400 if user already exists', async () => {
       (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'existing' });
 
@@ -273,6 +296,91 @@ describe('Auth Service', () => {
           }),
         })
       );
+    });
+
+    it('returns 429 if the account is locked out', async () => {
+      vi.spyOn(app.redis, 'get').mockResolvedValueOnce('1');
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/login',
+        payload: { email: 'test@example.com', password: 'password123' },
+      });
+
+      expect(response.statusCode).toBe(429);
+      expect(JSON.parse(response.payload)).toEqual({
+        error: 'Account locked due to too many failed attempts. Try again later.',
+      });
+    });
+
+    it('locks the account after 5 failed attempts', async () => {
+      vi.spyOn(app.redis, 'get').mockResolvedValueOnce(null);
+      vi.spyOn(app.redis, 'incr').mockResolvedValueOnce(5);
+      const setSpy = vi.spyOn(app.redis, 'set');
+
+      (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'user-1',
+        email: 'test@example.com',
+        role: 'LEARNER',
+        password: '$argon2id$hashed',
+      });
+
+      const argon2 = await import('argon2');
+      vi.mocked(argon2.default.verify).mockResolvedValueOnce(false);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/login',
+        payload: { email: 'test@example.com', password: 'wrongpassword' },
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(setSpy).toHaveBeenCalledWith('auth:lockout:test@example.com', '1', 'EX', 900);
+    });
+
+    it('resets failed attempts on successful login', async () => {
+      vi.spyOn(app.redis, 'get').mockResolvedValueOnce(null);
+      const delSpy = vi.spyOn(app.redis, 'del');
+
+      (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'user-1',
+        email: 'test@example.com',
+        role: 'LEARNER',
+        password: '$argon2id$hashed',
+      });
+
+      const argon2 = await import('argon2');
+      vi.mocked(argon2.default.verify).mockResolvedValueOnce(true);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/login',
+        payload: { email: 'test@example.com', password: 'password123' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(delSpy).toHaveBeenCalledWith('auth:fails:test@example.com');
+    });
+
+    it('returns 401 and increments fails for users without a password (OAuth)', async () => {
+      vi.spyOn(app.redis, 'get').mockResolvedValueOnce(null);
+      const incrSpy = vi.spyOn(app.redis, 'incr').mockResolvedValueOnce(1);
+
+      (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'user-oauth',
+        email: 'oauth@example.com',
+        role: 'LEARNER',
+        password: null,
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/login',
+        payload: { email: 'oauth@example.com', password: 'somepassword' },
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(incrSpy).toHaveBeenCalledWith('auth:fails:oauth@example.com');
     });
   });
 

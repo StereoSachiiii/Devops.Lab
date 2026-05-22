@@ -75,8 +75,8 @@ export async function challengeRoutes(app: FastifyInstance) {
       sessionId,
       challengeId: challenge.id,
       challengeTitle: challenge.title,
-      terminalUrl: `ws://localhost:8090/sessions/${sessionId}/terminal`,
-      validateUrl: `http://localhost:8090/validate/${sessionId}`,
+      terminalUrl: `ws://localhost:8000/sessions/${sessionId}/terminal`,
+      validateUrl: `http://localhost:8000/validate/${sessionId}`,
       ttlMins: a.sessionTTLMins,
     });
   });
@@ -115,8 +115,8 @@ export async function challengeRoutes(app: FastifyInstance) {
       sessionId: session.id,
       status: session.status,
       challengeTitle: session.challenge.title,
-      terminalUrl: `ws://localhost:8090/sessions/${session.id}/terminal`,
-      validateUrl: `http://localhost:8090/validate/${session.id}`,
+      terminalUrl: `ws://localhost:8000/sessions/${session.id}/terminal`,
+      validateUrl: `http://localhost:8000/validate/${session.id}`,
       startedAt: session.startedAt,
     });
   });
