@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
         source: "/api/:path*",
         destination: "http://localhost:8000/api/:path*",
       },
+      {
+        source: "/validate-sandbox/:path*",
+        destination: "http://localhost:8090/validate/:path*",
+      },
     ];
   },
 };

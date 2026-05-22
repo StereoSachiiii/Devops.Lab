@@ -3,6 +3,7 @@ import { Terminal, Rocket, Sparkles, Activity } from "lucide-react";
 
 const mockChallenges = [
   {
+    id: "challenge-k8s-debug",
     title: "Kubernetes Pod Debugging",
     category: "Infrastructure",
     difficulty: "Junior" as const,
@@ -11,6 +12,7 @@ const mockChallenges = [
     tags: ["K8s", "Debugging"],
   },
   {
+    id: "challenge-docker-hardening",
     title: "Docker Image Hardening",
     category: "Security",
     difficulty: "Mid" as const,
@@ -19,6 +21,7 @@ const mockChallenges = [
     tags: ["Docker", "Security"],
   },
   {
+    id: "challenge-tf-migration",
     title: "Terraform State Migration",
     category: "Infrastructure",
     difficulty: "Senior" as const,

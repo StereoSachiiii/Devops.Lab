@@ -1,20 +1,23 @@
 import { Shield, Cpu, Clock, BarChart } from "lucide-react";
+import Link from "next/link";
 
 interface ChallengeCardProps {
+  id: string;
   title: string;
   category: string;
-  difficulty: "Junior" | "Mid" | "Senior";
+  difficulty: string;
   xp: number;
-  timeEstimate: string;
+  timeEstimate?: string;
   tags: string[];
 }
 
 export function ChallengeCard({ 
+  id,
   title, 
   category, 
   difficulty, 
   xp, 
-  timeEstimate,
+  timeEstimate = "15m",
   tags 
 }: ChallengeCardProps) {
   return (
@@ -52,9 +55,9 @@ export function ChallengeCard({
             <span>{timeEstimate}</span>
           </div>
         </div>
-        <button className="border border-neutral-700 px-3 py-1 text-xs">
+        <Link href={`/challenges/${id}`} className="border border-neutral-700 px-3 py-1 text-xs">
           SOLVE →
-        </button>
+        </Link>
       </div>
     </div>
   );
