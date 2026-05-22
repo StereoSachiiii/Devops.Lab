@@ -36,10 +36,22 @@ vi.mock('@devops/db', () => {
     user: {
       findUnique: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
       upsert: vi.fn(),
     },
     securityLog: {
       create: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+    submission: {
+      deleteMany: vi.fn(),
+    },
+    completion: {
+      deleteMany: vi.fn(),
+    },
+    labSession: {
+      deleteMany: vi.fn(),
     },
     outboxEvent: {
       create: vi.fn(),
@@ -317,6 +329,154 @@ describe('Auth Service', () => {
           }),
         })
       );
+    });
+  });
+  // ── Email Verification ──────────────────────────────────────────────────────
+  describe('POST /verify-email', () => {
+    it('verifies email with valid token', async () => {
+      vi.mocked(app.redis.get).mockResolvedValueOnce('user-1');
+      (prisma.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'user-1' });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/verify-email',
+        payload: { token: 'valid-token' }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(prisma.user.update).toHaveBeenCalled();
+      expect(app.redis.del).toHaveBeenCalled();
+    });
+  });
+
+  // ── Password Reset ──────────────────────────────────────────────────────────
+  describe('Password Reset Flow', () => {
+    it('POST /forgot-password creates event and redis token', async () => {
+      (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'user-1', email: 'test@example.com' });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/forgot-password',
+        payload: { email: 'test@example.com' }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(app.redis.set).toHaveBeenCalled();
+      expect(prisma.outboxEvent.create).toHaveBeenCalled();
+    });
+
+    it('POST /reset-password updates password and clears sessions', async () => {
+      vi.mocked(app.redis.get).mockResolvedValueOnce('user-1');
+      vi.mocked(app.redis.keys).mockResolvedValueOnce(['auth:refresh:user-1:key1']);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/reset-password',
+        payload: { token: 'valid-token', newPassword: 'newpassword123' }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(app.redis.del).toHaveBeenCalled();
+    });
+  });
+
+  // ── Account Management ──────────────────────────────────────────────────────
+  describe('Account Management', () => {
+    it('PUT /me updates profile', async () => {
+      const token = app.jwt.sign({ sub: 'user-1', email: 'test@example.com', role: 'LEARNER' });
+      (prisma.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'user-1', name: 'New Name' });
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/me',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { name: 'New Name' }
+      });
+
+      expect(response.statusCode).toBe(200);
+    });
+
+    it('POST /change-password updates password', async () => {
+      const token = app.jwt.sign({ sub: 'user-1', email: 'test@example.com', role: 'LEARNER' });
+      (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'user-1', password: '$argon2id$hashed' });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/change-password',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { currentPassword: 'password123', newPassword: 'newpassword123' }
+      });
+
+      expect(response.statusCode).toBe(200);
+    });
+
+    it('DELETE /me deletes user', async () => {
+      const token = app.jwt.sign({ sub: 'user-1', email: 'test@example.com', role: 'LEARNER' });
+      vi.mocked(app.redis.keys).mockResolvedValueOnce(['auth:refresh:user-1:key1']);
+
+      const response = await app.inject({
+        method: 'DELETE',
+        url: '/me',
+        headers: { authorization: `Bearer ${token}` }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(app.redis.del).toHaveBeenCalled();
+    });
+  });
+
+  // ── Logout All ──────────────────────────────────────────────────────────────
+  describe('POST /logout-all', () => {
+    it('revokes all refresh tokens', async () => {
+      const token = app.jwt.sign({ sub: 'user-1', email: 'test@example.com', role: 'LEARNER' });
+      vi.mocked(app.redis.keys).mockResolvedValueOnce(['auth:refresh:user-1:key1', 'auth:refresh:user-1:key2']);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/logout-all',
+        headers: { authorization: `Bearer ${token}` }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(app.redis.del).toHaveBeenCalled();
+      expect(prisma.securityLog.create).toHaveBeenCalled();
+    });
+  });
+
+  // ── MFA ─────────────────────────────────────────────────────────────────────
+  describe('MFA', () => {
+    it('POST /mfa/setup returns secret and QR code', async () => {
+      const token = app.jwt.sign({ sub: 'user-1', email: 'test@example.com', role: 'LEARNER' });
+      (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'user-1', mfaEnabled: false });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mfa/setup',
+        headers: { authorization: `Bearer ${token}` }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.payload).secret).toBeDefined();
+    });
+
+    it('POST /mfa/verify enables MFA', async () => {
+      const token = app.jwt.sign({ sub: 'user-1', email: 'test@example.com', role: 'LEARNER' });
+      (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'user-1', mfaEnabled: false, mfaSecret: 'TESTSECRET' });
+
+      // Mock otplib verify
+      const { authenticator } = await import('otplib');
+      vi.spyOn(authenticator, 'verify').mockReturnValueOnce(true);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mfa/verify',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { code: '123456' }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(prisma.user.update).toHaveBeenCalled();
     });
   });
 });

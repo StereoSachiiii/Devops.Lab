@@ -4,6 +4,8 @@ import { Type, type Static } from '@sinclair/typebox';
 import { PrismaClient } from '@devops/db';
 import argon2 from 'argon2';
 import crypto from 'crypto';
+import { authenticator } from 'otplib';
+import QRCode from 'qrcode';
 
 const prisma = new PrismaClient();
 
@@ -18,16 +20,56 @@ const LoginSchema = Type.Object({
   password: Type.String(),
 });
 
-/**
- * Core auth routes
- *  GET  /health
- *  GET  /public-key
- *  POST /register
- *  POST /login
- *  POST /refresh
- *  GET  /me
- *  POST /logout
- */
+const VerifyEmailSchema = Type.Object({
+  token: Type.String(),
+});
+
+const ForgotPasswordSchema = Type.Object({
+  email: Type.String({ format: 'email' }),
+});
+
+const ResetPasswordSchema = Type.Object({
+  token: Type.String(),
+  newPassword: Type.String({ minLength: 8 }),
+});
+
+const UpdateProfileSchema = Type.Object({
+  name: Type.Optional(Type.String()),
+});
+
+const ChangePasswordSchema = Type.Object({
+  currentPassword: Type.String(),
+  newPassword: Type.String({ minLength: 8 }),
+});
+
+const MfaVerifySchema = Type.Object({
+  code: Type.String(),
+});
+
+const MfaLoginSchema = Type.Object({
+  mfaToken: Type.String(),
+  code: Type.String(),
+});
+
+
+const config = {
+  jwtIssuer: process.env['JWT_ISSUER'] || 'devops-platform',
+  mfaAppName: process.env['MFA_APP_NAME'] || 'DevOps Platform',
+  expiry: {
+    emailVerification: parseInt(process.env['EXPIRY_EMAIL_VERIFICATION'] || '86400', 10),
+    passwordReset: parseInt(process.env['EXPIRY_PASSWORD_RESET'] || '900', 10),
+    refreshToken: parseInt(process.env['EXPIRY_REFRESH_TOKEN'] || '604800', 10),
+    lockout: parseInt(process.env['EXPIRY_LOCKOUT'] || '900', 10),
+    mfaToken: process.env['EXPIRY_MFA_TOKEN'] || '5m',
+  },
+  security: {
+    maxFailedAttempts: parseInt(process.env['MAX_FAILED_ATTEMPTS'] || '5', 10),
+  },
+  defaults: {
+    role: (process.env['DEFAULT_USER_ROLE'] || 'LEARNER') as any,
+  }
+};
+
 export const authRoutes = fp(async (fastify: FastifyInstance) => {
   fastify.get('/health', async () => {
     return { status: 'ok', service: 'auth-service' };
@@ -57,7 +99,7 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
             email,
             password: hashedPassword,
             name: name ?? null,
-            role: 'LEARNER',
+            role: config.defaults.role,
           },
         });
 
@@ -87,12 +129,15 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
         return u;
       });
 
-      const token = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role, iss: 'devops-platform' });
+      // Store verification token in Redis (24 hours)
+      await fastify.redis.set(`auth:verify-email:${verificationToken}`, user.id, 'EX', config.expiry.emailVerification);
+
+      const token = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role, iss: config.jwtIssuer });
       const refreshSecret = crypto.randomBytes(32).toString('hex');
       const refreshToken = `${user.id}.${refreshSecret}`;
       const tokenHash = crypto.createHash('sha256').update(refreshSecret).digest('hex');
 
-      await fastify.redis.set(`auth:refresh:${user.id}:${tokenHash}`, '1', 'EX', 7 * 24 * 60 * 60);
+      await fastify.redis.set(`auth:refresh:${user.id}:${tokenHash}`, '1', 'EX', config.expiry.refreshToken);
 
       return reply
         .setCookie('token', token, { httpOnly: true, path: '/', sameSite: 'lax', secure: process.env['NODE_ENV'] === 'production' })
@@ -100,6 +145,78 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
         .send({ token, user: { id: user.id, email: user.email, role: user.role } });
     }
   );
+
+  fastify.post('/verify-email', { schema: { body: VerifyEmailSchema } }, async (request, reply) => {
+    const { token } = request.body as Static<typeof VerifyEmailSchema>;
+    const userId = await fastify.redis.get(`auth:verify-email:${token}`);
+    
+    if (!userId) {
+      return reply.status(400).send({ error: 'Invalid or expired verification token' });
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { emailVerified: new Date() },
+    });
+
+    await fastify.redis.del(`auth:verify-email:${token}`);
+    return reply.send({ success: true });
+  });
+
+  fastify.post('/forgot-password', { schema: { body: ForgotPasswordSchema } }, async (request, reply) => {
+    const { email } = request.body as Static<typeof ForgotPasswordSchema>;
+    const user = await prisma.user.findUnique({ where: { email } });
+    
+    if (user) {
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      await fastify.redis.set(`auth:reset-password:${resetToken}`, user.id, 'EX', config.expiry.passwordReset);
+      
+      await prisma.outboxEvent.create({
+        data: {
+          eventType: 'PasswordResetRequestedEvent',
+          payload: { userId: user.id, email: user.email, token: resetToken },
+        },
+      });
+    }
+
+    return reply.send({ success: true, message: 'If the email exists, a password reset link has been sent.' });
+  });
+
+  fastify.post('/reset-password', { schema: { body: ResetPasswordSchema } }, async (request, reply) => {
+    const { token, newPassword } = request.body as Static<typeof ResetPasswordSchema>;
+    const userId = await fastify.redis.get(`auth:reset-password:${token}`);
+    
+    if (!userId) {
+      return reply.status(400).send({ error: 'Invalid or expired reset token' });
+    }
+
+    const hashedPassword = await argon2.hash(newPassword);
+    
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { password: hashedPassword },
+      });
+      await tx.securityLog.create({
+        data: {
+          userId,
+          action: 'PASSWORD_RESET',
+          ip: request.ip,
+          userAgent: request.headers['user-agent'] ?? null,
+        },
+      });
+    });
+
+    await fastify.redis.del(`auth:reset-password:${token}`);
+
+    // Invalidate all active sessions upon password reset
+    const keys = await fastify.redis.keys(`auth:refresh:${userId}:*`);
+    if (keys.length > 0) {
+      await fastify.redis.del(...keys);
+    }
+
+    return reply.send({ success: true });
+  });
 
   fastify.post(
     '/login',
@@ -128,10 +245,10 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
       const handleFail = async () => {
         const fails = await fastify.redis.incr(failsKey);
         if (fails === 1) {
-          await fastify.redis.expire(failsKey, 15 * 60);
+          await fastify.redis.expire(failsKey, config.expiry.lockout);
         }
-        if (fails >= 5) {
-          await fastify.redis.set(lockoutKey, '1', 'EX', 15 * 60);
+        if (fails >= config.security.maxFailedAttempts) {
+          await fastify.redis.set(lockoutKey, '1', 'EX', config.expiry.passwordReset);
         }
 
         await prisma.securityLog.create({
@@ -167,12 +284,19 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
         },
       });
 
-      const token = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role, iss: 'devops-platform' });
+      // MFA Check
+      // @ts-ignore
+      if (user.mfaEnabled) {
+        const mfaToken = fastify.jwt.sign({ sub: user.id, pendingMfa: true }, { expiresIn: config.expiry.mfaToken });
+        return reply.send({ mfaRequired: true, mfaToken });
+      }
+
+      const token = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role, iss: config.jwtIssuer });
       const refreshSecret = crypto.randomBytes(32).toString('hex');
       const refreshToken = `${user.id}.${refreshSecret}`;
       const tokenHash = crypto.createHash('sha256').update(refreshSecret).digest('hex');
 
-      await fastify.redis.set(`auth:refresh:${user.id}:${tokenHash}`, '1', 'EX', 7 * 24 * 60 * 60);
+      await fastify.redis.set(`auth:refresh:${user.id}:${tokenHash}`, '1', 'EX', config.expiry.refreshToken);
 
       return reply
         .setCookie('token', token, { httpOnly: true, path: '/', sameSite: 'lax', secure: process.env['NODE_ENV'] === 'production' })
@@ -180,6 +304,43 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
         .send({ token, user: { id: user.id, email: user.email, role: user.role } });
     }
   );
+
+  fastify.post('/login/mfa', { schema: { body: MfaLoginSchema } }, async (request, reply) => {
+    const { mfaToken, code } = request.body as Static<typeof MfaLoginSchema>;
+    try {
+      const decoded = fastify.jwt.verify<{ sub: string, pendingMfa: boolean }>(mfaToken);
+      if (!decoded.pendingMfa) {
+        return reply.status(401).send({ error: 'Invalid MFA token payload' });
+      }
+      
+      const user = await prisma.user.findUnique({ where: { id: decoded.sub } });
+      // @ts-ignore
+      if (!user || !user.mfaSecret) {
+        return reply.status(401).send({ error: 'MFA setup incomplete' });
+      }
+
+      // @ts-ignore
+      const isValid = authenticator.verify({ token: code, secret: user.mfaSecret });
+      if (!isValid) {
+        return reply.status(401).send({ error: 'Invalid MFA code' });
+      }
+
+      const token = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role, iss: config.jwtIssuer });
+      const refreshSecret = crypto.randomBytes(32).toString('hex');
+      const refreshToken = `${user.id}.${refreshSecret}`;
+      const tokenHash = crypto.createHash('sha256').update(refreshSecret).digest('hex');
+
+      await fastify.redis.set(`auth:refresh:${user.id}:${tokenHash}`, '1', 'EX', config.expiry.refreshToken);
+
+      return reply
+        .setCookie('token', token, { httpOnly: true, path: '/', sameSite: 'lax', secure: process.env['NODE_ENV'] === 'production' })
+        .setCookie('refreshToken', refreshToken, { httpOnly: true, path: '/', sameSite: 'lax', secure: process.env['NODE_ENV'] === 'production' })
+        .send({ token, user: { id: user.id, email: user.email, role: user.role } });
+
+    } catch (e) {
+      return reply.status(401).send({ error: 'Invalid or expired MFA token' });
+    }
+  });
 
   fastify.post('/refresh', async (request: FastifyRequest, reply: FastifyReply) => {
     const refreshToken = request.cookies['refreshToken'];
@@ -198,7 +359,6 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
 
     const exists = await fastify.redis.get(redisKey);
     if (!exists) {
-      // Replay attack / compromise detection: invalidate all active sessions for this user
       const keysPattern = `auth:refresh:${userId}:*`;
       const keys = await fastify.redis.keys(keysPattern);
       if (keys.length > 0) {
@@ -218,7 +378,6 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
       return reply.status(401).send({ error: 'Session expired or compromised. Please login again.' });
     }
 
-    // Revoke the old refresh token
     await fastify.redis.del(redisKey);
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -226,12 +385,12 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
       return reply.status(401).send({ error: 'User not found' });
     }
 
-    const newAccessToken = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role, iss: 'devops-platform' });
+    const newAccessToken = fastify.jwt.sign({ sub: user.id, email: user.email, role: user.role, iss: config.jwtIssuer });
     const newSecret = crypto.randomBytes(32).toString('hex');
     const newRefreshToken = `${user.id}.${newSecret}`;
     const newHash = crypto.createHash('sha256').update(newSecret).digest('hex');
 
-    await fastify.redis.set(`auth:refresh:${user.id}:${newHash}`, '1', 'EX', 7 * 24 * 60 * 60);
+    await fastify.redis.set(`auth:refresh:${user.id}:${newHash}`, '1', 'EX', config.expiry.refreshToken);
 
     return reply
       .setCookie('token', newAccessToken, { httpOnly: true, path: '/', sameSite: 'lax', secure: process.env['NODE_ENV'] === 'production' })
@@ -255,6 +414,8 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
           xp: true,
           emailVerified: true,
           createdAt: true,
+          // @ts-ignore
+          mfaEnabled: true,
         },
       });
 
@@ -263,6 +424,76 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
       }
 
       return user;
+    }
+  );
+
+  fastify.put(
+    '/me',
+    { schema: { body: UpdateProfileSchema }, onRequest: [async (r) => await r.jwtVerify()] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { sub } = request.user as { sub: string };
+      const { name } = request.body as Static<typeof UpdateProfileSchema>;
+      
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      
+      const user = await prisma.user.update({
+        where: { id: sub },
+        data: updateData,
+        select: { id: true, name: true, email: true }
+      });
+      
+      return reply.send({ success: true, user });
+    }
+  );
+
+  fastify.post(
+    '/change-password',
+    { schema: { body: ChangePasswordSchema }, onRequest: [async (r) => await r.jwtVerify()] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { sub } = request.user as { sub: string };
+      const { currentPassword, newPassword } = request.body as Static<typeof ChangePasswordSchema>;
+      
+      const user = await prisma.user.findUnique({ where: { id: sub } });
+      if (!user) return reply.status(404).send({ error: 'User not found' });
+      if (!user.password) return reply.status(400).send({ error: 'User uses OAuth and has no password' });
+      
+      const valid = await argon2.verify(user.password, currentPassword);
+      if (!valid) return reply.status(401).send({ error: 'Incorrect current password' });
+
+      const hashedPassword = await argon2.hash(newPassword);
+      await prisma.user.update({ where: { id: sub }, data: { password: hashedPassword } });
+      
+      return reply.send({ success: true });
+    }
+  );
+
+  fastify.delete(
+    '/me',
+    { onRequest: [async (r) => await r.jwtVerify()] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { sub } = request.user as { sub: string };
+      
+      await prisma.$transaction(async (tx) => {
+        await tx.outboxEvent.create({
+          data: { eventType: 'UserDeletedEvent', payload: { userId: sub } }
+        });
+        
+        await tx.securityLog.deleteMany({ where: { userId: sub } });
+        await tx.submission.deleteMany({ where: { userId: sub } });
+        await tx.completion.deleteMany({ where: { userId: sub } });
+        await tx.labSession.deleteMany({ where: { userId: sub } });
+        
+        await tx.user.delete({ where: { id: sub } });
+      });
+
+      const keys = await fastify.redis.keys(`auth:refresh:${sub}:*`);
+      if (keys.length > 0) await fastify.redis.del(...keys);
+
+      return reply
+        .clearCookie('token', { path: '/' })
+        .clearCookie('refreshToken', { path: '/' })
+        .send({ success: true });
     }
   );
 
@@ -291,6 +522,74 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
       .clearCookie('refreshToken', { path: '/' })
       .send({ success: true });
   });
+
+  fastify.post(
+    '/logout-all',
+    { onRequest: [async (r) => await r.jwtVerify()] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { sub } = request.user as { sub: string };
+      const keys = await fastify.redis.keys(`auth:refresh:${sub}:*`);
+      if (keys.length > 0) await fastify.redis.del(...keys);
+
+      await prisma.securityLog.create({
+        data: {
+          userId: sub,
+          action: 'LOGOUT_ALL',
+          ip: request.ip,
+          userAgent: request.headers['user-agent'] ?? null,
+        },
+      });
+
+      return reply
+        .clearCookie('token', { path: '/' })
+        .clearCookie('refreshToken', { path: '/' })
+        .send({ success: true });
+    }
+  );
+
+  // MFA
+  fastify.post(
+    '/mfa/setup',
+    { onRequest: [async (r) => await r.jwtVerify()] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { sub, email } = request.user as { sub: string, email: string };
+      const user = await prisma.user.findUnique({ where: { id: sub } });
+      
+      // @ts-ignore
+      if (user?.mfaEnabled) return reply.status(400).send({ error: 'MFA is already enabled' });
+
+      const secret = authenticator.generateSecret();
+      await prisma.user.update({ where: { id: sub }, data: { mfaSecret: secret } });
+
+      const otpauth = authenticator.keyuri(email, config.mfaAppName, secret);
+      const qrCodeUrl = await QRCode.toDataURL(otpauth);
+      
+      return reply.send({ secret, qrCodeUrl });
+    }
+  );
+
+  fastify.post(
+    '/mfa/verify',
+    { schema: { body: MfaVerifySchema }, onRequest: [async (r) => await r.jwtVerify()] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { sub } = request.user as { sub: string };
+      const { code } = request.body as Static<typeof MfaVerifySchema>;
+      
+      const user = await prisma.user.findUnique({ where: { id: sub } });
+      // @ts-ignore
+      if (!user || !user.mfaSecret) return reply.status(400).send({ error: 'MFA setup not initialized' });
+      // @ts-ignore
+      if (user.mfaEnabled) return reply.status(400).send({ error: 'MFA is already enabled' });
+
+      // @ts-ignore
+      const isValid = authenticator.verify({ token: code, secret: user.mfaSecret });
+      if (!isValid) return reply.status(401).send({ error: 'Invalid MFA code' });
+
+      await prisma.user.update({ where: { id: sub }, data: { mfaEnabled: true } });
+      return reply.send({ success: true });
+    }
+  );
+
 });
 
 export { prisma };

@@ -22,16 +22,19 @@
     "@fastify/redis": "^6.1.1",
     "@fastify/type-provider-typebox": "^4.0.0",
     "@sinclair/typebox": "^0.32.15",
-    "fastify-plugin": "^4.5.1",
     "argon2": "^0.40.1",
     "dotenv": "^16.4.5",
-    "fastify": "^4.26.2"
+    "fastify": "^4.26.2",
+    "fastify-plugin": "^4.5.1",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
+    "@devops/eslint-config": "*",
     "@types/node": "^20.12.7",
+    "@types/qrcode": "^1.5.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5",
-    "vitest": "^1.5.0",
-    "@devops/eslint-config": "*"
+    "vitest": "^1.5.0"
   }
 }

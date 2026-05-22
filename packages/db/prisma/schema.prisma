@@ -25,7 +25,8 @@ model User {
   emailVerified DateTime?
   githubId      String?   @unique
   googleId      String?   @unique
-  
+  mfaEnabled    Boolean   @default(false)
+  mfaSecret     String?  
   submissions   Submission[]
   completions   Completion[]
   sessions      LabSession[]
