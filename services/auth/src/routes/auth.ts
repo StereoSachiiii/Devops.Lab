@@ -69,7 +69,6 @@ const config = {
     role: (process.env['DEFAULT_USER_ROLE'] || 'LEARNER') as any,
   }
 };
-
 export const authRoutes = fp(async (fastify: FastifyInstance) => {
   fastify.get('/health', async () => {
     return { status: 'ok', service: 'auth-service' };
@@ -285,7 +284,6 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
       });
 
       // MFA Check
-      // @ts-ignore
       if (user.mfaEnabled) {
         const mfaToken = fastify.jwt.sign({ sub: user.id, pendingMfa: true }, { expiresIn: config.expiry.mfaToken });
         return reply.send({ mfaRequired: true, mfaToken });
@@ -314,12 +312,10 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
       }
       
       const user = await prisma.user.findUnique({ where: { id: decoded.sub } });
-      // @ts-ignore
       if (!user || !user.mfaSecret) {
         return reply.status(401).send({ error: 'MFA setup incomplete' });
       }
 
-      // @ts-ignore
       const isValid = authenticator.verify({ token: code, secret: user.mfaSecret });
       if (!isValid) {
         return reply.status(401).send({ error: 'Invalid MFA code' });
@@ -337,11 +333,10 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
         .setCookie('refreshToken', refreshToken, { httpOnly: true, path: '/', sameSite: 'lax', secure: process.env['NODE_ENV'] === 'production' })
         .send({ token, user: { id: user.id, email: user.email, role: user.role } });
 
-    } catch (e) {
+    } catch {
       return reply.status(401).send({ error: 'Invalid or expired MFA token' });
     }
   });
-
   fastify.post('/refresh', async (request: FastifyRequest, reply: FastifyReply) => {
     const refreshToken = request.cookies['refreshToken'];
     if (!refreshToken) {
@@ -359,6 +354,7 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
 
     const exists = await fastify.redis.get(redisKey);
     if (!exists) {
+      // Replay attack / compromise detection: invalidate all active sessions for this user
       const keysPattern = `auth:refresh:${userId}:*`;
       const keys = await fastify.redis.keys(keysPattern);
       if (keys.length > 0) {
@@ -378,6 +374,7 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
       return reply.status(401).send({ error: 'Session expired or compromised. Please login again.' });
     }
 
+    // Revoke the old refresh token
     await fastify.redis.del(redisKey);
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -414,7 +411,6 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
           xp: true,
           emailVerified: true,
           createdAt: true,
-          // @ts-ignore
           mfaEnabled: true,
         },
       });
@@ -496,7 +492,6 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
         .send({ success: true });
     }
   );
-
   fastify.post('/logout', async (request: FastifyRequest, reply: FastifyReply) => {
     const refreshToken = request.cookies['refreshToken'];
     if (refreshToken) {
@@ -555,7 +550,6 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
       const { sub, email } = request.user as { sub: string, email: string };
       const user = await prisma.user.findUnique({ where: { id: sub } });
       
-      // @ts-ignore
       if (user?.mfaEnabled) return reply.status(400).send({ error: 'MFA is already enabled' });
 
       const secret = authenticator.generateSecret();
@@ -576,12 +570,9 @@ export const authRoutes = fp(async (fastify: FastifyInstance) => {
       const { code } = request.body as Static<typeof MfaVerifySchema>;
       
       const user = await prisma.user.findUnique({ where: { id: sub } });
-      // @ts-ignore
       if (!user || !user.mfaSecret) return reply.status(400).send({ error: 'MFA setup not initialized' });
-      // @ts-ignore
       if (user.mfaEnabled) return reply.status(400).send({ error: 'MFA is already enabled' });
 
-      // @ts-ignore
       const isValid = authenticator.verify({ token: code, secret: user.mfaSecret });
       if (!isValid) return reply.status(401).send({ error: 'Invalid MFA code' });
 
