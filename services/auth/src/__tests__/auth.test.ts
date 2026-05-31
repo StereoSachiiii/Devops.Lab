@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
-import { buildApp } from '../app.js';
+import { buildApp } from '../app';
 
 // ── Mock argon2 ─────────────────────────────────────────────────────────────
 vi.mock('argon2', () => ({

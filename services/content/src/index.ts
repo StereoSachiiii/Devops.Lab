@@ -1,7 +1,7 @@
 import { buildApp } from './app';
 
 const fastify = buildApp();
-const port = Number(process.env['PORT']) || 3001;
+const port = Number(process.env['PORT']) || 3006;
 
 const start = async () => {
   try {

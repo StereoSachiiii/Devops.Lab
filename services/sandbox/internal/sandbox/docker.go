@@ -36,11 +36,17 @@ func NewDockerProvider(networkMode string, memoryMB int, maxCPUs float64, log *s
 	runtime := ""
 	info, err := cli.Info(context.Background())
 	if err == nil {
-		if _, ok := info.Runtimes["runsc"]; ok {
+		if _, ok := info.Runtimes["kata-fc"]; ok {
+			runtime = "kata-fc"
+			log.Info("Kata Containers Firecracker runtime 'kata-fc' detected and enabled for secure sandboxing")
+		} else if _, ok := info.Runtimes["kata-qemu"]; ok {
+			runtime = "kata-qemu"
+			log.Info("Kata Containers QEMU runtime 'kata-qemu' detected and enabled for secure sandboxing")
+		} else if _, ok := info.Runtimes["runsc"]; ok {
 			runtime = "runsc"
 			log.Info("gVisor runtime 'runsc' detected and enabled for secure sandboxing")
 		} else {
-			log.Warn("gVisor runtime 'runsc' not found in Docker. Falling back to default runtime (insecure).")
+			log.Warn("Secure runtime (kata-fc, kata-qemu, runsc) not found in Docker. Falling back to default runtime (insecure).")
 		}
 	} else {
 		log.Warn("Failed to query Docker info for runtimes. Falling back to default runtime.", "error", err)

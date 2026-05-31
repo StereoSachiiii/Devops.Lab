@@ -3,6 +3,8 @@
 
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  output = "../../../node_modules/.prisma/client"
 }
 
 
@@ -53,8 +55,10 @@ model Challenge {
   category    Category
   tags        String[]
   xp          Int
-  dockerImage String    // e.g. "ghcr.io/devops-platform/nginx-basics:latest"
-  moduleId    String?
+  dockerImage    String    // e.g. "ghcr.io/devops-platform/nginx-basics:latest"
+  templateCode   String?
+  editorLanguage String    @default("plaintext")
+  moduleId       String?
   module      Module?   @relation(fields: [moduleId], references: [id])
   submissions Submission[]
   sessions    LabSession[]

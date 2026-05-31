@@ -1,7 +1,7 @@
 import 'dotenv/config';
-import { buildApp } from './app.js';
+import { buildApp } from './app';
 
-const PORT = parseInt(process.env['PORT'] ?? '3002', 10);
+const PORT = parseInt(process.env['PORT'] ?? '3004', 10);
 
 async function main() {
   const app = await buildApp({

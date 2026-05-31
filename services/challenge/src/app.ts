@@ -4,8 +4,8 @@ import jwt from '@fastify/jwt';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { PrismaClient } from '@devops/db';
 import { RabbitMQService } from '@devops/messaging';
-import './types.js';
-import { challengeRoutes } from './routes/challenges.js';
+import './types';
+import { challengeRoutes } from './routes/challenges';
 
 export interface AppOptions {
   jwtSecret: string;

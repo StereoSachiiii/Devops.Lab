@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { SessionStartedEvent, SessionEndedEvent } from '@devops/messaging';
-import '../types.js';
+import '../types';
 
 type App = FastifyInstance & ReturnType<typeof Object.create>;
 

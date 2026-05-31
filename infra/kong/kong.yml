@@ -14,7 +14,7 @@ plugins:
 
 services:
   - name: challenge-service
-    url: http://challenge-service:3000
+    url: http://challenge-service:3004
     routes:
       - name: challenge-routes
         paths:
@@ -42,7 +42,7 @@ services:
             - exp
 
   - name: auth-service
-    url: http://auth-service:3000
+    url: http://auth-service:3002
     routes:
       - name: auth-routes
         paths:
@@ -60,7 +60,7 @@ services:
           redis_database: 1
 
   - name: content-service
-    url: http://content-service:3001
+    url: http://content-service:3006
     routes:
       - name: content-routes
         paths:

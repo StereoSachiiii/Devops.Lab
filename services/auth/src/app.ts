@@ -5,11 +5,11 @@ import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { logger } from '@devops/observability';
 import type { OAuth2Namespace } from '@fastify/oauth2';
 import type { MessagingService } from '@devops/messaging';
-import { authPlugin } from './plugins/auth.js';
-import { redisPlugin } from './plugins/redis.js';
-import { outboxPlugin } from './plugins/outbox.js';
-import { authRoutes } from './routes/auth.js';
-import { oauthRoutes } from './routes/oauth.js';
+import { authPlugin } from './plugins/auth';
+import { redisPlugin } from './plugins/redis';
+import { outboxPlugin } from './plugins/outbox';
+import { authRoutes } from './routes/auth';
+import { oauthRoutes } from './routes/oauth';
 
 dotenv.config();
 

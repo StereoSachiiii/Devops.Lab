@@ -8,9 +8,12 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "docker-compose --profile default up -d --force-recreate && npx turbo run dev",
     "dev:web": "npm run dev --workspace=apps/web",
     "build:web": "npm run build --workspace=apps/web",
-    "lint": "npm run lint --workspaces"
+    "lint": "npm run lint --workspaces",
+    "setup:firecracker": "bash scripts/setup-kata.sh",
+    "stop": "docker compose -p rootcause --profile default down -v && pkill -9 -f 'ts-node' || true && pkill -9 -f 'ts-node-dev' || true"
   },
   "devDependencies": {
     "eslint": "^10.3.0",
