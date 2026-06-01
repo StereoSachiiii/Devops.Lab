@@ -5,12 +5,12 @@ _transform: true
 plugins:
   - name: rate-limiting
     config:
-      minute: 60
-      limit_by: credential  # Limits by JWT user. Falls back to IP for public routes (e.g., auth-service) to stop brute-forcing
-      policy: redis         # Use Redis instead of local memory for distributed rate limiting
-      redis_host: redis     # Points to the 'redis' service in docker-compose.yml
+      minute: 600           # DEV: relaxed — tighten to 60 for production
+      limit_by: credential  # Limits by JWT user. Falls back to IP for public routes
+      policy: redis
+      redis_host: redis
       redis_port: 6379
-      redis_database: 1     # Using DB 1 so we don't clash with session data in DB 0
+      redis_database: 1
 
 services:
   - name: challenge-service
@@ -52,8 +52,8 @@ services:
     plugins:
       - name: rate-limiting
         config:
-          minute: 5         # Extremely strict: Max 5 login attempts per minute per IP
-          limit_by: ip      # Enforce purely by IP (since they aren't authenticated yet)
+          minute: 300       # DEV: relaxed — tighten to 5 for production
+          limit_by: ip
           policy: redis
           redis_host: redis
           redis_port: 6379

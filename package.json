@@ -8,16 +8,30 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "docker-compose --profile default up -d --force-recreate && npx turbo run dev",
+    "clean": "docker compose down -v --remove-orphans",
+    "dev": "docker compose up -d && concurrently -n \"web,auth,challenge,content,notify\" -c \"blue,green,yellow,magenta,cyan\" \"npm run dev --workspace=apps/web\" \"npm run dev --workspace=services/auth\" \"npm run dev --workspace=services/challenge\" \"npm run dev --workspace=services/content\" \"npm run dev --workspace=services/notification\"",
+    "dev:turbo": "docker-compose --profile default up -d --force-recreate && npx turbo run dev",
+    "dev:fresh": "npm run clean && npm run build:packages && npm run dev",
+    "build:packages": "npm run build --workspace=packages/observability && npm run build --workspace=packages/messaging",
+    "stop": "docker compose down --remove-orphans",
     "dev:web": "npm run dev --workspace=apps/web",
+    "dev:auth": "npm run dev --workspace=services/auth",
+    "dev:challenge": "npm run dev --workspace=services/challenge",
+    "dev:content": "npm run dev --workspace=services/content",
+    "dev:notify": "npm run dev --workspace=services/notification",
     "build:web": "npm run build --workspace=apps/web",
-    "lint": "npm run lint --workspaces",
     "setup:firecracker": "bash scripts/setup-kata.sh",
-    "stop": "docker compose -p rootcause --profile default down -v && pkill -9 -f 'ts-node' || true && pkill -9 -f 'ts-node-dev' || true"
+    "stop:all": "docker compose -p rootcause --profile default down -v && pkill -9 -f 'ts-node' || true && pkill -9 -f 'ts-node-dev' || true",
+    "db:push": "packages/db/node_modules/.bin/prisma db push --schema=packages/db/prisma/schema.prisma",
+    "db:generate": "packages/db/node_modules/.bin/prisma generate --schema=packages/db/prisma/schema.prisma",
+    "db:studio": "packages/db/node_modules/.bin/prisma studio --schema=packages/db/prisma/schema.prisma",
+    "lint": "npm run lint --workspaces"
   },
   "devDependencies": {
+    "concurrently": "^10.0.0",
     "eslint": "^10.3.0",
     "prettier": "^3.8.3",
+    "tsx": "^4.22.4",
     "turbo": "^2.9.9",
     "typescript": "^5.9.3",
     "vitest": "^4.1.5"

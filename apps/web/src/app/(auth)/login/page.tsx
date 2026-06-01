@@ -33,7 +33,7 @@ export default function LoginPage() {
         password: data.password,
       });
 
-      if (response.mfaRequired) {
+      if (response?.mfaRequired) {
         setMfaToken(response.mfaToken || null);
       } else {
         await mutate();

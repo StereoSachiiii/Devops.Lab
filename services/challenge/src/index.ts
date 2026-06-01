@@ -5,7 +5,7 @@ const PORT = parseInt(process.env['PORT'] ?? '3004', 10);
 
 async function main() {
   const app = await buildApp({
-    jwtSecret:      process.env['JWT_SECRET']!,
+    jwtSecret:      (process.env['JWT_PUBLIC_KEY'] ?? process.env['JWT_SECRET'])!,
     rabbitMQUrl:    process.env['RABBITMQ_URL'] ?? 'amqp://guest:guest@localhost:5672',
     sessionQueue:   process.env['SESSION_QUEUE'] ?? 'sandbox.sessions',
     sessionTTLMins: parseInt(process.env['SESSION_TTL_MINS'] ?? '60', 10),
