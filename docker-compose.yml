@@ -97,23 +97,7 @@ services:
     profiles:
       - workers
 
-  postgres:
-    image: postgres:16-alpine
-    container_name: postgres
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: devops_platform
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d devops_platform"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
+
 
   api-gateway:
     image: kong:3.6.1-ubuntu
@@ -143,8 +127,5 @@ services:
       timeout: 10s
       retries: 5
     restart: unless-stopped
-    profiles:
-      - default
 
-volumes:
-  postgres_data:
+

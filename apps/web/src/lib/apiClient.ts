@@ -48,11 +48,17 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     let errorMsg = "Request failed";
     let code: string | undefined;
     try {
-      const errorData = await response.json();
-      errorMsg = errorData.error || errorData.message || errorMsg;
-      code = errorData.code;
+      const text = await response.text();
+      if (text) {
+        const errorData = JSON.parse(text);
+        errorMsg = errorData.error || errorData.message || errorMsg;
+        code = errorData.code;
+      }
     } catch {
-      // Ignore if response is not JSON
+      // Non-JSON error body (e.g. Kong HTML error page)
+      if (response.status === 502 || response.status === 503 || response.status === 504) {
+        errorMsg = "Service unavailable — backend may not be running";
+      }
     }
     throw new ApiError(errorMsg, response.status, code);
   }
@@ -62,9 +68,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   try {
-    return await response.json() as T;
+    const text = await response.text();
+    if (!text) return null as T;
+    return JSON.parse(text) as T;
   } catch {
-    return null as T;
+    throw new ApiError("Invalid response from server", response.status);
   }
 }
 
