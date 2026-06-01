@@ -81,7 +81,7 @@ services:
       KAFKA_CLIENT_ID: sandbox-worker
       REDIS_URL: redis://redis:6379
       DATABASE_URL: ${DATABASE_URL}
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_PUBLIC_KEY}
       SESSION_TTL_MINS: "60"
       MAX_MEMORY_MB: "512"
       MAX_CPUS: "1.0"
@@ -128,5 +128,4 @@ services:
       timeout: 10s
       retries: 5
     restart: unless-stopped
-
 

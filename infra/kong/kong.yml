@@ -1,16 +1,17 @@
 _format_version: "3.0"
 _transform: true
 
-# Global plugins that apply to every route
+# Global plugins
 plugins:
   - name: rate-limiting
     config:
-      minute: 600           # DEV: relaxed — tighten to 60 for production
-      limit_by: credential  # Limits by JWT user. Falls back to IP for public routes
+      minute: 600
+      limit_by: credential
       policy: redis
-      redis_host: redis
-      redis_port: 6379
-      redis_database: 1
+      redis:
+        host: redis
+        port: 6379
+        database: 1
 
 services:
   - name: challenge-service
@@ -18,23 +19,9 @@ services:
     routes:
       - name: challenge-routes
         paths:
-          - /api/challenge
-    # Protect challenge-service with JWT validation
-    plugins:
-      - name: jwt
-        config:
-          claims_to_verify:
-            - exp
-
-  - name: sandbox-worker
-    url: http://sandbox-worker:8090
-    routes:
-      - name: sandbox-routes
-        paths:
-          - /api/sandbox
-          - /sessions
-          - /validate
-    # Protect sandbox with JWT validation
+          - /api/challenges
+          - /api/sessions
+        strip_path: false
     plugins:
       - name: jwt
         config:
@@ -47,17 +34,16 @@ services:
       - name: auth-routes
         paths:
           - /api/auth
-    # Auth service stays public (no JWT plugin) so users can actually log in!
-    # But we apply a much stricter IP-based rate limit specifically to mitigate brute-force guessing
     plugins:
       - name: rate-limiting
         config:
-          minute: 300       # DEV: relaxed — tighten to 5 for production
+          minute: 300
           limit_by: ip
           policy: redis
-          redis_host: redis
-          redis_port: 6379
-          redis_database: 1
+          redis:
+            host: redis
+            port: 6379
+            database: 1
 
   - name: content-service
     url: http://content-service:3006
@@ -65,7 +51,6 @@ services:
       - name: content-routes
         paths:
           - /api/content
-    # Protect content-service with JWT validation
     plugins:
       - name: jwt
         config:
@@ -76,5 +61,14 @@ consumers:
   - username: devops-auth-consumer
     jwt_secrets:
       - key: devops-platform
-        secret: dev-jwt-secret-key-change-in-prod
-
+        algorithm: RS256
+        rsa_public_key: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0fceR0dR3hHLtwcLnaUo
+          9BlB70K8tkV7avou+rtCk8Jo+zI24oSf04WPMRYd0FtRdPyY9G3fb7fH7sLOOtOw
+          6sBGbKN9C/sf3o83ycEHV0RpqeLGpqUbM/4Itr5j5y+9n4EwNESSZnTM73UJua+8
+          KjTOpKydqr8eWpu5Sm6ITC7d5EY1DUY9ubF4qQhKQ8ziAOrIghXwFu5oemHYkff0
+          S0wRsUVkIGcLgkpcynroJCx7pMBGg5rbysMz6zPnANcug4NlCchcJZVu0lKGSS9z
+          zN7+rKo4HyvYMPKGDkq9pSUCqGfDaEAGr73mdFfPb/wgY+p5/73enHJJzELilykE
+          GQIDAQAB
+          -----END PUBLIC KEY-----

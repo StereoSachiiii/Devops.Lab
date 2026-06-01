@@ -4,7 +4,6 @@ import jwt from '@fastify/jwt';
 import cookie from '@fastify/cookie';
 import oauth2 from '@fastify/oauth2';
 import { MessagingService } from '@devops/messaging';
-
 import crypto from 'crypto';
 
 export const authPlugin = fp(async (fastify: FastifyInstance) => {
@@ -26,32 +25,28 @@ export const authPlugin = fp(async (fastify: FastifyInstance) => {
   fastify.decorate('jwtPublicKey', publicKey);
 
   await fastify.register(jwt, {
-    secret: {
-      private: privateKey,
-      public: publicKey,
-    },
-    sign: {
-      algorithm: 'RS256',
-      expiresIn: '15m', // Access token expires in 15 minutes
-    },
-    cookie: {
-      cookieName: 'token',
-      signed: false,
-    },
+    secret: { private: privateKey, public: publicKey },
+    sign: { algorithm: 'RS256', expiresIn: '15m' },
+    cookie: { cookieName: 'token', signed: false },
   });
 
   const messaging = new MessagingService();
   fastify.decorate('messaging', messaging);
 
   fastify.addHook('onReady', async () => {
-    await messaging.initProducer();
-    fastify.log.info('🚀 Kafka Messaging Ready');
+    // IMPORTANT: Do NOT await this. Let it run in the background.
+    messaging.initProducer()
+      .then(() => fastify.log.info('🚀 Kafka Messaging Ready'))
+      .catch((err) => {
+        fastify.log.error({ err: err.message }, 'Kafka connection failed. Retrying in background...');
+      });
   });
 
   fastify.addHook('onClose', async () => {
     await messaging.disconnect();
   });
 
+  // OAuth Registrations
   await fastify.register(oauth2, {
     name: 'github',
     credentials: {

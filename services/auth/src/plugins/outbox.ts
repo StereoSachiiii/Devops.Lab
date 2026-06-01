@@ -11,6 +11,12 @@ export const outboxPlugin = fp(async (fastify: FastifyInstance) => {
 
   const processOutbox = async () => {
     if (processing) return;
+
+    // Safety check: Don't process if messaging isn't initialized yet
+    if (!fastify.messaging || !fastify.messaging.producer) {
+      return;
+    }
+
     processing = true;
 
     try {
@@ -22,6 +28,7 @@ export const outboxPlugin = fp(async (fastify: FastifyInstance) => {
 
       for (const event of events) {
         let eventInstance: BaseEvent<any> | null = null;
+        
         if (event.eventType === 'UserRegisteredEvent') {
           eventInstance = new UserRegisteredEvent(event.payload as any);
         } else if (event.eventType === 'EmailVerificationRequestedEvent') {
@@ -36,7 +43,9 @@ export const outboxPlugin = fp(async (fastify: FastifyInstance) => {
               data: { processed: true },
             });
           } catch (err) {
-            fastify.log.error({ err, eventId: event.id }, 'Failed to process outbox event');
+            fastify.log.error({ err, eventId: event.id }, 'Failed to emit outbox event to Kafka');
+            // Break the loop if Kafka is down so we don't spam errors for the whole batch
+            break; 
           }
         } else {
           fastify.log.warn({ eventId: event.id, eventType: event.eventType }, 'Unknown event type in outbox');

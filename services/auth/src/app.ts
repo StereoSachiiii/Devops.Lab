@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import { logger } from '@devops/observability';
+import type { ObservabilityConfig } from '@devops/observability';
 import type { OAuth2Namespace } from '@fastify/oauth2';
 import type { MessagingService } from '@devops/messaging';
 import { authPlugin } from './plugins/auth';
@@ -23,14 +23,25 @@ declare module 'fastify' {
   }
 }
 
-export function buildApp() {
+export function buildApp(obs: ObservabilityConfig) {
+  const isTest = process.env['NODE_ENV'] === 'test';
+
   const fastify = Fastify({
-    logger: process.env['NODE_ENV'] === 'test' ? false : logger,
+    ...(isTest
+      ? { logger: false }
+      : {
+          logger: obs.loggerOptions,
+          stream: obs.stream,
+        }),
+    requestIdHeader: 'x-request-id',
+    requestIdLogLabel: 'request_id',
+    genReqId: (req) =>
+      (req.headers['x-request-id'] as string) ?? crypto.randomUUID(),
   }).withTypeProvider<TypeBoxTypeProvider>();
 
   fastify.register(cors);
 
-  // Plugins first JWT, cookies, OAuth, Kafka, Redis
+  // Plugins: JWT, cookies, OAuth, Kafka, Redis
   fastify.register(authPlugin);
   fastify.register(redisPlugin);
   fastify.register(outboxPlugin);
