@@ -98,25 +98,23 @@ export default function QuizzesPage() {
 
   const handleSubmitAnswer = async () => {
     if (selectedOption === null || isAnswerSubmitted || !activeQuiz || !user) return;
-    
+
+    const quiz = activeQuiz;
+    const currentUser = user;
+
     setIsValidating(true);
-    const updatedAnswers = { ...userAnswers, [activeQuiz.metadata.questions[currentQuestionIndex].id]: selectedOption };
+    const updatedAnswers = { ...userAnswers, [quiz!.metadata.questions[currentQuestionIndex]!.id]: selectedOption };
     setUserAnswers(updatedAnswers);
 
     try {
       // Validate this specific answer by submitting the running state
-      const response = await fetch(`/api/content/quizzes/${activeQuiz.id}/submit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: user.id,
-          answers: updatedAnswers,
-        }),
+      const data = await apiClient.post<SubmitResponse>(`/api/content/quizzes/${quiz.id}/submit`, {
+        userId: currentUser.id,
+        answers: updatedAnswers,
       });
-      const data: SubmitResponse = await response.json();
       
       // Store result for current question
-      const currentQId = activeQuiz.metadata.questions[currentQuestionIndex].id;
+      const currentQId = quiz!.metadata.questions[currentQuestionIndex]!.id;
       const currentResult = data.results.find(r => r.questionId === currentQId);
       if (currentResult) {
         setValidationResults(prev => ({ ...prev, [currentQId]: currentResult }));
@@ -124,7 +122,7 @@ export default function QuizzesPage() {
       setIsAnswerSubmitted(true);
 
       // If it's the final question, save the total score
-      if (currentQuestionIndex + 1 === activeQuiz.metadata.questions.length) {
+      if (currentQuestionIndex + 1 === quiz.metadata.questions.length) {
         setFinalScore({ score: data.score, total: data.total });
       }
     } catch (err) {
@@ -176,7 +174,7 @@ export default function QuizzesPage() {
   const quizzes = data.quizzes;
 
   if (activeQuiz) {
-    const question = activeQuiz.metadata.questions[currentQuestionIndex];
+    const question = activeQuiz!.metadata.questions[currentQuestionIndex]!;
     const completedProgressPercent = ((currentQuestionIndex + (isAnswerSubmitted ? 1 : 0)) / activeQuiz.metadata.questions.length) * 100;
     const currentQuestionResult = validationResults[question.id];
 

@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useSWRConfig } from "swr";
 import { apiClient } from "@/lib/apiClient";
-import { useAuth } from "@/providers/AuthProvider";
 import { getErrorMessage } from "@/lib/errors";
 
 interface LoginFormInputs {
@@ -13,13 +14,9 @@ interface LoginFormInputs {
   code?: string;
 }
 
-interface LoginResponse {
-  mfaRequired?: boolean;
-  mfaToken?: string;
-}
-
 export default function LoginPage() {
-  const { mutate } = useAuth();
+  const router = useRouter();
+  const { mutate } = useSWRConfig();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [mfaToken, setMfaToken] = useState<string | null>(null);
 
@@ -28,7 +25,8 @@ export default function LoginPage() {
   const onLoginSubmit = async (data: LoginFormInputs) => {
     setErrorMsg(null);
     try {
-      const response = await apiClient.post<LoginResponse>("/api/auth/login", {
+      // 💡 Clean execution without raw strings. Payload response is unboxed by Axios interceptor automatically.
+      const response = await apiClient.auth.login({
         email: data.email,
         password: data.password,
       });
@@ -36,7 +34,8 @@ export default function LoginPage() {
       if (response?.mfaRequired) {
         setMfaToken(response.mfaToken || null);
       } else {
-        await mutate();
+        await mutate("/api/auth/me");
+        router.push("/");
       }
     } catch (err: unknown) {
       setErrorMsg(getErrorMessage(err, "Failed to log in"));
@@ -46,11 +45,13 @@ export default function LoginPage() {
   const onMfaSubmit = async (data: LoginFormInputs) => {
     setErrorMsg(null);
     try {
-      await apiClient.post("/api/auth/login/mfa", {
+      // 💡 Clean centralized execution for MFA verification
+      await apiClient.auth.loginMfa({
         mfaToken,
         code: data.code,
       });
-      await mutate();
+      await mutate("/api/auth/me");
+      router.push("/");
     } catch (err: unknown) {
       setErrorMsg(getErrorMessage(err, "Invalid MFA code"));
     }

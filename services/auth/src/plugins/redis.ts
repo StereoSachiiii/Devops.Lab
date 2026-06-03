@@ -22,7 +22,7 @@ export const redisPlugin = fp(async (fastify: FastifyInstance) => {
   });
 
   // Event listeners for logging
-  redis.on('connect', () => fastify.log.info('connected', 'Redis status:'));
+  redis.on('connect', () => fastify.log.info('Redis connected'));
   redis.on('error', (err) => {
     // We log as warn so it doesn't look like a fatal crash
     fastify.log.warn({ err: err.message }, 'Redis connection issue');

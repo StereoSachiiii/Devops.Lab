@@ -13,7 +13,7 @@ export const outboxPlugin = fp(async (fastify: FastifyInstance) => {
     if (processing) return;
 
     // Safety check: Don't process if messaging isn't initialized yet
-    if (!fastify.messaging || !fastify.messaging.producer) {
+    if (!fastify.messaging || !fastify.messaging.isProducerReady) {
       return;
     }
 

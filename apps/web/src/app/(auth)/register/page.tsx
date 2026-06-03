@@ -7,36 +7,96 @@ import { apiClient } from "@/lib/apiClient";
 import { useAuth } from "@/providers/AuthProvider";
 import { getErrorMessage } from "@/lib/errors";
 
-interface RegisterFormInputs {
-  name?: string;
+interface LoginFormInputs {
   email?: string;
   password?: string;
+  code?: string;
 }
 
-export default function RegisterPage() {
+export default function LoginPage() {
   const { mutate } = useAuth();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<RegisterFormInputs>();
+  const { register, handleSubmit, formState: { errors } } = useForm<LoginFormInputs>();
 
-  const onRegisterSubmit = async (data: RegisterFormInputs) => {
+  const onLoginSubmit = async (data: LoginFormInputs) => {
     setErrorMsg(null);
     try {
-      await apiClient.post("/api/auth/register", {
-        name: data.name || undefined,
+      const response = await apiClient.auth.login({
         email: data.email,
         password: data.password,
       });
-      await mutate();
+
+      if (response?.mfaRequired) {
+        setMfaToken(response.mfaToken || null);
+      } else {
+        await mutate();
+      }
     } catch (err: unknown) {
-      setErrorMsg(getErrorMessage(err, "Failed to register"));
+      setErrorMsg(getErrorMessage(err, "Failed to log in"));
     }
   };
 
+  const onMfaSubmit = async (data: LoginFormInputs) => {
+    setErrorMsg(null);
+    try {
+      await apiClient.auth.loginMfa({
+        mfaToken,
+        code: data.code,
+      });
+      await mutate();
+    } catch (err: unknown) {
+      setErrorMsg(getErrorMessage(err, "Invalid MFA code"));
+    }
+  };
+
+  if (mfaToken) {
+    return (
+      <div className="border border-neutral-800 p-6 flex flex-col gap-4">
+        <h2 className="font-bold">MFA Verification</h2>
+        <p className="text-xs">Enter the 6-digit code from your authenticator app.</p>
+        
+        {errorMsg && (
+          <div className="border border-neutral-800 p-2 text-xs">
+            {errorMsg}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit(onMfaSubmit)} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold">Verification Code</label>
+            <input
+              type="text"
+              placeholder="000000"
+              className="border border-neutral-800 p-2 text-sm"
+              {...register("code", { required: true, pattern: /^\d{6}$/ })}
+            />
+            {errors.code && <span className="text-[10px]">6-digit code required</span>}
+          </div>
+
+          <button type="submit" className="border border-neutral-700 p-2 font-semibold text-sm">
+            Verify Code
+          </button>
+        </form>
+
+        <button
+          onClick={() => {
+            setMfaToken(null);
+            setErrorMsg(null);
+          }}
+          className="text-xs text-left"
+        >
+          &larr; Back to Login
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="border border-neutral-800 p-6 flex flex-col gap-4">
-      <h2 className="font-bold">Register</h2>
-      <p className="text-xs">Create a new learning account.</p>
+      <h2 className="font-bold">Login</h2>
+      <p className="text-xs">Sign in to your learning account.</p>
 
       {errorMsg && (
         <div className="border border-neutral-800 p-2 text-xs">
@@ -44,17 +104,7 @@ export default function RegisterPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit(onRegisterSubmit)} className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold">Name</label>
-          <input
-            type="text"
-            placeholder="John Doe"
-            className="border border-neutral-800 p-2 text-sm"
-            {...register("name")}
-          />
-        </div>
-
+      <form onSubmit={handleSubmit(onLoginSubmit)} className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold">Email Address</label>
           <input
@@ -67,27 +117,30 @@ export default function RegisterPage() {
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold">Password</label>
+          <div className="flex justify-between items-center">
+            <label className="text-xs font-semibold">Password</label>
+            <Link href="/forgot-password" className="text-[10px]">
+              Forgot?
+            </Link>
+          </div>
           <input
             type="password"
             placeholder="••••••••"
             className="border border-neutral-800 p-2 text-sm"
-            {...register("password", { required: true, minLength: 8 })}
+            {...register("password", { required: true })}
           />
-          {errors.password && (
-            <span className="text-[10px]">Password must be at least 8 characters</span>
-          )}
+          {errors.password && <span className="text-[10px]">Password is required</span>}
         </div>
 
         <button type="submit" className="border border-neutral-700 p-2 font-semibold text-sm">
-          Sign Up
+          Sign In
         </button>
       </form>
 
       <div className="text-xs flex gap-1">
-        <span>Already have an account?</span>
-        <Link href="/login" className="font-semibold">
-          Sign In
+        <span>No account yet?</span>
+        <Link href="/register" className="font-semibold">
+          Sign Up
         </Link>
       </div>
     </div>

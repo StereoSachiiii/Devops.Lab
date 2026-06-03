@@ -9,19 +9,17 @@
   ],
   "scripts": {
     "clean": "docker compose down -v --remove-orphans",
-    "dev": "docker compose up -d && concurrently -n \"web,auth,challenge,content,notify\" -c \"blue,green,yellow,magenta,cyan\" \"npm run dev --workspace=apps/web\" \"npm run dev --workspace=services/auth\" \"npm run dev --workspace=services/challenge\" \"npm run dev --workspace=services/content\" \"npm run dev --workspace=services/notification\"",
+    "dev": "docker compose up -d && concurrently -n \"web,auth,core\" -c \"blue,green,yellow\" 'npm run dev --workspace=apps/web -- -H 127.0.0.1' 'npm run dev --workspace=services/auth' 'npm run dev --workspace=services/core'",
     "dev:turbo": "docker-compose --profile default up -d --force-recreate && npx turbo run dev",
     "dev:fresh": "npm run clean && npm run build:packages && npm run dev",
     "build:packages": "npm run build --workspace=packages/observability && npm run build --workspace=packages/messaging",
     "stop": "docker compose down --remove-orphans",
-    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:web": "npm run dev --workspace=apps/web -- -H 127.0.0.1",
     "dev:auth": "npm run dev --workspace=services/auth",
-    "dev:challenge": "npm run dev --workspace=services/challenge",
-    "dev:content": "npm run dev --workspace=services/content",
-    "dev:notify": "npm run dev --workspace=services/notification",
+    "dev:core": "npm run dev --workspace=services/core",
     "build:web": "npm run build --workspace=apps/web",
     "setup:firecracker": "bash scripts/setup-kata.sh",
-    "stop:all": "docker compose -p rootcause --profile default down -v && pkill -9 -f 'ts-node' || true && pkill -9 -f 'ts-node-dev' || true", 
+    "stop:all": "docker compose -p rootcause --profile default down -v && pkill -9 -f 'ts-node' || true && pkill -9 -f 'ts-node-dev' || true",
     "db:push": "packages/db/node_modules/.bin/prisma db push --schema=packages/db/prisma/schema.prisma",
     "db:generate": "packages/db/node_modules/.bin/prisma generate --schema=packages/db/prisma/schema.prisma",
     "db:studio": "packages/db/node_modules/.bin/prisma studio --schema=packages/db/prisma/schema.prisma",
@@ -29,6 +27,7 @@
     "kill:services": "pkill -9 -f 'tsx' || true && pkill -9 -f 'ts-node-dev' || true && pkill -9 -f 'ts-node' || true"
   },
   "devDependencies": {
+    "@types/node": "^25.9.1",
     "concurrently": "^10.0.0",
     "eslint": "^10.3.0",
     "prettier": "^3.8.3",
@@ -38,6 +37,7 @@
     "vitest": "^4.1.5"
   },
   "dependencies": {
-    "@prisma/client": "^7.8.0"
+    "@prisma/client": "^7.8.0",
+    "axios": "^1.16.1"
   }
 }

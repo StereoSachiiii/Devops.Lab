@@ -17,8 +17,8 @@ interface Challenge {
 
 export default function ChallengesPage() {
   const { data: challenges, error, isLoading } = useSWR<Challenge[]>(
-    "/api/challenges",
-    () => apiClient.get<Challenge[]>("/api/challenges")
+    "/api/challenge",
+    () => apiClient.get<Challenge[]>("/api/challenge")
   );
 
   return (
