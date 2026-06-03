@@ -14,6 +14,11 @@ export class MessagingService {
     });
   }
 
+  /** Whether the Kafka producer has been initialized and is ready. */
+  get isProducerReady(): boolean {
+    return this.producer !== null;
+  }
+
   async initProducer(): Promise<Producer> {
     if (!this.producer) {
       this.producer = this.kafka.producer();
@@ -27,18 +32,23 @@ export class MessagingService {
    */
   async emit<T>(event: BaseEvent<T>): Promise<void> {
     if (!this.producer) {
-      throw new Error('Producer not initialized. Call initProducer() first.');
+      console.warn(`[Kafka] emit skipped - producer not initialized (topic=${event.topic})`);
+      return;
     }
 
-    await this.producer.send({
-      topic: event.topic,
-      messages: [
-        {
-          key: event.correlationId,
-          value: JSON.stringify(event),
-        },
-      ],
-    });
+    try {
+      await this.producer.send({
+        topic: event.topic,
+        messages: [
+          {
+            key: event.correlationId,
+            value: JSON.stringify(event),
+          },
+        ],
+      });
+    } catch (err) {
+      console.error(`[Kafka] emit failed for topic=${event.topic}:`, err);
+    }
   }
 
   /**

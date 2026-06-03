@@ -1,89 +1,91 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
-import { buildApp } from '../app.js';
+import type { ObservabilityConfig } from '@devops/observability';
 
-// ── Mock argon2 ─────────────────────────────────────────────────────────────
+const mockObs: ObservabilityConfig = {
+  loggerOptions: { level: 'silent' },
+  stream: {} as any,
+  shutdown: () => {},
+};
+
 vi.mock('argon2', () => ({
   default: {
     hash: vi.fn().mockResolvedValue('$argon2id$hashed'),
-    verify: vi.fn().mockResolvedValue(true), // default: password matches
+    verify: vi.fn().mockResolvedValue(true),
   },
 }));
 
-// ── Mock @fastify/redis ─────────────────────────────────────────────────────
-vi.mock('@fastify/redis', () => {
-  const plugin = async function mockRedisPlugin(fastify: any) {
-    if (!fastify.hasDecorator('redis')) {
-      fastify.decorate('redis', {
-        get: vi.fn(),
-        set: vi.fn(),
-        incr: vi.fn(),
-        expire: vi.fn(),
-        del: vi.fn(),
-        keys: vi.fn().mockResolvedValue([]),
-      });
-    }
-  };
-  (plugin as any)[Symbol.for('skip-override')] = true;
-
-  return {
-    default: plugin
-  };
-});
-
-// ── Mock @devops/db ─────────────────────────────────────────────────────────
 vi.mock('@devops/db', () => {
   const mockPrisma: any = {
-    user: {
-      findUnique: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-      upsert: vi.fn(),
-    },
-    securityLog: {
-      create: vi.fn(),
-      deleteMany: vi.fn(),
-    },
-    submission: {
-      deleteMany: vi.fn(),
-    },
-    completion: {
-      deleteMany: vi.fn(),
-    },
-    labSession: {
-      deleteMany: vi.fn(),
-    },
-    outboxEvent: {
-      create: vi.fn(),
-      findMany: vi.fn().mockResolvedValue([]),
-      update: vi.fn(),
-    },
+    user: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), upsert: vi.fn() },
+    securityLog: { create: vi.fn(), deleteMany: vi.fn() },
+    submission: { deleteMany: vi.fn() },
+    completion: { deleteMany: vi.fn() },
+    labSession: { deleteMany: vi.fn() },
+    outboxEvent: { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
+    $queryRaw: vi.fn().mockResolvedValue([{ 1: 1 }]),
     $transaction: vi.fn((fn: (tx: any) => any) => fn(mockPrisma)),
   };
+  return { PrismaClient: vi.fn(() => mockPrisma) };
+});
+
+// Shared mock Redis — tests can spy on mockRedis.get/set/etc.
+const mockRedis = {
+  get: vi.fn().mockResolvedValue(null),
+  set: vi.fn().mockResolvedValue('OK'),
+  del: vi.fn().mockResolvedValue(1),
+  keys: vi.fn().mockResolvedValue([]),
+  ping: vi.fn().mockResolvedValue('PONG'),
+  incr: vi.fn().mockResolvedValue(1),
+  expire: vi.fn().mockResolvedValue(1),
+  quit: vi.fn().mockResolvedValue('OK'),
+  connect: vi.fn().mockResolvedValue(undefined),
+  on: vi.fn(),
+};
+
+// Mock ioredis at the dependency level so the redis plugin gets our mock.
+vi.mock('ioredis', () => ({
+  default: vi.fn(() => mockRedis),
+}));
+
+// Mock prom-client so metrics plugin creates no-op metrics.
+vi.mock('prom-client', async () => {
+  const noop = vi.fn();
   return {
-    PrismaClient: vi.fn(() => mockPrisma),
+    default: { collectDefaultMetrics: vi.fn() },
+    Registry: vi.fn().mockImplementation(() => ({
+      setDefaultLabels: vi.fn(),
+      metrics: vi.fn().mockResolvedValue(''),
+      contentType: 'text/plain',
+      registerMetric: vi.fn(),
+    })),
+    Counter: vi.fn().mockImplementation(() => ({ inc: noop })),
+    Histogram: vi.fn().mockImplementation(() => ({ observe: noop, startTimer: () => noop })),
+    Gauge: vi.fn().mockImplementation(() => ({ set: noop, inc: noop })),
   };
 });
 
-// ── Mock @devops/messaging ──────────────────────────────────────────────────
+// Mock messaging — outbox plugin checks isProducerReady which returns false,
+// so no events are actually emitted. Set long interval to prevent timer firing.
+process.env['OUTBOX_INTERVAL_MS'] = '999999';
 vi.mock('@devops/messaging', () => ({
   MessagingService: vi.fn().mockImplementation(() => ({
     initProducer: vi.fn().mockResolvedValue(undefined),
     emit: vi.fn().mockResolvedValue(undefined),
     disconnect: vi.fn().mockResolvedValue(undefined),
+    isProducerReady: false,
   })),
   UserRegisteredEvent: vi.fn().mockImplementation((payload: unknown) => ({ topic: 'identity.user.registered', payload })),
   EmailVerificationRequestedEvent: vi.fn().mockImplementation((payload: unknown) => ({ topic: 'identity.email.verify', payload })),
+  BaseEvent: vi.fn(),
 }));
 
-// Import prisma AFTER mocks are registered
 import { PrismaClient } from '@devops/db';
+import { buildApp } from '../app';
 const prisma = new PrismaClient();
 
 describe('Auth Service', () => {
-  const app = buildApp();
+  const app = buildApp(mockObs);
 
-  // Must await ready() so plugins (JWT, cookie, oauth) are initialized
   beforeAll(async () => {
     await app.ready();
   });
@@ -96,14 +98,16 @@ describe('Auth Service', () => {
     await app.close();
   });
 
-  // ── Health ──────────────────────────────────────────────────────────────────
-  it('GET /health — returns ok', async () => {
+  it('GET /health — returns ok with dependency checks', async () => {
     const response = await app.inject({ method: 'GET', url: '/health' });
     expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.payload)).toEqual({ status: 'ok', service: 'auth-service' });
+    const body = JSON.parse(response.payload);
+    expect(body.status).toBe('ok');
+    expect(body.service).toBe('auth-service');
+    expect(body.checks).toEqual({ redis: 'up', db: 'up' });
+    expect(body.timestamp).toBeDefined();
   });
 
-  // ── Public Key ──────────────────────────────────────────────────────────────
   describe('GET /public-key', () => {
     it('returns the public verification key', async () => {
       const response = await app.inject({ method: 'GET', url: '/public-key' });
@@ -114,7 +118,6 @@ describe('Auth Service', () => {
     });
   });
 
-  // ── Register ────────────────────────────────────────────────────────────────
   describe('POST /register', () => {
     it('registers a new user using transaction outbox and returns tokens', async () => {
       (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
@@ -137,7 +140,6 @@ describe('Auth Service', () => {
       expect(payload.token).toBeDefined();
       expect(response.headers['set-cookie']).toBeDefined();
 
-      // Check transaction and outbox creation
       expect(prisma.$transaction).toHaveBeenCalled();
       expect(prisma.outboxEvent.create).toHaveBeenCalledTimes(2);
       expect(prisma.securityLog.create).toHaveBeenCalledWith(
@@ -159,8 +161,8 @@ describe('Auth Service', () => {
         role: 'LEARNER',
       });
 
-      // Mock messaging emit to reject
-      vi.spyOn(app.messaging, 'emit').mockRejectedValue(new Error('Broker offline'));
+      // With the outbox pattern, messaging is decoupled — register never calls emit directly.
+      // This test just confirms registration works regardless of broker state.
 
       const response = await app.inject({
         method: 'POST',
@@ -187,7 +189,6 @@ describe('Auth Service', () => {
     });
   });
 
-  // ── Login ───────────────────────────────────────────────────────────────────
   describe('POST /login', () => {
     it('authenticates, logs success, and stores refresh token in Redis', async () => {
       (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -212,7 +213,7 @@ describe('Auth Service', () => {
           }),
         })
       );
-      expect(app.redis.set).toHaveBeenCalled();
+      expect(mockRedis.set).toHaveBeenCalled();
     });
 
     it('returns 401 for wrong password and logs failure', async () => {
@@ -244,7 +245,6 @@ describe('Auth Service', () => {
     });
   });
 
-  // ── Refresh ─────────────────────────────────────────────────────────────────
   describe('POST /refresh', () => {
     it('rotates refresh token and returns new access token when valid', async () => {
       (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -253,7 +253,7 @@ describe('Auth Service', () => {
         role: 'LEARNER',
       });
 
-      vi.mocked(app.redis.get).mockResolvedValueOnce('1');
+      vi.mocked(mockRedis.get).mockResolvedValueOnce('1');
 
       const response = await app.inject({
         method: 'POST',
@@ -264,8 +264,8 @@ describe('Auth Service', () => {
       expect(response.statusCode).toBe(200);
       const payload = JSON.parse(response.payload) as { token: string };
       expect(payload.token).toBeDefined();
-      expect(app.redis.del).toHaveBeenCalled();
-      expect(app.redis.set).toHaveBeenCalled();
+      expect(mockRedis.del).toHaveBeenCalled();
+      expect(mockRedis.set).toHaveBeenCalled();
     });
 
     it('returns 401 if refresh token is missing', async () => {
@@ -277,8 +277,8 @@ describe('Auth Service', () => {
     });
 
     it('invalidates all active user sessions and logs breach if token not found (compromise check)', async () => {
-      vi.mocked(app.redis.get).mockResolvedValueOnce(null);
-      vi.mocked(app.redis.keys).mockResolvedValueOnce(['auth:refresh:user-1:key1', 'auth:refresh:user-1:key2']);
+      vi.mocked(mockRedis.get).mockResolvedValueOnce(null);
+      vi.mocked(mockRedis.keys).mockResolvedValueOnce(['auth:refresh:user-1:key1', 'auth:refresh:user-1:key2']);
 
       const response = await app.inject({
         method: 'POST',
@@ -287,7 +287,7 @@ describe('Auth Service', () => {
       });
 
       expect(response.statusCode).toBe(401);
-      expect(app.redis.del).toHaveBeenCalledWith('auth:refresh:user-1:key1', 'auth:refresh:user-1:key2');
+      expect(mockRedis.del).toHaveBeenCalledWith('auth:refresh:user-1:key1', 'auth:refresh:user-1:key2');
       expect(prisma.securityLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -299,7 +299,7 @@ describe('Auth Service', () => {
     });
 
     it('returns 429 if the account is locked out', async () => {
-      vi.spyOn(app.redis, 'get').mockResolvedValueOnce('1');
+      vi.spyOn(mockRedis, 'get').mockResolvedValueOnce('1');
 
       const response = await app.inject({
         method: 'POST',
@@ -308,15 +308,16 @@ describe('Auth Service', () => {
       });
 
       expect(response.statusCode).toBe(429);
-      expect(JSON.parse(response.payload)).toEqual({
+      expect(JSON.parse(response.payload)).toMatchObject({
         error: 'Account locked due to too many failed attempts. Try again later.',
+        code: 'ACCOUNT_LOCKED',
       });
     });
 
     it('locks the account after 5 failed attempts', async () => {
-      vi.spyOn(app.redis, 'get').mockResolvedValueOnce(null);
-      vi.spyOn(app.redis, 'incr').mockResolvedValueOnce(5);
-      const setSpy = vi.spyOn(app.redis, 'set');
+      vi.spyOn(mockRedis, 'get').mockResolvedValueOnce(null);
+      vi.spyOn(mockRedis, 'incr').mockResolvedValueOnce(5);
+      const setSpy = vi.spyOn(mockRedis, 'set');
 
       (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
         id: 'user-1',
@@ -339,8 +340,8 @@ describe('Auth Service', () => {
     });
 
     it('resets failed attempts on successful login', async () => {
-      vi.spyOn(app.redis, 'get').mockResolvedValueOnce(null);
-      const delSpy = vi.spyOn(app.redis, 'del');
+      vi.spyOn(mockRedis, 'get').mockResolvedValueOnce(null);
+      const delSpy = vi.spyOn(mockRedis, 'del');
 
       (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
         id: 'user-1',
@@ -363,8 +364,8 @@ describe('Auth Service', () => {
     });
 
     it('returns 401 and increments fails for users without a password (OAuth)', async () => {
-      vi.spyOn(app.redis, 'get').mockResolvedValueOnce(null);
-      const incrSpy = vi.spyOn(app.redis, 'incr').mockResolvedValueOnce(1);
+      vi.spyOn(mockRedis, 'get').mockResolvedValueOnce(null);
+      const incrSpy = vi.spyOn(mockRedis, 'incr').mockResolvedValueOnce(1);
 
       (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
         id: 'user-oauth',
@@ -384,7 +385,6 @@ describe('Auth Service', () => {
     });
   });
 
-  // ── Me ──────────────────────────────────────────────────────────────────────
   describe('GET /me', () => {
     it('returns user profile when authenticated', async () => {
       const mockUser = {
@@ -418,7 +418,6 @@ describe('Auth Service', () => {
     });
   });
 
-  // ── Logout ──────────────────────────────────────────────────────────────────
   describe('POST /logout', () => {
     it('revokes refresh token and clears cookies', async () => {
       const response = await app.inject({
@@ -428,7 +427,7 @@ describe('Auth Service', () => {
       });
       expect(response.statusCode).toBe(200);
       expect(JSON.parse(response.payload)).toEqual({ success: true });
-      expect(app.redis.del).toHaveBeenCalled();
+      expect(mockRedis.del).toHaveBeenCalled();
       expect(prisma.securityLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -439,10 +438,9 @@ describe('Auth Service', () => {
       );
     });
   });
-  // ── Email Verification ──────────────────────────────────────────────────────
   describe('POST /verify-email', () => {
     it('verifies email with valid token', async () => {
-      vi.mocked(app.redis.get).mockResolvedValueOnce('user-1');
+      vi.mocked(mockRedis.get).mockResolvedValueOnce('user-1');
       (prisma.user.update as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'user-1' });
 
       const response = await app.inject({
@@ -453,11 +451,10 @@ describe('Auth Service', () => {
 
       expect(response.statusCode).toBe(200);
       expect(prisma.user.update).toHaveBeenCalled();
-      expect(app.redis.del).toHaveBeenCalled();
+      expect(mockRedis.del).toHaveBeenCalled();
     });
   });
 
-  // ── Password Reset ──────────────────────────────────────────────────────────
   describe('Password Reset Flow', () => {
     it('POST /forgot-password creates event and redis token', async () => {
       (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'user-1', email: 'test@example.com' });
@@ -469,13 +466,13 @@ describe('Auth Service', () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(app.redis.set).toHaveBeenCalled();
+      expect(mockRedis.set).toHaveBeenCalled();
       expect(prisma.outboxEvent.create).toHaveBeenCalled();
     });
 
     it('POST /reset-password updates password and clears sessions', async () => {
-      vi.mocked(app.redis.get).mockResolvedValueOnce('user-1');
-      vi.mocked(app.redis.keys).mockResolvedValueOnce(['auth:refresh:user-1:key1']);
+      vi.mocked(mockRedis.get).mockResolvedValueOnce('user-1');
+      vi.mocked(mockRedis.keys).mockResolvedValueOnce(['auth:refresh:user-1:key1']);
 
       const response = await app.inject({
         method: 'POST',
@@ -484,11 +481,10 @@ describe('Auth Service', () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(app.redis.del).toHaveBeenCalled();
+      expect(mockRedis.del).toHaveBeenCalled();
     });
   });
 
-  // ── Account Management ──────────────────────────────────────────────────────
   describe('Account Management', () => {
     it('PUT /me updates profile', async () => {
       const token = app.jwt.sign({ sub: 'user-1', email: 'test@example.com', role: 'LEARNER' });
@@ -520,7 +516,7 @@ describe('Auth Service', () => {
 
     it('DELETE /me deletes user', async () => {
       const token = app.jwt.sign({ sub: 'user-1', email: 'test@example.com', role: 'LEARNER' });
-      vi.mocked(app.redis.keys).mockResolvedValueOnce(['auth:refresh:user-1:key1']);
+      vi.mocked(mockRedis.keys).mockResolvedValueOnce(['auth:refresh:user-1:key1']);
 
       const response = await app.inject({
         method: 'DELETE',
@@ -530,15 +526,14 @@ describe('Auth Service', () => {
 
       expect(response.statusCode).toBe(200);
       expect(prisma.$transaction).toHaveBeenCalled();
-      expect(app.redis.del).toHaveBeenCalled();
+      expect(mockRedis.del).toHaveBeenCalled();
     });
   });
 
-  // ── Logout All ──────────────────────────────────────────────────────────────
   describe('POST /logout-all', () => {
     it('revokes all refresh tokens', async () => {
       const token = app.jwt.sign({ sub: 'user-1', email: 'test@example.com', role: 'LEARNER' });
-      vi.mocked(app.redis.keys).mockResolvedValueOnce(['auth:refresh:user-1:key1', 'auth:refresh:user-1:key2']);
+      vi.mocked(mockRedis.keys).mockResolvedValueOnce(['auth:refresh:user-1:key1', 'auth:refresh:user-1:key2']);
 
       const response = await app.inject({
         method: 'POST',
@@ -547,12 +542,11 @@ describe('Auth Service', () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(app.redis.del).toHaveBeenCalled();
+      expect(mockRedis.del).toHaveBeenCalled();
       expect(prisma.securityLog.create).toHaveBeenCalled();
     });
   });
 
-  // ── MFA ─────────────────────────────────────────────────────────────────────
   describe('MFA', () => {
     it('POST /mfa/setup returns secret and QR code', async () => {
       const token = app.jwt.sign({ sub: 'user-1', email: 'test@example.com', role: 'LEARNER' });
@@ -572,7 +566,6 @@ describe('Auth Service', () => {
       const token = app.jwt.sign({ sub: 'user-1', email: 'test@example.com', role: 'LEARNER' });
       (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'user-1', mfaEnabled: false, mfaSecret: 'TESTSECRET' });
 
-      // Mock otplib verify
       const { authenticator } = await import('otplib');
       vi.spyOn(authenticator, 'verify').mockReturnValueOnce(true);
 

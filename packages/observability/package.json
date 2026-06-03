@@ -10,12 +10,18 @@
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/sdk-node": "^0.52.0",
     "@opentelemetry/auto-instrumentations-node": "^0.50.0",
-    "pino": "^9.0.0"
+    "@opentelemetry/exporter-trace-otlp-http": "^0.52.0",
+    "@opentelemetry/resources": "^1.9.0",
+    "@opentelemetry/sdk-node": "^0.52.0",
+    "pino": "^9.14.0",
+    "pino-loki": "^2.1.0",
+    "prom-client": "^15.1.3",
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "@devops/eslint-config": "*"
+    "@devops/eslint-config": "*",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.0.0"
   }
 }

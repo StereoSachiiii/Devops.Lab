@@ -1,45 +1,62 @@
 _format_version: "3.0"
 _transform: true
 
-# Global plugins that apply to every route
+# Global plugins
 plugins:
+  - name: cors
+    config:
+      origins:
+        - http://localhost:3000
+        - http://127.0.0.1:3000
+      methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      headers:
+        - Accept
+        - Authorization
+        - Content-Type
+        - Cookie
+      exposed_headers:
+        - Set-Cookie
+      credentials: true
+      max_age: 3600
   - name: rate-limiting
     config:
-      minute: 600           # DEV: relaxed — tighten to 60 for production
-      limit_by: credential  # Limits by JWT user. Falls back to IP for public routes
+      second: 100
+      limit_by: credential
       policy: redis
-      redis_host: redis
-      redis_port: 6379
-      redis_database: 1
+      redis:
+        host: redis
+        port: 6379
+        database: 1
 
 services:
-  - name: challenge-service
-    url: http://challenge-service:3000
+  - name: core-service
+    url: http://core-service:3003
     routes:
       - name: challenge-routes
         paths:
-          - /api/challenge
-    # Protect challenge-service with JWT validation
-    plugins:
-      - name: jwt
-        config:
-          claims_to_verify:
-            - exp
-
-  - name: sandbox-worker
-    url: http://sandbox-worker:8090
-    routes:
-      - name: sandbox-routes
+          - /api/challenges
+        strip_path: false
+      - name: session-routes
         paths:
-          - /api/sandbox
-          - /sessions
-          - /validate
-    # Protect sandbox with JWT validation
+          - /api/session
+        strip_path: false
+      - name: content-routes
+        paths:
+          - /api/content
+        strip_path: true
     plugins:
       - name: jwt
         config:
           claims_to_verify:
             - exp
+          cookie_names:
+            - token
 
   - name: auth-service
     url: http://auth-service:3002
@@ -47,34 +64,32 @@ services:
       - name: auth-routes
         paths:
           - /api/auth
-    # Auth service stays public (no JWT plugin) so users can actually log in!
-    # But we apply a much stricter IP-based rate limit specifically to mitigate brute-force guessing
+        strip_path: true
     plugins:
       - name: rate-limiting
         config:
-          minute: 300       # DEV: relaxed — tighten to 5 for production
+          second: 100
           limit_by: ip
           policy: redis
-          redis_host: redis
-          redis_port: 6379
-          redis_database: 1
+          redis:
+            host: redis
+            port: 6379
+            database: 1
 
-  - name: content-service
-    url: http://content-service:3001
-    routes:
-      - name: content-routes
-        paths:
-          - /api/content
-    # Protect content-service with JWT validation
-    plugins:
-      - name: jwt
-        config:
-          claims_to_verify:
-            - exp
 
 consumers:
   - username: devops-auth-consumer
     jwt_secrets:
       - key: devops-platform
-        secret: dev-jwt-secret-key-change-in-prod
+        algorithm: RS256
+        rsa_public_key: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0fceR0dR3hHLtwcLnaUo
+          9BlB70K8tkV7avou+rtCk8Jo+zI24oSf04WPMRYd0FtRdPyY9G3fb7fH7sLOOtOw
+          6sBGbKN9C/sf3o83ycEHV0RpqeLGpqUbM/4Itr5j5y+9n4EwNESSZnTM73UJua+8
+          KjTOpKydqr8eWpu5Sm6ITC7d5EY1DUY9ubF4qQhKQ8ziAOrIghXwFu5oemHYkff0
+          S0wRsUVkIGcLgkpcynroJCx7pMBGg5rbysMz6zPnANcug4NlCchcJZVu0lKGSS9z
+          zN7+rKo4HyvYMPKGDkq9pSUCqGfDaEAGr73mdFfPb/wgY+p5/73enHJJzELilykE
+          GQIDAQAB
+          -----END PUBLIC KEY-----
 

@@ -1,37 +1,25 @@
+"use client";
+
+import useSWR from "swr";
+import { apiClient } from "@/lib/apiClient";
 import { ChallengeCard } from "@/components/dashboard/ChallengeCard";
 import { Terminal, Rocket, Sparkles, Activity } from "lucide-react";
 
-const mockChallenges = [
-  {
-    id: "challenge-k8s-debug",
-    title: "Kubernetes Pod Debugging",
-    category: "Infrastructure",
-    difficulty: "Junior" as const,
-    xp: 250,
-    timeEstimate: "15m",
-    tags: ["K8s", "Debugging"],
-  },
-  {
-    id: "challenge-docker-hardening",
-    title: "Docker Image Hardening",
-    category: "Security",
-    difficulty: "Mid" as const,
-    xp: 500,
-    timeEstimate: "30m",
-    tags: ["Docker", "Security"],
-  },
-  {
-    id: "challenge-tf-migration",
-    title: "Terraform State Migration",
-    category: "Infrastructure",
-    difficulty: "Senior" as const,
-    xp: 1200,
-    timeEstimate: "1h",
-    tags: ["Terraform", "Cloud"],
-  },
-];
+interface Challenge {
+  id: string;
+  title: string;
+  category: string;
+  difficulty: string;
+  xp: number;
+  tags: string[];
+}
 
 export default function Home() {
+  const { data: challenges, error, isLoading } = useSWR<Challenge[]>(
+    "/api/challenges",
+    () => apiClient.get<Challenge[]>("/api/challenges")
+  );
+
   return (
     <div className="flex flex-col gap-8">
       {/* Hero Section */}
@@ -86,11 +74,28 @@ export default function Home() {
           </div>
           <button className="border border-neutral-800 px-3 py-1 text-xs">View All</button>
         </div>
-        <div className="grid grid-cols-3 gap-4">
-          {mockChallenges.map((challenge) => (
-            <ChallengeCard key={challenge.title} {...challenge} />
-          ))}
-        </div>
+
+        {isLoading && <div className="text-sm text-black">Loading challenges...</div>}
+        
+        {error && (
+          <div className="border border-neutral-200 p-4 text-sm text-red-500 rounded-lg">
+            Failed to load featured challenges.
+          </div>
+        )}
+
+        {challenges && challenges.length === 0 && (
+          <div className="border border-neutral-800 p-4 text-sm">
+            No challenges found. Seed the database to get started.
+          </div>
+        )}
+
+        {challenges && challenges.length > 0 && (
+          <div className="grid grid-cols-3 gap-4">
+            {challenges.map((challenge) => (
+              <ChallengeCard key={challenge.id} {...challenge} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

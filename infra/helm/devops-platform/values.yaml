@@ -14,7 +14,7 @@ sandboxService:
 challengeService:
   replicaCount: 1
   image:
-    repository: ghcr.io/your-username/challenge-service
+    repository: ghcr.io/your-username/challenges-service
     pullPolicy: IfNotPresent
     tag: "latest"
   service:

@@ -63,8 +63,8 @@ export default function ChallengeWorkspacePage({ params }: PageProps) {
 
   // Fetch challenge details
   const { data: challenge, error: challengeError, isLoading: challengeLoading } = useSWR<Challenge>(
-    id ? `/api/challenges/${id}` : null,
-    () => apiClient.get<Challenge>(`/api/challenges/${id}`)
+    id ? `/api/challenge/${id}` : null,
+    () => apiClient.get<Challenge>(`/api/challenge/${id}`)
   );
 
   const [session, setSession] = useState<Session | null>(null);
@@ -81,7 +81,7 @@ export default function ChallengeWorkspacePage({ params }: PageProps) {
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as Session;
-        apiClient.get<Session>(`/api/sessions/${parsed.sessionId}`)
+        apiClient.get<Session>(`/api/session/${parsed.sessionId}`)
           .then((res) => {
             if (res && res.status === "ACTIVE") {
               setSession(res);
@@ -104,7 +104,7 @@ export default function ChallengeWorkspacePage({ params }: PageProps) {
     setValidationError(null);
     setValidationResult(null);
     try {
-      const res = await apiClient.post<Session>(`/api/challenges/${id}/start`);
+      const res = await apiClient.post<Session>(`/api/challenge/${id}/start`);
       setSession(res);
       localStorage.setItem(`session_${id}`, JSON.stringify(res));
     } catch (err: unknown) {
@@ -118,7 +118,7 @@ export default function ChallengeWorkspacePage({ params }: PageProps) {
     if (!session) return;
     setIsTerminating(true);
     try {
-      await apiClient.delete(`/api/sessions/${session.sessionId}`);
+      await apiClient.delete(`/api/session/${session.sessionId}`);
       setSession(null);
       localStorage.removeItem(`session_${id}`);
       setValidationResult(null);
@@ -136,12 +136,10 @@ export default function ChallengeWorkspacePage({ params }: PageProps) {
     setValidationError(null);
     setValidationResult(null);
     try {
-      // Use direct fetch call to handle both 200 (ok) and 422 (validation failed)
-      // Since validation results may return HTTP 422, apiClient.ts throws an error automatically.
-      const response = await fetch(`/validate-sandbox/${session.sessionId}`, {
-        method: "POST",
-      });
-      const data = await response.json();
+      // Use rawPost to accept 4xx validation payloads (422) as successful responses
+      const data = await apiClient.rawPost<{ passed: boolean; feedback: string }>(
+        `/validate-sandbox/${session.sessionId}`
+      );
       setValidationResult(data);
     } catch (err: unknown) {
       setValidationError(getErrorMessage(err, "Failed to validate solution."));
