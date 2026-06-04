@@ -82,39 +82,6 @@ async function handleLoginFail(
 
 export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
 
-  // ── Readiness probe ──────────────────────────────────────────────────────────
-  // Checks that every dependency the auth service needs is reachable.
-  // Docker Compose healthcheck / K8s readinessProbe can both hit this.
-
-  fastify.get('/health', async (_req, reply) => {
-    const checks: Record<string, 'up' | 'down'> = {};
-
-    try {
-      await fastify.redis.ping();
-      checks['redis'] = 'up';
-    } catch {
-      checks['redis'] = 'down';
-    }
-
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      checks['db'] = 'up';
-    } catch {
-      checks['db'] = 'down';
-    }
-
-    const allUp = Object.values(checks).every((v) => v === 'up');
-
-    if (!allUp) reply.status(503);
-
-    return {
-      status:    allUp ? 'ok' : 'degraded',
-      service:   'auth-service',
-      checks,
-      timestamp: new Date().toISOString(),
-    };
-  });
-
   // ── Public key (for other services to verify JWTs) ──────────────────────────
 
   fastify.get('/public-key', async () => ({

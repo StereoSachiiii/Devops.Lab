@@ -29,19 +29,10 @@ declare module '@fastify/jwt' {
 const int = (key: string, fallback: number): number =>
   parseInt(process.env[key] || String(fallback), 10);
 
-/** Fail fast on env vars that are required for correct operation. */
-function requireEnv(key: string): string {
-  const value = process.env[key];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${key}`);
-  }
-  return value;
-}
-
 export const config = {
   jwtIssuer:   process.env['JWT_ISSUER']   || 'devops-platform',
   mfaAppName:  process.env['MFA_APP_NAME'] || 'DevOps Platform',
-  frontendUrl: requireEnv('FRONTEND_URL'),
+  frontendUrl: process.env['FRONTEND_URL'] || 'http://localhost:3000',
   isProd:      process.env['NODE_ENV'] === 'production',
   expiry: {
     emailVerification: int('EXPIRY_EMAIL_VERIFICATION', 86_400),   // 24 h

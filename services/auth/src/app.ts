@@ -10,10 +10,14 @@ import pino from 'pino';
 // ── Plugins ───────────────────────────────────────────────────────────────────
 import { jwtPlugin }       from './plugins/jwt';
 import { oauth2Plugin }    from './plugins/oauth2';
-import { messagingPlugin } from './plugins/messaging';
+import { kafkaPlugin }     from './plugins/kafka';
 import { redisPlugin }     from './plugins/redis';
 import { outboxPlugin }    from './plugins/outbox';
 import { metricsPlugin }   from './plugins/metrics';
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+import { prisma }                  from './utils/db';
+import { registerHealthChecks }    from './utils/health';
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 import { accountRoutes } from './routes/account';
@@ -61,10 +65,13 @@ export function buildApp(obs: ObservabilityConfig) {
 
   fastify.register(jwtPlugin);
   fastify.register(oauth2Plugin);
-  fastify.register(messagingPlugin);
+  fastify.register(kafkaPlugin);
   fastify.register(redisPlugin);
   fastify.register(outboxPlugin);
   fastify.register(metricsPlugin);
+
+  // ── Health checks (after infrastructure plugins, before routes) ─────────────
+  registerHealthChecks(fastify as any, prisma);
 
   // ── Routes ──────────────────────────────────────────────────────────────────
 

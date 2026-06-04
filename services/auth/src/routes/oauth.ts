@@ -131,7 +131,7 @@ async function findOrCreateOAuthUser(
 
   // Emit registration event (fire-and-forget — don't fail the login if Kafka is down).
   try {
-    await fastify.messaging.emit(
+    await fastify.kafka.emit(
       new UserRegisteredEvent({ userId: user.id, email: user.email, name: user.name }),
     );
   } catch (err) {
