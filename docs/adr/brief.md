@@ -9,7 +9,7 @@ first we have the monorepo setup with turborepo which might feel complex now but
 we are using nextjs fourteen with react server components because it gives us the fastest possible page loads for the challenge descriptions while keeping the interactive parts like the monaco editor FAASt for the user
 
 3 important
-the core of the app is the event driven spine using kafka and rabbitmq which is our biggest shift from a standard app architecture we use rabbitmq for the sandbox jobs because it is push based and broker driven which means it is perfect for distributing heavy work across our go workers and it handles failures gracefully if a worker dies mid job rabbitmq will just give that job to another worker automatically
+the core of the app is the event driven spine using kafka which is our biggest shift from a standard app architecture we use kafka for everything including sandbox session lifecycle because consumer groups give us the same reliable work queue semantics we would get from a dedicated task queue while also letting us replay events and decouple services kafka handles distributing heavy work across our go workers and if a worker dies mid job the consumer group rebalances and another worker picks it up
 
 kafka is our source of truth for everything that has already happened once a challenge is solved kafka broadcasts that fact to the entire system so the progress service the notification service and the leaderboard all update at their own pace without ever slowing down the main user experience this decoupling is how we stay fast even when our backend services are under heavy load
 
@@ -27,7 +27,7 @@ this is not just a learning platform. setup is tough but it gives us the power t
 
 
 
-you might wonder why we are using both rabbitmq and kafka when we usually just stick to direct api calls in our other projects the reason is scale and reliability at the engineering level.
+you might wonder why we are using kafka instead of direct api calls in our other projects the reason is scale and reliability at the engineering level.
 
 this does work theres millions of spring , crud codebases like that in production right now,
 
@@ -35,7 +35,7 @@ this does work theres millions of spring , crud codebases like that in productio
  
  like we know everything is buil around failure in cloud , everything is assumed to fail, ephemeral and you have to design the system around it .
 
-  rabbitmq gives us a solid guarantee that every single sandbox job will be processed exactly as it should be even if a server restarts whereas kafka lets us build a truly decoupled system where new features like a leaderboard or an email service can be added later without ever touching the core code this is a professional engineering standard that you only see in high traffic production systems which is why we are implementing it now to ensure our platform is unbreakable from day one even if we reach tens of thousands of users simultaneously which is something a standard monolith simply cannot do without failing completely
+  kafka consumer groups give us a solid guarantee that every single sandbox job will be processed exactly as it should be even if a server restarts because uncommitted offsets are redelivered while also letting us build a truly decoupled system where new features like a leaderboard or an email service can be added later without ever touching the core code this is a professional engineering standard that you only see in high traffic production systems which is why we are implementing it now to ensure our platform is unbreakable from day one even if we reach tens of thousands of users simultaneously which is something a standard monolith simply cannot do without failing completely
 
 
   its fine to not know any of these. we will learn asa we go . the point of this is not to teach us how to write a yaml file , but it is about trying to understand real painpoints when something starts to scale and the importance of architecture . 

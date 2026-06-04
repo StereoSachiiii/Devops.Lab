@@ -49,6 +49,7 @@ export const metricsPlugin = fp(async (fastify: FastifyInstance) => {
   // Expose Prometheus scrape endpoint.
   fastify.get('/metrics', async (_request, reply) => {
     const metrics = await registry.metrics();
+    
     return reply
       .header('Content-Type', registry.contentType)
       .send(metrics);

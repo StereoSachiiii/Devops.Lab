@@ -2,12 +2,7 @@ import fp from 'fastify-plugin';
 import type { FastifyInstance } from 'fastify';
 import oauth2 from '@fastify/oauth2';
 
-/**
- * OAuth2 provider plugin.
- *
- * Registers GitHub and Google OAuth2 strategies so the callback routes in
- * `routes/oauth.ts` can exchange authorization codes for access tokens.
- */
+
 export const oauth2Plugin = fp(async (fastify: FastifyInstance) => {
   const required = (key: string): string => {
     const v = process.env[key];
@@ -17,7 +12,6 @@ export const oauth2Plugin = fp(async (fastify: FastifyInstance) => {
 
   const baseUrl = required('BASE_URL');
 
-  // ── GitHub ──────────────────────────────────────────────────────────────────
   await fastify.register(oauth2, {
     name: 'github',
     credentials: {
@@ -32,7 +26,6 @@ export const oauth2Plugin = fp(async (fastify: FastifyInstance) => {
     scope:             ['user:email'],
   });
 
-  // ── Google ──────────────────────────────────────────────────────────────────
   await fastify.register(oauth2, {
     name: 'google',
     credentials: {
