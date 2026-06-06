@@ -44,18 +44,18 @@ export function ChallengeCard({
         ))}
       </div>
 
-      <div className="flex items-center justify-between mt-auto pt-2 border-t border-neutral-800">
+      <div className="flex flex-wrap items-center justify-between gap-2 mt-auto pt-2 border-t border-neutral-800">
         <div className="flex gap-3 text-xs">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <BarChart size={14} />
             <span>{xp} XP</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <Clock size={14} />
             <span>{timeEstimate}</span>
           </div>
         </div>
-        <Link href={`/challenges/${id}`} className="border border-neutral-700 px-3 py-1 text-xs">
+        <Link href={`/challenges/${id}`} className="border border-neutral-700 px-3 py-1 text-xs shrink-0 hover:bg-neutral-50 transition-colors">
           SOLVE →
         </Link>
       </div>
