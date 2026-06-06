@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { 
   BookOpen, 
   CheckCircle, 
@@ -60,6 +61,7 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
 
 export default function QuizzesPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const { data, error, isLoading, mutate } = useSWR<{ quizzes: DBQuizNode[] }>(
     "/api/content/quizzes",
     () => apiClient.get<{ quizzes: DBQuizNode[] }>("/api/content/quizzes")
@@ -81,6 +83,10 @@ export default function QuizzesPage() {
   const [finalScore, setFinalScore] = useState<{ score: number; total: number } | null>(null);
 
   const handleStartQuiz = (quiz: DBQuizNode) => {
+    if (!user) {
+      router.push("/login");
+      return;
+    }
     setActiveQuiz(quiz);
     setCurrentQuestionIndex(0);
     setSelectedOption(null);

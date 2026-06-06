@@ -4,16 +4,10 @@ import React, { createContext, useContext, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import useSWR from "swr";
 import { apiClient } from "@/lib/apiClient";
+import { API_ROUTES } from "@/lib/api-routes";
+import { getPageType } from "@/lib/utils";
 
-interface UserSession {
-  id: string;
-  email: string;
-  name: string | null;
-  role: string;
-  xp: number;
-  emailVerified: string | null;
-  mfaEnabled: boolean;
-}
+import type { UserSession } from "@/lib/api-types";
 
 interface AuthContextType {
   user: UserSession | null;
@@ -27,28 +21,20 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const authPages = ["/login", "/register", "/forgot-password", "/reset-password", "/verify-email"];
-  // When `pathname` is temporarily empty during the very first client render,
-  // don't block the UI (it should be non-auth pages only).
-  const isAuthPage = pathname ? authPages.some((p) => pathname.startsWith(p)) : true;
-  const meKey = isAuthPage ? null : "/api/auth/me";
 
-  const [authBootTimedOut, setAuthBootTimedOut] = React.useState(false);
-  const { data: user, error, isLoading, mutate } = useSWR<UserSession>(
-    meKey,
-    () => apiClient.get<UserSession>("/api/auth/me"),
+  const { isAuthPage, isProtectedPage } = getPageType(pathname);
+
+  const { data: user, error, isLoading: isSwrLoading, mutate } = useSWR<UserSession>(
+    API_ROUTES.auth.me,
+    () => apiClient.get<UserSession>(API_ROUTES.auth.me),
     {
       shouldRetryOnError: false,
-      revalidateOnFocus: true,
-      loadingTimeout: 10000,
-      onLoadingSlow: () => setAuthBootTimedOut(true),
-      onSuccess: () => setAuthBootTimedOut(false),
-      onError: () => setAuthBootTimedOut(false),
+      revalidateOnFocus: false,
     }
   );
-  // Never block rendering on auth pages; users should always see login/register UI
-  // even if auth bootstrap or backend is slow/unreachable.
-  const shouldBlockOnAuth = !isAuthPage && isLoading && !authBootTimedOut;
+  
+  const isLoading = isSwrLoading && !error && !user;
+  const shouldBlockOnAuth = isProtectedPage && isLoading;
 
   const logout = async () => {
     try {
@@ -61,14 +47,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    if (shouldBlockOnAuth) return;
+    if (isLoading) return;
 
-    if (!user && !isAuthPage) {
+    if (!user && isProtectedPage) {
       router.push("/login");
     } else if (user && isAuthPage) {
       router.push("/");
     }
-  }, [user, shouldBlockOnAuth, pathname, router, isAuthPage]);
+  }, [user, isLoading, isProtectedPage, isAuthPage, router]);
 
   const value = {
     user: user || null,
@@ -81,9 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return <div className="p-8">Loading...</div>;
   }
 
-  if (error) {
-    console.warn("Auth bootstrap fallback:", error);
-  }
+  // Suppress auth fallback errors in the console to keep it clean.
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
