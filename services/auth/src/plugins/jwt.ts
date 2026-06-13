@@ -3,19 +3,17 @@ import type { FastifyInstance } from 'fastify';
 import jwt from '@fastify/jwt';
 import cookie from '@fastify/cookie';
 
-/**
- * JWT + Cookie plugin.
- *
- * Reads RSA key-pair from environment, registers @fastify/jwt (RS256, 15-min
- * access tokens) and @fastify/cookie, and exposes `fastify.jwtPublicKey` so
- * other services can verify tokens issued by this one.
- */
+// bind this plugin to NOT lexical context
 export const jwtPlugin = fp(async (fastify: FastifyInstance) => {
   await fastify.register(cookie);
 
+
+  // shouldnt leak cant be set to module scope
   const privateKey = process.env['JWT_PRIVATE_KEY'];
   const publicKey  = process.env['JWT_PUBLIC_KEY'];
 
+
+  // I do not want this to continue running if the keys are missing
   if (!privateKey || !publicKey) {
     fastify.log.error(
       { hasPrivate: Boolean(privateKey), hasPublic: Boolean(publicKey) },

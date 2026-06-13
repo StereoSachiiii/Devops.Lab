@@ -6,90 +6,203 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/segmentio/kafka-go"
 )
 
 const (
-	TopicChallengeSolved = "curriculum.challenge.solved"
-	TopicChallengeFailed = "curriculum.challenge.failed"
+	TopicSessionStarted = "sandbox.session.started"
+	TopicSessionEnded   = "sandbox.session.ended"
 )
 
-// ChallengeResultEvent is published to Kafka after sandbox execution completes.
-// Consumed by: progress-service, notification-service, leaderboard.
-type ChallengeResultEvent struct {
-	SubmissionID  string `json:"submissionId"`
-	ChallengeID   string `json:"challengeId"`
-	UserID        string `json:"userId"`
-	Passed        bool   `json:"passed"`
-	Stdout        string `json:"stdout"`
-	Stderr        string `json:"stderr"`
-	ExitCode      int    `json:"exitCode"`
-	DurationMs    int64  `json:"durationMs"`
-	Timestamp     string `json:"timestamp"`
-	CorrelationID string `json:"correlationId"`
-	Version       string `json:"version"`
+// SessionStartedJob is published when a user opens a lab.
+type SessionStartedJob struct {
+	SessionID   string `json:"sessionId"`
+	UserID      string `json:"userId"`
+	ChallengeID string `json:"challengeId"`
+	Image       string `json:"image"`
+	TTLMins     int    `json:"ttlMins"`
 }
 
-// KafkaProducer wraps kafka-go writer for publishing challenge result events.
-type KafkaProducer struct {
-	writer *kafka.Writer
-	log    *slog.Logger
+// SessionEndedJob is published when a user leaves or times out.
+type SessionEndedJob struct {
+	SessionID string `json:"sessionId"`
+	Reason    string `json:"reason"`
 }
 
-// NewKafkaProducer creates and connects a Kafka producer.
-func NewKafkaProducer(brokers, clientID string, log *slog.Logger) *KafkaProducer {
+// kafkaSessionEvent wraps the standard envelope.
+type kafkaSessionEvent struct {
+	Topic         string          `json:"topic"`
+	Version       string          `json:"version"`
+	Timestamp     string          `json:"timestamp"`
+	CorrelationID string          `json:"correlationId"`
+	Payload       json.RawMessage `json:"payload"`
+}
+
+// SessionHandlers bundles the callbacks for each event type.
+type SessionHandlers struct {
+	OnSessionStarted func(ctx context.Context, job SessionStartedJob) error
+	OnSessionEnded   func(ctx context.Context, job SessionEndedJob) error
+}
+
+// KafkaSessionConsumer consumes session lifecycle events from Kafka.
+// kafka-go ReaderConfig only supports a single topic, so we run one reader per topic.
+type KafkaSessionConsumer struct {
+	readers  []*kafka.Reader
+	producer *KafkaProducer
+	log      *slog.Logger
+}
+
+// NewKafkaSessionConsumer creates consumers for both session topics using the same consumer group.
+func NewKafkaSessionConsumer(brokers, groupID string, producer *KafkaProducer, log *slog.Logger) *KafkaSessionConsumer {
 	brokerList := strings.Split(brokers, ",")
 
-	writer := &kafka.Writer{
-		Addr:                   kafka.TCP(brokerList...),
-		Balancer:               &kafka.LeastBytes{},
-		AllowAutoTopicCreation: true, // fine for dev; disable in production with managed Kafka
-		WriteTimeout:           10 * time.Second,
-		ReadTimeout:            10 * time.Second,
-		Logger:                 kafka.LoggerFunc(func(msg string, args ...interface{}) {
-			log.Debug(fmt.Sprintf(msg, args...))
-		}),
-	}
+	logger := kafka.LoggerFunc(func(msg string, args ...interface{}) {
+		log.Debug(fmt.Sprintf(msg, args...))
+	})
 
-	log.Info("📨 Kafka producer initialized", "brokers", brokers)
-	return &KafkaProducer{writer: writer, log: log}
+	startedReader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: brokerList,
+		GroupID: groupID,
+		Topic:   TopicSessionStarted,
+		Logger:  logger,
+	})
+
+	endedReader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: brokerList,
+		GroupID: groupID,
+		Topic:   TopicSessionEnded,
+		Logger:  logger,
+	})
+
+	return &KafkaSessionConsumer{
+		readers:  []*kafka.Reader{startedReader, endedReader},
+		producer: producer,
+		log:      log,
+	}
 }
 
-// EmitResult publishes a ChallengeResultEvent to the appropriate topic.
-// topic is either TopicChallengeSolved or TopicChallengeFailed.
-func (k *KafkaProducer) EmitResult(ctx context.Context, topic string, event ChallengeResultEvent) error {
-	event.Timestamp = time.Now().UTC().Format(time.RFC3339)
-	event.Version = "1.0.0"
-	if event.CorrelationID == "" {
-		event.CorrelationID = event.SubmissionID // use submissionId as correlation key
+// Consume starts consumer loops for both topics. Blocks until ctx is cancelled.
+func (c *KafkaSessionConsumer) Consume(ctx context.Context, h SessionHandlers) error {
+	c.log.Info("Kafka session consumer started",
+		"topics", fmt.Sprintf("%s, %s", TopicSessionStarted, TopicSessionEnded))
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(c.readers))
+
+	for _, r := range c.readers {
+		wg.Add(1)
+		go func(reader *kafka.Reader) {
+			defer wg.Done()
+			if err := c.consumeLoop(ctx, reader, h); err != nil {
+				errCh <- err
+			}
+		}(r)
 	}
 
-	payload, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("kafka: marshal failed: %w", err)
-	}
+	wg.Wait()
+	close(errCh)
 
-	msg := kafka.Message{
-		Topic: topic,
-		Key:   []byte(event.SubmissionID),
-		Value: payload,
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
 	}
-
-	if err := k.writer.WriteMessages(ctx, msg); err != nil {
-		return fmt.Errorf("kafka: write to %s failed: %w", topic, err)
-	}
-
-	k.log.Info("📤 Event published to Kafka",
-		"topic", topic,
-		"submissionId", event.SubmissionID,
-		"passed", event.Passed,
-	)
 	return nil
 }
 
-// Close shuts down the Kafka writer.
-func (k *KafkaProducer) Close() error {
-	return k.writer.Close()
+func (c *KafkaSessionConsumer) consumeLoop(ctx context.Context, reader *kafka.Reader, h SessionHandlers) error {
+	topic := reader.Config().Topic
+	for {
+		msg, err := reader.FetchMessage(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				c.log.Info("Session consumer shutting down", "topic", topic)
+				return nil
+			}
+			return fmt.Errorf("kafka: fetch failed on %s: %w", topic, err)
+		}
+
+		var wrapper kafkaSessionEvent
+		if err := json.Unmarshal(msg.Value, &wrapper); err != nil {
+			c.log.Error("Could not parse session event — skipping", "error", err, "topic", msg.Topic)
+			if c.producer != nil {
+				_ = c.producer.EmitDLQ(ctx, topic, msg.Key, msg.Value)
+			}
+			_ = reader.CommitMessages(ctx, msg)
+			continue
+		}
+
+		maxRetries := 3
+		success := false
+		backoff := time.Second
+
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			var handlerErr error
+			switch topic {
+			case TopicSessionStarted:
+				var job SessionStartedJob
+				if err := json.Unmarshal(wrapper.Payload, &job); err != nil {
+					handlerErr = fmt.Errorf("parse SessionStartedJob: %w", err)
+				} else {
+					handlerErr = h.OnSessionStarted(ctx, job)
+				}
+
+			case TopicSessionEnded:
+				var job SessionEndedJob
+				if err := json.Unmarshal(wrapper.Payload, &job); err != nil {
+					handlerErr = fmt.Errorf("parse SessionEndedJob: %w", err)
+				} else {
+					handlerErr = h.OnSessionEnded(ctx, job)
+				}
+
+			default:
+				c.log.Warn("Unknown session event topic", "topic", topic)
+				success = true // Just skip it
+			}
+
+			if handlerErr == nil {
+				success = true
+				break
+			}
+
+			c.log.Error("Handler failed", "topic", topic, "attempt", attempt, "max", maxRetries, "error", handlerErr)
+			
+			if attempt < maxRetries {
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(backoff):
+				}
+				backoff *= 2
+				if backoff > 30*time.Second {
+					backoff = 30 * time.Second
+				}
+			}
+		}
+
+		if !success {
+			c.log.Warn("Message failed after max retries, routing to DLQ", "topic", topic)
+			if c.producer != nil {
+				if err := c.producer.EmitDLQ(ctx, topic, msg.Key, msg.Value); err != nil {
+					c.log.Error("CRITICAL: Failed to publish to DLQ, skipping commit to retry later", "error", err)
+					continue // Loop without committing, forcing a retry on the DLQ publish later
+				}
+			}
+		}
+
+		_ = reader.CommitMessages(ctx, msg)
+	}
+}
+
+// Close shuts down all Kafka readers.
+func (c *KafkaSessionConsumer) Close() error {
+	for _, r := range c.readers {
+		if err := r.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
 }

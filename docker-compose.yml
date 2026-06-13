@@ -21,6 +21,40 @@ services:
       timeout: 10s
       retries: 5
 
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: redpanda-init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        BROKERS="redpanda:9092"
+
+        create_topic() {
+          local name=$1 partitions=$2 retention_ms=$3
+          rpk topic create $$name \
+            --brokers $$BROKERS \
+            --partitions $$partitions \
+            --replicas 1 \
+            --topic-config retention.ms=$$retention_ms \
+            --topic-config cleanup.policy=delete \
+            2>&1 | grep -v "TOPIC_ALREADY_EXISTS" || true
+          echo "Topic ready: $$name (partitions=$$partitions, retention=$${retention_ms}ms)"
+        }
+
+        # Domain events (Kafka) — high partition count for parallel consumers, 7-day retention
+        create_topic identity.user.registered           4  604800000
+        create_topic identity.email.verification        4  604800000
+        create_topic sandbox.session.started            8  604800000
+        create_topic sandbox.session.ended              8  604800000
+        create_topic sandbox.challenge.solved           4  604800000
+        create_topic sandbox.challenge.failed           4  604800000
+
+        echo "All Kafka topics provisioned."
+
   console:
     image: docker.redpanda.com/redpandadata/console:latest
     container_name: redpanda-console
@@ -37,22 +71,6 @@ services:
       redpanda:
         condition: service_healthy
 
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq
-    ports:
-      - "5672:5672"    # AMQP
-      - "15672:15672"  # Management UI
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    healthcheck:
-      test: ["CMD", "rabbitmqctl", "status"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -62,6 +80,18 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
       retries: 5
 
   sandbox-worker:
@@ -75,10 +105,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       HTTP_PORT: "8090"
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      SESSION_QUEUE: sandbox.sessions
       KAFKA_BROKERS: redpanda:9092
       KAFKA_CLIENT_ID: sandbox-worker
+      KAFKA_GROUP_ID: sandbox-sessions
       REDIS_URL: redis://redis:6379
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_PUBLIC_KEY}
@@ -86,12 +115,13 @@ services:
       MAX_MEMORY_MB: "512"
       MAX_CPUS: "1.0"
       DOCKER_NETWORK_MODE: "none"
+      RABBITMQ_URL: amqp://rabbitmq:5672
     depends_on:
-      rabbitmq:
-        condition: service_healthy
-      redpanda:
-        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
     profiles:

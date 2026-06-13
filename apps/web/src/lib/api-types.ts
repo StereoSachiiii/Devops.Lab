@@ -50,6 +50,8 @@ export interface UserSession {
   xp: number;
   emailVerified: string | null;
   mfaEnabled: boolean;
+  mfaRequired?: boolean;
+  mfaToken?: string;
 }
 
 export interface Challenge {

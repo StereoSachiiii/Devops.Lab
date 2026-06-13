@@ -26,30 +26,18 @@ type DockerProvider struct {
 	log         *slog.Logger
 }
 
-// NewDockerProvider connects to the local Docker daemon.
+// NewDockerProvider connects to the local Docker daemon and returns a provider
+// that uses the standard (insecure) runc runtime.
 func NewDockerProvider(networkMode string, memoryMB int, maxCPUs float64, log *slog.Logger) (*DockerProvider, error) {
+	return newDockerProviderWithRuntime(networkMode, memoryMB, maxCPUs, "", log)
+}
+
+// newDockerProviderWithRuntime connects to the local Docker daemon and uses the specified runtime.
+// Used internally by explicit providers (like kata.go, gvisor.go).
+func newDockerProviderWithRuntime(networkMode string, memoryMB int, maxCPUs float64, runtime string, log *slog.Logger) (*DockerProvider, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("docker: client init failed: %w", err)
-	}
-
-	runtime := ""
-	info, err := cli.Info(context.Background())
-	if err == nil {
-		if _, ok := info.Runtimes["kata-fc"]; ok {
-			runtime = "kata-fc"
-			log.Info("Kata Containers Firecracker runtime 'kata-fc' detected and enabled for secure sandboxing")
-		} else if _, ok := info.Runtimes["kata-qemu"]; ok {
-			runtime = "kata-qemu"
-			log.Info("Kata Containers QEMU runtime 'kata-qemu' detected and enabled for secure sandboxing")
-		} else if _, ok := info.Runtimes["runsc"]; ok {
-			runtime = "runsc"
-			log.Info("gVisor runtime 'runsc' detected and enabled for secure sandboxing")
-		} else {
-			log.Warn("Secure runtime (kata-fc, kata-qemu, runsc) not found in Docker. Falling back to default runtime (insecure).")
-		}
-	} else {
-		log.Warn("Failed to query Docker info for runtimes. Falling back to default runtime.", "error", err)
 	}
 
 	return &DockerProvider{
@@ -163,14 +151,14 @@ func (d *DockerProvider) ExecInteractive(ctx context.Context, containerID string
 	}
 
 	// Set initial terminal size
-	_ = d.client.ContainerExecResize(ctx, execID.ID, dtypes.ResizeOptions{
+	_ = d.client.ContainerExecResize(ctx, execID.ID, container.ResizeOptions{
 		Width:  uint(cols),
 		Height: uint(rows),
 	})
 
 	// ResizeFunc lets the WebSocket handler resize the PTY when the browser window changes
 	resizeFn := func(newCols, newRows uint) error {
-		return d.client.ContainerExecResize(ctx, execID.ID, dtypes.ResizeOptions{
+		return d.client.ContainerExecResize(ctx, execID.ID, container.ResizeOptions{
 			Width:  uint(newCols),
 			Height: uint(newRows),
 		})

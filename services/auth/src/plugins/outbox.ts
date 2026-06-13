@@ -12,8 +12,7 @@ export const outboxPlugin = fp(async (fastify: FastifyInstance) => {
   const processOutbox = async () => {
     if (processing) return;
 
-    // Safety check: Don't process if messaging isn't initialized yet
-    if (!fastify.messaging || !fastify.messaging.isProducerReady) {
+    if (!fastify.kafka || !fastify.kafka.isProducerReady) {
       return;
     }
 
@@ -37,14 +36,13 @@ export const outboxPlugin = fp(async (fastify: FastifyInstance) => {
 
         if (eventInstance) {
           try {
-            await fastify.messaging.emit(eventInstance);
+            await fastify.kafka.emit(eventInstance);
             await prisma.outboxEvent.update({
               where: { id: event.id },
               data: { processed: true },
             });
           } catch (err) {
             fastify.log.error({ err, eventId: event.id }, 'Failed to emit outbox event to Kafka');
-            // Break the loop if Kafka is down so we don't spam errors for the whole batch
             break; 
           }
         } else {

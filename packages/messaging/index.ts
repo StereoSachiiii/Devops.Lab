@@ -1,3 +1,3 @@
 export * from './kafka';
-export * from './rabbitmq';
 export * from './types';
+export * from './rabbitmq';

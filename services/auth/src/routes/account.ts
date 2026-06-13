@@ -16,7 +16,7 @@ import {
 
 const tracer = trace.getTracer('auth-service');
 
-// ─── Schemas ──────────────────────────────────────────────────────────────────
+//  Schemas 
 
 const RegisterSchema = Type.Object({
   email:    Type.String({ format: 'email' }),
@@ -51,9 +51,16 @@ const ChangePasswordSchema = Type.Object({
   newPassword:     Type.String({ minLength: 8 }),
 });
 
-// ─── Internal helpers ─────────────────────────────────────────────────────────
+//  Internal helpers 
 
 /** Increment failed-login counter; lock the account when the limit is hit. */
+/**
+ * 
+ * @param fastify 
+ * @param request 
+ * @param email 
+ * @param userId 
+ */
 async function handleLoginFail(
   fastify: FastifyInstance,
   request: FastifyRequest,
@@ -78,50 +85,14 @@ async function handleLoginFail(
   });
 }
 
-// ─── Route registration ───────────────────────────────────────────────────────
 
 export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
 
-  // ── Readiness probe ──────────────────────────────────────────────────────────
-  // Checks that every dependency the auth service needs is reachable.
-  // Docker Compose healthcheck / K8s readinessProbe can both hit this.
-
-  fastify.get('/health', async (_req, reply) => {
-    const checks: Record<string, 'up' | 'down'> = {};
-
-    try {
-      await fastify.redis.ping();
-      checks['redis'] = 'up';
-    } catch {
-      checks['redis'] = 'down';
-    }
-
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      checks['db'] = 'up';
-    } catch {
-      checks['db'] = 'down';
-    }
-
-    const allUp = Object.values(checks).every((v) => v === 'up');
-
-    if (!allUp) reply.status(503);
-
-    return {
-      status:    allUp ? 'ok' : 'degraded',
-      service:   'auth-service',
-      checks,
-      timestamp: new Date().toISOString(),
-    };
-  });
-
-  // ── Public key (for other services to verify JWTs) ──────────────────────────
 
   fastify.get('/public-key', async () => ({
     publicKey: fastify.jwtPublicKey,
   }));
 
-  // ── Register ────────────────────────────────────────────────────────────────
 
   fastify.post(
     '/register',
@@ -135,7 +106,7 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
           if (await prisma.user.findUnique({ where: { email } })) {
             span.setAttribute('auth.outcome', 'user_exists');
             fastify.log.info({ email }, 'Register failed: user exists');
-            fastify.metrics.registerCounter.inc({ outcome: 'user_exists' });
+            fastify.metrics.registerCounter.inc({ outcome: 'user_exists' }); //this is fast because only increments the counter in memory control blockl and then metrics endpoint scrapes later (can be synchronous)
             return errorReply(reply, 400, 'USER_EXISTS', 'User already exists');
           }
 
@@ -190,7 +161,6 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  // ── Login ───────────────────────────────────────────────────────────────────
 
   fastify.post(
     '/login',

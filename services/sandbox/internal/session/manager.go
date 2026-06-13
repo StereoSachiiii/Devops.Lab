@@ -12,9 +12,9 @@ import (
 )
 
 // Manager is the control plane for all active sessions.
-// It owns the mapping of sessionID → containerID and delegates to Docker.
+// It owns the mapping of sessionID → containerID and delegates to the SandboxProvider.
 type Manager struct {
-	docker   sandbox.SandboxProvider
+	provider sandbox.SandboxProvider
 	redis    *store.RedisStore
 	ttl      time.Duration
 	log      *slog.Logger
@@ -27,9 +27,9 @@ type Manager struct {
 
 // NewManager creates a Manager and re-adopts any sessions already in Redis
 // (handles Go service restart without orphaning running containers).
-func NewManager(docker sandbox.SandboxProvider, redis *store.RedisStore, ttlMins int, log *slog.Logger) (*Manager, error) {
+func NewManager(provider sandbox.SandboxProvider, redis *store.RedisStore, ttlMins int, log *slog.Logger) (*Manager, error) {
 	m := &Manager{
-		docker:   docker,
+		provider: provider,
 		redis:    redis,
 		ttl:      time.Duration(ttlMins) * time.Minute,
 		log:      log,
@@ -45,7 +45,7 @@ func NewManager(docker sandbox.SandboxProvider, redis *store.RedisStore, ttlMins
 
 	for _, s := range existing {
 		m.sessions[s.SessionID] = s
-		log.Info("Re-adopted session from Redis", "sessionId", s.SessionID, "containerID", s.ContainerID[:12])
+		m.log.Info("Re-adopted session from Redis", "sessionId", s.SessionID, "containerID", truncateID(s.ContainerID, 12))
 	}
 
 	return m, nil
@@ -68,7 +68,7 @@ func (m *Manager) Create(ctx context.Context, sessionID, userID, challengeID, im
 		"userId", userID,
 	)
 
-	containerID, err := m.docker.Provision(ctx, image)
+	containerID, err := m.provider.Provision(ctx, image)
 	if err != nil {
 		return nil, fmt.Errorf("session create: provision failed: %w", err)
 	}
@@ -85,12 +85,12 @@ func (m *Manager) Create(ctx context.Context, sessionID, userID, challengeID, im
 	if err := m.redis.Save(ctx, data); err != nil {
 		// Best-effort: container is running, but we couldn't save to Redis.
 		// Clean up the container to avoid an orphan.
-		_ = m.docker.Remove(ctx, containerID)
+		_ = m.provider.Remove(ctx, containerID)
 		return nil, fmt.Errorf("session create: redis save failed: %w", err)
 	}
 
 	m.sessions[sessionID] = data
-	m.log.Info("✅ Session created", "sessionId", sessionID, "containerID", containerID[:12])
+	m.log.Info("✅ Session created", "sessionId", sessionID, "containerID", truncateID(containerID, 12))
 	return &data, nil
 }
 
@@ -131,10 +131,10 @@ func (m *Manager) Destroy(ctx context.Context, sessionID string) error {
 		return nil
 	}
 
-	m.log.Info("Destroying session", "sessionId", sessionID, "containerID", data.ContainerID[:12])
+	m.log.Info("Destroying session", "sessionId", sessionID, "containerID", truncateID(data.ContainerID, 12))
 
 	// Remove container (best-effort — don't fail if already gone)
-	if err := m.docker.Remove(ctx, data.ContainerID); err != nil {
+	if err := m.provider.Remove(ctx, data.ContainerID); err != nil {
 		m.log.Warn("Container remove failed during destroy", "error", err)
 	}
 
@@ -163,4 +163,13 @@ func (m *Manager) AllActive() []store.SessionData {
 		sessions = append(sessions, s)
 	}
 	return sessions
+}
+
+// truncateID returns the first n characters of id, or the whole string if shorter.
+// Used for logging — container IDs and VM UIDs can be long.
+func truncateID(id string, n int) string {
+	if len(id) <= n {
+		return id
+	}
+	return id[:n]
 }

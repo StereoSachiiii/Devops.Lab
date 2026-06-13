@@ -2,9 +2,6 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { PrismaClient } from '@devops/db';
 import crypto from 'crypto';
 
-// ─── JWT type augmentation ────────────────────────────────────────────────────
-// Declared here because this file defines the token shape used across all routes.
-
 declare module 'fastify' {
   interface FastifyInstance {
     jwtPublicKey: string;
@@ -24,24 +21,14 @@ declare module '@fastify/jwt' {
   }
 }
 
-// ─── Configuration ────────────────────────────────────────────────────────────
 
 const int = (key: string, fallback: number): number =>
   parseInt(process.env[key] || String(fallback), 10);
 
-/** Fail fast on env vars that are required for correct operation. */
-function requireEnv(key: string): string {
-  const value = process.env[key];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${key}`);
-  }
-  return value;
-}
-
 export const config = {
   jwtIssuer:   process.env['JWT_ISSUER']   || 'devops-platform',
   mfaAppName:  process.env['MFA_APP_NAME'] || 'DevOps Platform',
-  frontendUrl: requireEnv('FRONTEND_URL'),
+  frontendUrl: process.env['FRONTEND_URL'] || 'http://localhost:3000',
   isProd:      process.env['NODE_ENV'] === 'production',
   expiry: {
     emailVerification: int('EXPIRY_EMAIL_VERIFICATION', 86_400),   // 24 h
@@ -66,7 +53,6 @@ export const cookieOpts = {
   secure:   config.isProd,
 };
 
-// ─── Token helpers ────────────────────────────────────────────────────────────
 
 /** Sign a 15-minute JWT access token for the given user. */
 export function signAccessToken(
@@ -119,14 +105,12 @@ export async function createSession(
     });
 }
 
-/** Clear token + refreshToken cookies. */
 export function clearSessionCookies(reply: FastifyReply): FastifyReply {
   return reply
     .clearCookie('token',        { path: '/' })
     .clearCookie('refreshToken', { path: '/' });
 }
 
-/** Delete all stored refresh tokens for a user (forces re-login everywhere). */
 export async function invalidateAllSessions(
   fastify: FastifyInstance,
   userId: string,
@@ -135,10 +119,7 @@ export async function invalidateAllSessions(
   if (keys.length > 0) await fastify.redis.del(...keys);
 }
 
-/**
- * Parse and validate a refresh token cookie.
- * Returns the user ID and Redis key on success, or null on malformed input.
- */
+
 export function parseRefreshToken(raw: string | undefined): {
   userId: string;
   redisKey: string;
@@ -187,7 +168,6 @@ export function logSecurityEvent(
   });
 }
 
-// ─── Structured error reply ───────────────────────────────────────────────────
 
 /** Send a structured error response with a stable machine-readable code. */
 export function errorReply(
