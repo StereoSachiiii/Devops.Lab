@@ -1,5 +1,6 @@
 import { Kafka, Producer, Consumer, logLevel } from 'kafkajs';
 import { EventClassMap, GroupId, BaseEvent } from './types';
+import { context, propagation, trace } from '@opentelemetry/api';
 
 export class MessagingService {
   private kafka: Kafka;
@@ -14,7 +15,6 @@ export class MessagingService {
     });
   }
 
-  /** Whether the Kafka producer has been initialized and is ready. */
   get isProducerReady(): boolean {
     return this.producer !== null;
   }
@@ -28,13 +28,24 @@ export class MessagingService {
   }
 
   /**
-   * Emit an event class instance
+   * Emit an event class instance. Injects the active OpenTelemetry span context
+   * as a W3C 'traceparent' Kafka message header so consumers can continue the trace.
    */
   async emit<T>(event: BaseEvent<T>): Promise<void> {
     if (!this.producer) {
       console.warn(`[Kafka] emit skipped - producer not initialized (topic=${event.topic})`);
       return;
     }
+
+    // Inject the current span context into a carrier object as W3C traceparent/tracestate headers
+    const carrier: Record<string, string> = {};
+    propagation.inject(context.active(), carrier);
+
+    const headers: Record<string, string> = {
+      'correlation-id': event.correlationId,
+      'content-type': 'application/json',
+      ...carrier, // adds 'traceparent' and optionally 'tracestate'
+    };
 
     try {
       await this.producer.send({
@@ -43,6 +54,7 @@ export class MessagingService {
           {
             key: event.correlationId,
             value: JSON.stringify(event),
+            headers,
           },
         ],
       });
@@ -52,7 +64,8 @@ export class MessagingService {
   }
 
   /**
-   * Type-safe consumption using the EventClassMap
+   * Type-safe consumption using the EventClassMap.
+   * Extracts the W3C traceparent from message headers to continue the distributed trace.
    */
   async consume<T extends keyof EventClassMap>(
     groupId: GroupId,
@@ -65,14 +78,49 @@ export class MessagingService {
 
     await consumer.run({
       eachMessage: async ({ message }) => {
-        try {
-          if (message.value) {
-            // We cast to the specific event class type
-            const event = JSON.parse(message.value.toString()) as EventClassMap[T];
-            await handler(event);
+        if (!message.value) return;
+        const maxRetries = 3;
+        const rawPayload = message.value.toString();
+        let success = false;
+
+        // Extract traceparent from headers to restore the distributed trace context
+        const carrier: Record<string, string> = {};
+        if (message.headers) {
+          for (const [key, val] of Object.entries(message.headers)) {
+            if (val) carrier[key] = Buffer.isBuffer(val) ? val.toString() : String(val);
           }
-        } catch (err) {
-          console.error(`[Messaging] Error processing topic ${topic}:`, err);
+        }
+        const parentCtx = propagation.extract(context.active(), carrier);
+        const span = trace.getTracer('messaging').startSpan(`consume:${topic}`, {}, parentCtx);
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            const event = JSON.parse(rawPayload) as EventClassMap[T];
+            await context.with(trace.setSpan(parentCtx, span), () => handler(event));
+            success = true;
+            break;
+          } catch (err) {
+            console.error(`[Messaging] Error processing topic ${topic} (attempt ${attempt}/${maxRetries}):`, err);
+            if (attempt < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+            }
+          }
+        }
+
+        span.end();
+
+        if (!success) {
+          console.warn(`[Messaging] Message failed after ${maxRetries} attempts, sending to DLQ: ${topic}.dlq`);
+          try {
+            const producer = await this.initProducer();
+            await producer.send({
+              topic: `${topic}.dlq`,
+              messages: [{ key: message.key, value: rawPayload }]
+            });
+          } catch (dlqErr) {
+            console.error(`[Messaging] CRITICAL: Failed to publish to DLQ for ${topic}`, dlqErr);
+            throw dlqErr;
+          }
         }
       },
     });

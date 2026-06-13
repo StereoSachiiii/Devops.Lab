@@ -2,8 +2,10 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { apiClient } from "@/lib/apiClient";
+import { useAuth } from "@/providers/AuthProvider";
 import { getErrorMessage } from "@/lib/errors";
 import Editor from "@monaco-editor/react";
 import { Cpu, BarChart, Clock, Shield, Play, CheckCircle, XCircle } from "lucide-react";
@@ -60,11 +62,13 @@ interface PageProps {
 
 export default function ChallengeWorkspacePage({ params }: PageProps) {
   const { id } = use(params);
+  const router = useRouter();
+  const { user } = useAuth();
 
   // Fetch challenge details
   const { data: challenge, error: challengeError, isLoading: challengeLoading } = useSWR<Challenge>(
-    id ? `/api/challenge/${id}` : null,
-    () => apiClient.get<Challenge>(`/api/challenge/${id}`)
+    id ? `/api/challenges/${id}` : null,
+    () => apiClient.get<Challenge>(`/api/challenges/${id}`)
   );
 
   const [session, setSession] = useState<Session | null>(null);
@@ -99,12 +103,16 @@ export default function ChallengeWorkspacePage({ params }: PageProps) {
   }, [id]);
 
   const startSession = async () => {
+    if (!user) {
+      router.push("/login");
+      return;
+    }
     if (!id) return;
     setIsStarting(true);
     setValidationError(null);
     setValidationResult(null);
     try {
-      const res = await apiClient.post<Session>(`/api/challenge/${id}/start`);
+      const res = await apiClient.post<Session>(`/api/challenges/${id}/start`);
       setSession(res);
       localStorage.setItem(`session_${id}`, JSON.stringify(res));
     } catch (err: unknown) {

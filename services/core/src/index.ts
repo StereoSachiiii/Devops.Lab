@@ -11,9 +11,8 @@ async function main() {
   const app = await buildApp({
     loggerOptions,
     stream,
+    shutdown,
     jwtPublicKey: process.env['JWT_PUBLIC_KEY'] ?? '',
-    rabbitMQUrl: process.env['RABBITMQ_URL'] ?? 'amqp://guest:guest@localhost:5672',
-    sessionQueue: process.env['SESSION_QUEUE'] ?? 'sandbox.sessions',
     sessionTTLMins: parseInt(process.env['SESSION_TTL_MINS'] ?? '60', 10),
   });
 
@@ -25,7 +24,6 @@ async function main() {
   }
 }
 
-// Graceful shutdown
 process.on('SIGTERM', () => shutdown());
 process.on('SIGINT', () => shutdown());
 

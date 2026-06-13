@@ -10,10 +10,19 @@ export const TOPICS = {
 
 export type Topic = typeof TOPICS[keyof typeof TOPICS];
 
+export const QUEUES = {
+  PROVISION_SANDBOX: 'provision.sandbox',
+  TERMINATE_SANDBOX: 'terminate.sandbox',
+  SEND_EMAIL: 'send.email',
+} as const;
+
+export type Queue = typeof QUEUES[keyof typeof QUEUES];
+
 export const GROUPS = {
   NOTIFICATIONS: 'group.notifications',
   PROGRESS: 'group.progress',
   ANALYTICS: 'group.analytics',
+  SANDBOX: 'group.sandbox',
 } as const;
 
 export type GroupId = typeof GROUPS[keyof typeof GROUPS];
@@ -76,15 +85,6 @@ export class ChallengeFailedEvent extends BaseEvent<{
 }
 
 
-export type EventClassMap = {
-  [TOPICS.USER_REGISTERED]: UserRegisteredEvent;
-  [TOPICS.EMAIL_VERIFICATION_REQUESTED]: EmailVerificationRequestedEvent;
-  [TOPICS.CHALLENGE_SOLVED]: ChallengeSolvedEvent;
-  [TOPICS.CHALLENGE_FAILED]: ChallengeFailedEvent;
-  [TOPICS.SESSION_STARTED]: SessionStartedEvent;
-  [TOPICS.SESSION_ENDED]: SessionEndedEvent;
-};
-
 export class SessionStartedEvent extends BaseEvent<{
   type: 'session.started';
   sessionId: string;
@@ -96,10 +96,26 @@ export class SessionStartedEvent extends BaseEvent<{
   readonly topic = TOPICS.SESSION_STARTED;
 }
 
+export enum SessionEndReason {
+  COMPLETED = 'completed',
+  TERMINATED = 'terminated',
+  EXPIRED = 'expired'
+}
+
 export class SessionEndedEvent extends BaseEvent<{
   type: 'session.ended';
   sessionId: string;
-  reason: 'user_left' | 'timeout' | 'completed';
+  reason: SessionEndReason;
 }> {
   readonly topic = TOPICS.SESSION_ENDED;
 }
+
+
+export type EventClassMap = {
+  [TOPICS.USER_REGISTERED]: UserRegisteredEvent;
+  [TOPICS.EMAIL_VERIFICATION_REQUESTED]: EmailVerificationRequestedEvent;
+  [TOPICS.CHALLENGE_SOLVED]: ChallengeSolvedEvent;
+  [TOPICS.CHALLENGE_FAILED]: ChallengeFailedEvent;
+  [TOPICS.SESSION_STARTED]: SessionStartedEvent;
+  [TOPICS.SESSION_ENDED]: SessionEndedEvent;
+};

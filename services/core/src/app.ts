@@ -1,58 +1,63 @@
 import Fastify, { FastifyRequest, FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
+import cookie from '@fastify/cookie';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
+import fastifyRedis from '@fastify/redis';
 import { PrismaClient } from '@devops/db';
-import { RabbitMQService, MessagingService } from '@devops/messaging';
-import type { MultiStreamRes, LoggerOptions } from 'pino';
+import { MessagingService, RabbitMQService } from '@devops/messaging';
+import type { ObservabilityConfig } from '@devops/observability';
+import pino from 'pino';
 import './types';
 
 import { nodeRoutes } from './modules/content/node.routes';
 import { quizRoutes } from './modules/content/quiz.routes';
 import { challengeRoutes } from './modules/challenge/challenge.routes';
 import { registerProgressConsumers } from './modules/progress/consumers';
-import { registerNotificationConsumers } from './modules/notification/consumers';
+import { registerHealthChecks } from './utils/health';
+import { metricsPlugin } from './plugins/metrics';
+import { startOutboxPoller } from './plugins/outbox-poller';
 
-export interface AppOptions {
-  loggerOptions: LoggerOptions;
-  stream: MultiStreamRes;
+export interface AppOptions extends ObservabilityConfig {
   jwtPublicKey: string;
-  rabbitMQUrl: string;
-  sessionQueue: string;
   sessionTTLMins: number;
 }
 
 export async function buildApp(opts: AppOptions) {
   const app = Fastify({
-    logger: opts.loggerOptions,
+    logger: pino(opts.loggerOptions, opts.stream as any),
   }).withTypeProvider<TypeBoxTypeProvider>();
+
+  await app.register(fastifyRedis, {
+    url: process.env.REDIS_URL || 'redis://redis:6379/0',
+  });
 
   await app.register(cors, { origin: true });
 
-  // ── JWT (public key only — core service verifies, never signs) ──
+  // Public key only — core verifies tokens, never signs
+  await app.register(cookie);
   await app.register(jwt, {
     secret: {
       private: '',
       public: opts.jwtPublicKey,
     },
     verify: { algorithms: ['RS256'] },
+    cookie: { cookieName: 'token', signed: false },
   });
 
-  // ── Database ──
   const prisma = new PrismaClient();
   app.decorate('prisma', prisma);
 
-  // ── RabbitMQ (session lifecycle commands → sandbox) ──
-  const rabbit = new RabbitMQService(opts.rabbitMQUrl);
-  app.decorate('rabbit', rabbit);
-  app.decorate('sessionQueue', opts.sessionQueue);
-  app.decorate('sessionTTLMins', opts.sessionTTLMins);
-
-  // ── Kafka producer (for potential future emits) ──
   const kafka = new MessagingService('core-service');
   app.decorate('kafka', kafka);
 
-  // ── Auth Guard ──
+  const rabbitmq = new RabbitMQService();
+  app.decorate('rabbitmq', rabbitmq);
+
+  app.decorate('sessionTTLMins', opts.sessionTTLMins);
+
+  await app.register(metricsPlugin);
+
   app.decorate('authenticate', async function (request: FastifyRequest, reply: FastifyReply) {
     try {
       await request.jwtVerify();
@@ -62,59 +67,38 @@ export async function buildApp(opts: AppOptions) {
     }
   });
 
-  // ══════════════════════════════════════════════════════════════════
-  // Routes
-  // ══════════════════════════════════════════════════════════════════
-
-  // Content: DAG nodes, graph traversal, frontier
-  // Registered at both root (Kong strip_path=true) and /api/content (direct/tests)
+  // Dual-registered for Kong (strip_path=true at root) and direct access (/api/content)
   await app.register(nodeRoutes);
   await app.register(nodeRoutes, { prefix: '/api/content' });
 
-  // Content: Quiz routes (DB-backed, replaces standalone quiz-service)
   await app.register(quizRoutes);
   await app.register(quizRoutes, { prefix: '/api/content' });
 
-  // Challenge: CRUD + session lifecycle
-  // Registered at /api for Kong (strip_path=false) and direct access
+  // Kong uses strip_path=false, so routes include /api prefix
   await app.register(challengeRoutes, { prefix: '/api' });
 
-  // ══════════════════════════════════════════════════════════════════
-  // Health (top-level)
-  // ══════════════════════════════════════════════════════════════════
-  app.get('/health', async () => ({
-    status: 'ok',
-    service: 'core-service',
-    timestamp: new Date().toISOString(),
-  }));
+  registerHealthChecks(app as any, prisma, kafka);
 
-  // ══════════════════════════════════════════════════════════════════
-  // Background Initialization (Graceful Degradation)
-  // ══════════════════════════════════════════════════════════════════
   app.addHook('onReady', async () => {
-    // RabbitMQ
-    rabbit.init()
-      .then(() => app.log.info('Connected to RabbitMQ'))
-      .catch((err) => app.log.error({ err: err.message }, 'RabbitMQ connection failed'));
-
-    // Database
     prisma.$connect()
       .then(() => app.log.info('Connected to Database'))
       .catch((err) => app.log.error({ err: err.message }, 'Database connection failed'));
 
-    // Kafka producer + consumers
+    rabbitmq.init()
+      .then(() => app.log.info('RabbitMQ initialized'))
+      .catch((err) => app.log.error({ err: err.message }, 'RabbitMQ initialization failed'));
+
     kafka.initProducer()
       .then(async () => {
         app.log.info('Kafka producer initialized');
-        await registerProgressConsumers(app);
-        await registerNotificationConsumers(app);
+        await registerProgressConsumers(app as any);
+        // Start outbox poller after Kafka & RabbitMQ are ready
+        const poller = startOutboxPoller(app as any);
+        app.addHook('onClose', async () => clearInterval(poller));
       })
       .catch((err) => app.log.error({ err: err.message }, 'Kafka initialization failed'));
   });
 
-  // ══════════════════════════════════════════════════════════════════
-  // Error Handler
-  // ══════════════════════════════════════════════════════════════════
   app.setErrorHandler(function (error, request, reply) {
     try {
       this.log.error({ err: error, method: request.method, url: request.url }, 'Unhandled error');
@@ -122,13 +106,10 @@ export async function buildApp(opts: AppOptions) {
     reply.send(error);
   });
 
-  // ══════════════════════════════════════════════════════════════════
-  // Graceful Shutdown
-  // ══════════════════════════════════════════════════════════════════
   app.addHook('onClose', async () => {
     await prisma.$disconnect();
-    await rabbit.disconnect();
     await kafka.disconnect();
+    await rabbitmq.disconnect();
   });
 
   return app;

@@ -18,26 +18,28 @@ import (
 	"github.com/devops-platform/sandbox/internal/store"
 	"github.com/devops-platform/sandbox/internal/terminal"
 	"github.com/devops-platform/sandbox/internal/validator"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
-	// ── Logger ─────────────────────────────────────────────────────────────────
+	
+
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(log)
-	log.Info("🚀 Sandbox Service starting...")
 
-	// ── Config ─────────────────────────────────────────────────────────────────
+	log.Info("Sandbox Service starting...")
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Error("Config load failed", "error", err)
 		os.Exit(1)
 	}
 
-	// ── Graceful shutdown context ───────────────────────────────────────────────
+	encryptionKey := cfg.EncryptionKey
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// ── Infrastructure connections ──────────────────────────────────────────────
 	dbClient, err := db.NewClient(cfg.DatabaseURL, log)
 	if err != nil {
 		log.Error("Postgres connection failed", "error", err)
@@ -45,50 +47,66 @@ func main() {
 	}
 	defer dbClient.Close()
 
-	redisStore, err := store.NewRedisStore(cfg.RedisURL, cfg.SessionTTLMins, log)
+	redisStore, err := store.NewRedisStore(cfg.RedisURL, cfg.SessionTTLMins, log, encryptionKey)
 	if err != nil {
 		log.Error("Redis connection failed", "error", err)
 		os.Exit(1)
 	}
 	defer redisStore.Close()
 
-	dockerProvider, err := sandbox.NewDockerProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
-	if err != nil {
-		log.Error("Docker provider init failed", "error", err)
-		os.Exit(1)
+	var provider sandbox.SandboxProvider
+	switch cfg.SandboxProvider {
+	case "flintlock":
+		provider, err = sandbox.NewFlintlockProvider(cfg.FlintlockAddress, log)
+		if err != nil {
+			log.Error("Flintlock provider init failed", "error", err)
+			os.Exit(1)
+		}
+	case "kata":
+		provider, err = sandbox.NewKataProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
+		if err != nil {
+			log.Error("Kata provider init failed", "error", err)
+			os.Exit(1)
+		}
+	case "gvisor":
+		provider, err = sandbox.NewGVisorProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
+		if err != nil {
+			log.Error("gVisor provider init failed", "error", err)
+			os.Exit(1)
+		}
+	case "docker":
+		fallthrough
+	default:
+		provider, err = sandbox.NewDockerProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
+		if err != nil {
+			log.Error("Docker provider init failed", "error", err)
+			os.Exit(1)
+		}
 	}
 
 	kafkaProducer := messaging.NewKafkaProducer(cfg.KafkaBrokers, cfg.KafkaClientID, log)
 	defer kafkaProducer.Close()
 
-	// ── Session Manager (re-adopts existing sessions from Redis on restart) ─────
-	sessionMgr, err := session.NewManager(dockerProvider, redisStore, cfg.SessionTTLMins, log)
+	sessionMgr, err := session.NewManager(provider, redisStore, cfg.SessionTTLMins, log)
 	if err != nil {
 		log.Error("Session manager init failed", "error", err)
 		os.Exit(1)
 	}
 
-	// ── Validator ───────────────────────────────────────────────────────────────
-	val := validator.NewValidator(dockerProvider, log)
-	_ = val // used by the HTTP validate endpoint below
+	val := validator.NewValidator(provider, log)
 
-	// ── TTL Reaper — runs in background ────────────────────────────────────────
 	reaper := session.NewReaper(sessionMgr, time.Duration(cfg.SessionTTLMins)*time.Minute, log)
 	go reaper.Start(ctx)
 
-	// ── HTTP Server (WebSocket terminal + validate endpoint) ───────────────────
 	mux := http.NewServeMux()
 
-	// GET /sessions/{id}/terminal → WebSocket terminal
-	mux.HandleFunc("/sessions/", terminal.Handler(sessionMgr, dockerProvider, cfg.JWTSecret, log))
+	mux.HandleFunc("/sessions/", terminal.Handler(sessionMgr, provider, cfg.JWTPublicKey, cfg.AllowedOrigins, log))
 
-	// POST /sessions/{id}/validate → run /validator.sh
 	mux.HandleFunc("/validate/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		// Extract sessionID from /validate/{sessionID}
 		sessionID := r.URL.Path[len("/validate/"):]
 		if sessionID == "" {
 			http.Error(w, "missing session ID", http.StatusBadRequest)
@@ -108,10 +126,9 @@ func main() {
 			return
 		}
 
-		// Emit Kafka event if passed
 		if result.Passed {
 			event := messaging.ChallengeResultEvent{
-				SubmissionID: sessionID, // use sessionID as submission correlation
+				SubmissionID: sessionID,
 				ChallengeID:  data.ChallengeID,
 				UserID:       data.UserID,
 				Passed:       true,
@@ -121,22 +138,40 @@ func main() {
 			if err := kafkaProducer.EmitResult(r.Context(), messaging.TopicChallengeSolved, event); err != nil {
 				log.Error("Failed to emit challenge.solved", "error", err)
 			}
+			// Update submission status to COMPLETED in Postgres
+			if err := dbClient.UpdateSubmissionStatus(r.Context(), sessionID, db.StatusCompleted, map[string]any{
+				"passed":   true,
+				"exitCode": result.ExitCode,
+				"feedback": result.Feedback,
+			}); err != nil {
+				log.Error("Failed to update submission status to COMPLETED", "sessionId", sessionID, "error", err)
+			}
+		} else {
+			// Update submission status to FAILED in Postgres
+			if err := dbClient.UpdateSubmissionStatus(r.Context(), sessionID, db.StatusFailed, map[string]any{
+				"passed":   false,
+				"exitCode": result.ExitCode,
+				"feedback": result.Feedback,
+			}); err != nil {
+				log.Error("Failed to update submission status to FAILED", "sessionId", sessionID, "error", err)
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		if result.Passed {
 			w.WriteHeader(http.StatusOK)
 		} else {
-			w.WriteHeader(http.StatusUnprocessableEntity) // 422 = failed validation
+			w.WriteHeader(http.StatusUnprocessableEntity)
 		}
 		_, _ = w.Write([]byte(`{"passed":` + boolStr(result.Passed) + `,"feedback":` + jsonStr(result.Feedback) + `}`))
 	})
 
-	// GET /health
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
+
+	mux.Handle("/metrics", promhttp.Handler())
 
 	server := &http.Server{
 		Addr:    ":" + cfg.HTTPPort,
@@ -144,26 +179,26 @@ func main() {
 	}
 
 	go func() {
-		log.Info("🌐 HTTP server listening", "port", cfg.HTTPPort)
+		log.Info("HTTP server listening", "port", cfg.HTTPPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Error("HTTP server error", "error", err)
 		}
 	}()
 
-	// ── RabbitMQ Consumer ──────────────────────────────────────────────────────
-	consumer := messaging.NewSessionConsumer(cfg.RabbitMQURL, cfg.SessionQueue, log)
+	// RabbitMQ session consumer (Replaces Kafka for Sandbox Orchestration)
+	queues := []string{"provision.sandbox", "terminate.sandbox"}
+	consumer := messaging.NewSessionConsumer(cfg.RabbitMQURL, queues, log)
 	if err := consumer.Connect(); err != nil {
-		log.Error("RabbitMQ connection failed", "error", err)
+		log.Error("Failed to connect RabbitMQ consumer", "error", err)
 		os.Exit(1)
 	}
 	defer consumer.Close()
 
-	log.Info("✅ Sandbox Service ready",
+	log.Info("Sandbox Service ready",
 		"httpPort", cfg.HTTPPort,
-		"queue", cfg.SessionQueue,
+		"rabbitmq", cfg.RabbitMQURL,
 	)
 
-	// ── Main event loop — blocks until SIGTERM ─────────────────────────────────
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -184,7 +219,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Info("👋 Sandbox Service shut down cleanly")
+	log.Info("Sandbox Service shut down cleanly")
 }
 
 func boolStr(b bool) string {

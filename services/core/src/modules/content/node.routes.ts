@@ -1,9 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient, Node, Edge } from '@devops/db';
 
-/**
- * Types for Prisma relations used in DAG traversal queries.
- */
 type EdgeWithTo = Edge & { to: Node };
 type EdgeWithFrom = Edge & { from: Node };
 type CompletionWithNodeId = { nodeId: string };
@@ -12,13 +9,6 @@ type NodeWithOutgoing = Node & { outgoing: { toId: string }[] };
 export async function nodeRoutes(fastify: FastifyInstance) {
   const prisma = fastify.prisma as PrismaClient;
 
-  fastify.get('/health', async () => {
-    return { status: 'ok', service: 'core-service', module: 'content' };
-  });
-
-  /**
-   * GET /nodes/:id — Fetch a single DAG node by ID.
-   */
   fastify.get('/nodes/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
@@ -31,9 +21,6 @@ export async function nodeRoutes(fastify: FastifyInstance) {
     }
   });
 
-  /**
-   * GET /nodes/:id/parents — Direct parent nodes (one hop up).
-   */
   fastify.get('/nodes/:id/parents', async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
@@ -49,9 +36,6 @@ export async function nodeRoutes(fastify: FastifyInstance) {
     }
   });
 
-  /**
-   * GET /nodes/:id/children — Direct child nodes (one hop down).
-   */
   fastify.get('/nodes/:id/children', async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
@@ -67,9 +51,7 @@ export async function nodeRoutes(fastify: FastifyInstance) {
     }
   });
 
-  /**
-   * GET /nodes/:id/ancestors — All ancestors via recursive CTE.
-   */
+  // Recursive CTE walks all ancestors in a single query
   fastify.get('/nodes/:id/ancestors', async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
@@ -89,10 +71,7 @@ export async function nodeRoutes(fastify: FastifyInstance) {
     }
   });
 
-  /**
-   * GET /users/:id/frontier — Compute the DAG frontier for a user.
-   * Returns all incomplete nodes whose prerequisites are all completed.
-   */
+  // Frontier = incomplete nodes whose prerequisites are all satisfied
   fastify.get('/users/:id/frontier', async (request, reply) => {
     const { id: userId } = request.params as { id: string };
     try {

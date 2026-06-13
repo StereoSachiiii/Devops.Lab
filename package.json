@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "clean": "docker compose down -v --remove-orphans",
-    "dev": "docker compose up -d && concurrently -n \"web,auth,core\" -c \"blue,green,yellow\" 'npm run dev --workspace=apps/web -- -H 127.0.0.1' 'npm run dev --workspace=services/auth' 'npm run dev --workspace=services/core'",
+    "dev": "docker compose up -d && concurrently -n \"web,auth,core,notification\" -c \"blue,green,yellow,magenta\" 'npm run dev --workspace=apps/web -- -H 127.0.0.1' 'npm run dev --workspace=services/auth' 'npm run dev --workspace=services/core' 'npm run dev --workspace=services/notification'",
     "dev:turbo": "docker-compose --profile default up -d --force-recreate && npx turbo run dev",
     "dev:fresh": "npm run clean && npm run build:packages && npm run dev",
     "build:packages": "npm run build --workspace=packages/observability && npm run build --workspace=packages/messaging",
@@ -17,6 +17,7 @@
     "dev:web": "npm run dev --workspace=apps/web -- -H 127.0.0.1",
     "dev:auth": "npm run dev --workspace=services/auth",
     "dev:core": "npm run dev --workspace=services/core",
+    "dev:notification": "npm run dev --workspace=services/notification",
     "build:web": "npm run build --workspace=apps/web",
     "setup:firecracker": "bash scripts/setup-kata.sh",
     "stop:all": "docker compose -p rootcause --profile default down -v && pkill -9 -f 'ts-node' || true && pkill -9 -f 'ts-node-dev' || true",

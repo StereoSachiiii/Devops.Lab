@@ -55,3 +55,6 @@ infra/k8s/secrets/*.yaml
 # Prisma
 packages/db/prisma/dev.db
 packages/db/prisma/dev.db-journal
+
+# Private TODOs
+todo-private.md

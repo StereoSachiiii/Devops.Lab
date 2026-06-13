@@ -50,13 +50,6 @@ services:
         paths:
           - /api/content
         strip_path: true
-    plugins:
-      - name: jwt
-        config:
-          claims_to_verify:
-            - exp
-          cookie_names:
-            - token
 
   - name: auth-service
     url: http://auth-service:3002
