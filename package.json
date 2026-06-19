@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "clean": "docker compose down -v --remove-orphans",
-    "dev": "docker compose up -d && concurrently -n \"web,auth,core,notification\" -c \"blue,green,yellow,magenta\" 'npm run dev --workspace=apps/web -- -H 127.0.0.1' 'npm run dev --workspace=services/auth' 'npm run dev --workspace=services/core' 'npm run dev --workspace=services/notification'",
+    "dev": "docker compose up -d && concurrently -n \"web,auth,core,notification\" -c \"blue,green,yellow,magenta\" \"npm run dev --workspace=apps/web -- -H 127.0.0.1\" \"npm run dev --workspace=services/auth\" \"npm run dev --workspace=services/core\" \"npm run dev --workspace=services/notification\"",
     "dev:turbo": "docker-compose --profile default up -d --force-recreate && npx turbo run dev",
     "dev:fresh": "npm run clean && npm run build:packages && npm run dev",
     "build:packages": "npm run build --workspace=packages/observability && npm run build --workspace=packages/messaging",

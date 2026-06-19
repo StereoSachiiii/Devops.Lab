@@ -82,19 +82,3 @@ services:
         strip_path: false
 
 
-consumers:
-  - username: devops-auth-consumer
-    jwt_secrets:
-      - key: devops-platform
-        algorithm: RS256
-        rsa_public_key: |
-          -----BEGIN PUBLIC KEY-----
-          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0fceR0dR3hHLtwcLnaUo
-          9BlB70K8tkV7avou+rtCk8Jo+zI24oSf04WPMRYd0FtRdPyY9G3fb7fH7sLOOtOw
-          6sBGbKN9C/sf3o83ycEHV0RpqeLGpqUbM/4Itr5j5y+9n4EwNESSZnTM73UJua+8
-          KjTOpKydqr8eWpu5Sm6ITC7d5EY1DUY9ubF4qQhKQ8ziAOrIghXwFu5oemHYkff0
-          S0wRsUVkIGcLgkpcynroJCx7pMBGg5rbysMz6zPnANcug4NlCchcJZVu0lKGSS9z
-          zN7+rKo4HyvYMPKGDkq9pSUCqGfDaEAGr73mdFfPb/wgY+p5/73enHJJzELilykE
-          GQIDAQAB
-          -----END PUBLIC KEY-----
-

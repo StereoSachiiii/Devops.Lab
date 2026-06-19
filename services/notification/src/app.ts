@@ -21,10 +21,12 @@ export async function buildApp() {
     app.log.info('Starting Kafka & RabbitMQ consumers...');
     try {
       await rabbitmq.init();
-      await registerNotificationConsumers(app as any);
-      app.log.info('Notification service ready');
+      // Start consumers asynchronously so slow Kafka rebalancing doesn't block the Fastify boot process
+      registerNotificationConsumers(app as any)
+        .then(() => app.log.info('Notification service ready'))
+        .catch((err: any) => app.log.error({ err: err.message }, 'Failed to initialize consumers'));
     } catch (err: any) {
-      app.log.error({ err: err.message }, 'Failed to initialize consumers');
+      app.log.error({ err: err.message }, 'Failed to initialize RabbitMQ');
     }
   });
 

@@ -79,6 +79,8 @@ export async function buildApp(opts: AppOptions) {
 
   registerHealthChecks(app as any, prisma, kafka);
 
+  let poller: NodeJS.Timeout | undefined;
+
   app.addHook('onReady', async () => {
     prisma.$connect()
       .then(() => app.log.info('Connected to Database'))
@@ -93,8 +95,7 @@ export async function buildApp(opts: AppOptions) {
         app.log.info('Kafka producer initialized');
         await registerProgressConsumers(app as any);
         // Start outbox poller after Kafka & RabbitMQ are ready
-        const poller = startOutboxPoller(app as any);
-        app.addHook('onClose', async () => clearInterval(poller));
+        poller = startOutboxPoller(app as any);
       })
       .catch((err) => app.log.error({ err: err.message }, 'Kafka initialization failed'));
   });
@@ -107,6 +108,9 @@ export async function buildApp(opts: AppOptions) {
   });
 
   app.addHook('onClose', async () => {
+    if (poller) {
+      clearInterval(poller);
+    }
     await prisma.$disconnect();
     await kafka.disconnect();
     await rabbitmq.disconnect();

@@ -11,7 +11,7 @@ services:
       - --check=false
       - --reserve-memory 0M
       - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
-      - --advertise-kafka-addr internal://redpanda:9092,external://$${KAFKA_ADVERTISED_HOST:-localhost}:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://${KAFKA_ADVERTISED_HOST:-localhost}:19092
     ports:
       - "19092:19092"
       - "9092:9092"
