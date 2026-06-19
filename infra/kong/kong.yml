@@ -69,6 +69,18 @@ services:
             port: 6379
             database: 1
 
+  - name: sandbox-service
+    url: http://sandbox-service:8090
+    routes:
+      - name: sandbox-session-routes
+        paths:
+          - /sessions
+        strip_path: false
+      - name: sandbox-validate-routes
+        paths:
+          - /validate
+        strip_path: false
+
 
 consumers:
   - username: devops-auth-consumer

@@ -1,0 +1,17 @@
+[Unit]
+Description=DevOps Platform Sandbox Service
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/devops-sandbox
+ExecStart=/opt/devops-sandbox/sandbox-worker
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+EnvironmentFile=/opt/devops-sandbox/.env
+
+[Install]
+WantedBy=multi-user.target

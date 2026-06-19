@@ -3,6 +3,17 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { SessionStartedEvent, SessionEndedEvent, SessionEndReason, QUEUES } from '@devops/messaging';
 
 export async function challengeRoutes(fastify: FastifyInstance) {
+  const getGatewayUrls = (sessionId: string) => {
+    const gatewayUrl = process.env.PUBLIC_GATEWAY_URL || 'http://localhost:8000';
+    const cleanUrl = gatewayUrl.endsWith('/') ? gatewayUrl.slice(0, -1) : gatewayUrl;
+    const wsProto = cleanUrl.startsWith('https://') ? 'wss://' : 'ws://';
+    const hostPart = cleanUrl.replace(/^https?:\/\//, '');
+    return {
+      terminalUrl: `${wsProto}${hostPart}/sessions/${sessionId}/terminal`,
+      validateUrl: `${cleanUrl}/validate/${sessionId}`,
+    };
+  };
+
 
   fastify.get('/challenges', async (_req, reply) => {
     const challenges = await fastify.prisma.challenge.findMany({
@@ -63,8 +74,7 @@ export async function challengeRoutes(fastify: FastifyInstance) {
           sessionId: cachedSessionId,
           challengeId: challenge.id,
           challengeTitle: challenge.title,
-          terminalUrl: `ws://localhost:8000/sessions/${cachedSessionId}/terminal`,
-          validateUrl: `http://localhost:8000/validate/${cachedSessionId}`,
+          ...getGatewayUrls(cachedSessionId),
           ttlMins: fastify.sessionTTLMins,
         });
       }
@@ -128,8 +138,7 @@ export async function challengeRoutes(fastify: FastifyInstance) {
       sessionId,
       challengeId: challenge.id,
       challengeTitle: challenge.title,
-      terminalUrl: `ws://localhost:8000/sessions/${sessionId}/terminal`,
-      validateUrl: `http://localhost:8000/validate/${sessionId}`,
+      ...getGatewayUrls(sessionId),
       ttlMins: fastify.sessionTTLMins,
     });
   });
@@ -172,8 +181,7 @@ export async function challengeRoutes(fastify: FastifyInstance) {
       sessionId: session.id,
       status: session.status,
       challengeTitle: session.challenge.title,
-      terminalUrl: `ws://localhost:8000/sessions/${session.id}/terminal`,
-      validateUrl: `http://localhost:8000/validate/${session.id}`,
+      ...getGatewayUrls(session.id),
       startedAt: session.startedAt,
     });
   });
