@@ -112,11 +112,6 @@ func (m *Manager) Get(ctx context.Context, sessionID string) (*store.SessionData
 		return nil, nil // session not found
 	}
 
-	// Populate memory cache
-	m.mu.Lock()
-	m.sessions[sessionID] = *data
-	m.mu.Unlock()
-
 	return data, nil
 }
 

@@ -199,24 +199,30 @@ func main() {
 		"rabbitmq", cfg.RabbitMQURL,
 	)
 
+	errCh := make(chan error, 1)
 	go func() {
-		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
+		errCh <- consumer.Consume(ctx, messaging.Handlers{
+			OnSessionStarted: func(ctx context.Context, job messaging.SessionStartedJob) error {
+				_, err := sessionMgr.Create(ctx, job.SessionID, job.UserID, job.ChallengeID, job.Image)
+				return err
+			},
+			OnSessionEnded: func(ctx context.Context, job messaging.SessionEndedJob) error {
+				return sessionMgr.Destroy(ctx, job.SessionID)
+			},
+		})
 	}()
 
-	if err := consumer.Consume(ctx, messaging.Handlers{
-		OnSessionStarted: func(ctx context.Context, job messaging.SessionStartedJob) error {
-			_, err := sessionMgr.Create(ctx, job.SessionID, job.UserID, job.ChallengeID, job.Image)
-			return err
-		},
-		OnSessionEnded: func(ctx context.Context, job messaging.SessionEndedJob) error {
-			return sessionMgr.Destroy(ctx, job.SessionID)
-		},
-	}); err != nil {
+	<-ctx.Done()
+	
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil && err != http.ErrServerClosed {
+		log.Error("HTTP server shutdown error", "error", err)
+	}
+
+	if err := <-errCh; err != nil {
 		log.Error("Consumer exited with error", "error", err)
-		os.Exit(1)
+		return
 	}
 
 	log.Info("Sandbox Service shut down cleanly")
