@@ -37,9 +37,13 @@ type SandboxProvider interface {
 
 	// ExecInteractive opens a PTY (pseudo-terminal) inside a running container.
 	// Returns a ReadWriteCloser: write keystrokes in, read terminal output out.
-	// Used for: WebSocket terminal bridge.
+	// Used for: WebSocket terminal bridge (direct /bin/bash).
 	// Caller must Close() the returned connection when the terminal session ends.
 	ExecInteractive(ctx context.Context, containerID string, cols, rows uint) (io.ReadWriteCloser, ResizeFunc, error)
+
+	// ExecInteractiveCmd is like ExecInteractive but runs an arbitrary command instead
+	// of /bin/bash. Used by the tmux helper to run `tmux attach-session`.
+	ExecInteractiveCmd(ctx context.Context, containerID string, cols, rows uint, cmd []string) (io.ReadWriteCloser, ResizeFunc, error)
 
 	// Remove force-removes a container. Called on session end or TTL expiry.
 	Remove(ctx context.Context, containerID string) error

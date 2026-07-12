@@ -134,8 +134,19 @@ func (d *DockerProvider) Exec(ctx context.Context, containerID string, cmd []str
 // Returns a ReadWriteCloser (the PTY stream) and a ResizeFunc (for SIGWINCH events).
 // The PTY runs /bin/bash by default.
 func (d *DockerProvider) ExecInteractive(ctx context.Context, containerID string, cols, rows uint) (io.ReadWriteCloser, ResizeFunc, error) {
+	return d.execInteractiveWithCmd(ctx, containerID, cols, rows, []string{"/bin/bash"})
+}
+
+// ExecInteractiveCmd opens a PTY running the specified command.
+// Used by the tmux helper to run `tmux attach-session`.
+func (d *DockerProvider) ExecInteractiveCmd(ctx context.Context, containerID string, cols, rows uint, cmd []string) (io.ReadWriteCloser, ResizeFunc, error) {
+	return d.execInteractiveWithCmd(ctx, containerID, cols, rows, cmd)
+}
+
+// execInteractiveWithCmd is the shared implementation for ExecInteractive and ExecInteractiveCmd.
+func (d *DockerProvider) execInteractiveWithCmd(ctx context.Context, containerID string, cols, rows uint, cmd []string) (io.ReadWriteCloser, ResizeFunc, error) {
 	execID, err := d.client.ContainerExecCreate(ctx, containerID, dtypes.ExecConfig{
-		Cmd:          []string{"/bin/bash"},
+		Cmd:          cmd,
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
