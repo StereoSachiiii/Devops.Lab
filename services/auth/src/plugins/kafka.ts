@@ -1,8 +1,8 @@
-import fp from 'fastify-plugin';
-import type { FastifyInstance } from 'fastify';
-import { MessagingService } from '@devops/messaging';
+import fp from "fastify-plugin";
+import type { FastifyInstance } from "fastify";
+import { MessagingService } from "@devops/messaging";
 
-declare module 'fastify' {
+declare module "fastify" {
   interface FastifyInstance {
     kafka: MessagingService;
   }
@@ -17,15 +17,18 @@ declare module 'fastify' {
  */
 export const kafkaPlugin = fp(async (fastify: FastifyInstance) => {
   const kafka = new MessagingService();
-  fastify.decorate('kafka', kafka);
+  fastify.decorate("kafka", kafka);
 
-  fastify.addHook('onReady', async () => {
-    kafka.initProducer()
-      .then(()  => fastify.log.info('Kafka producer ready'))
-      .catch(e  => fastify.log.error({ err: e.message }, 'Kafka init failed — retrying in background'));
+  fastify.addHook("onReady", async () => {
+    kafka
+      .initProducer()
+      .then(() => fastify.log.info("Kafka producer ready"))
+      .catch((e) =>
+        fastify.log.error({ err: e instanceof Error ? e.message : String(e) }, "Kafka init failed — retrying in background")
+      );
   });
 
-  fastify.addHook('onClose', async () => {
+  fastify.addHook("onClose", async () => {
     await kafka.disconnect();
   });
 });

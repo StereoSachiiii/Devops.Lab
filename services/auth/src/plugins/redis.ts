@@ -1,42 +1,39 @@
-import fp from 'fastify-plugin';
-import Redis from 'ioredis';
-import type { FastifyInstance } from 'fastify';
+import fp from "fastify-plugin";
+import { requireEnv } from "@devops/observability";
+import Redis from "ioredis";
+import type { FastifyInstance } from "fastify";
 
-declare module 'fastify' {
+declare module "fastify" {
   interface FastifyInstance {
     redis: Redis;
   }
 }
 
 export const redisPlugin = fp(async (fastify: FastifyInstance) => {
-  const redisUrl = process.env['REDIS_URL'] || 'redis://127.0.0.1:6379';
+  const redisUrl = requireEnv("REDIS_URL");
 
   const redis = new Redis(redisUrl, {
-    lazyConnect: true, 
+    lazyConnect: true,
     enableOfflineQueue: true,
-    maxRetriesPerRequest: null, 
+    maxRetriesPerRequest: null,
     retryStrategy: (times) => {
       const delay = Math.min(times * 100, 3000);
       return delay;
     },
   });
 
- 
-  redis.on('connect', () => fastify.log.info('Redis connected'));
-  redis.on('error', (err) => {
-    
-    fastify.log.warn({ err: err.message }, 'Redis connection issue');
+  redis.on("connect", () => fastify.log.info("Redis connected"));
+  redis.on("error", (err) => {
+    fastify.log.warn({ err: err instanceof Error ? err.message : String(err) }, "Redis connection issue");
   });
 
-  
-  fastify.decorate('redis', redis);
+  fastify.decorate("redis", redis);
 
-  
   redis.connect().catch((err) => {
-    fastify.log.error({ err: err.message }, 'Redis background connection failed');
+    fastify.log.error({ err: err instanceof Error ? err.message : String(err) }, "Redis background connection failed");
   });
 
-  fastify.addHook('onClose', async () => {
+  fastify.addHook("onClose", async () => {
     await redis.quit();
   });
 });

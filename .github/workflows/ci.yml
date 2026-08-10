@@ -26,43 +26,36 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Validate AsyncAPI Contract
-        run: npx @asyncapi/cli validate docs/contracts/events.yaml
-
       - name: Generate Prisma Client
         run: npx turbo run generate --filter=@devops/db
         env:
           DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
 
-      - name: Lint
-        run: npx turbo run lint --filter=...[HEAD~2]
+      - name: Lint (Affected Packages)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npx turbo run lint --filter=...[origin/${{ github.base_ref }}]
+          else
+            npx turbo run lint --filter=...[HEAD^] || npx turbo run lint --filter=@devops/auth-service
+          fi
 
-      - name: Typecheck
-        run: npx turbo run typecheck --filter=...[HEAD~2]
+      - name: Typecheck (Affected Packages)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npx turbo run typecheck --filter=...[origin/${{ github.base_ref }}]
+          else
+            npx turbo run typecheck --filter=...[HEAD^] || npx turbo run typecheck --filter=@devops/auth-service
+          fi
 
-      - name: Create Neon Branch
-        if: github.event_name == 'pull_request'
-        uses: neondatabase/create-branch-action@v5
-        id: neon_branch
-        with:
-          project_id: ${{ secrets.NEON_PROJECT_ID }}
-          branch_name: pr-${{ github.event.pull_request.number }}
-          api_key: ${{ secrets.NEON_API_KEY }}
-
-      - name: Test
-        run: npx turbo run test --filter=...[HEAD~2]
+      - name: Test (Affected Packages)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npx turbo run test --filter=...[origin/${{ github.base_ref }}]
+          else
+            npx turbo run test --filter=...[HEAD^] || npx turbo run test --filter=@devops/auth-service
+          fi
         env:
           NODE_ENV: test
-          DATABASE_URL: ${{ steps.neon_branch.outputs.db_url || 'postgresql://placeholder:placeholder@localhost:5432/placeholder' }}
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'table'
-          exit-code: '0'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
 

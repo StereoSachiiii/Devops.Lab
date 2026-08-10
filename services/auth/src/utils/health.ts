@@ -1,11 +1,11 @@
-import type { FastifyInstance } from 'fastify';
-import type { PrismaClient } from '@devops/db';
-import type { Redis } from 'ioredis';
+import type { FastifyInstance } from "fastify";
+import type { PrismaClient } from "@devops/db";
+import type { Redis } from "ioredis";
 
 export interface HealthCheckResult {
-  status: 'ok' | 'degraded';
+  status: "ok" | "degraded";
   service: string;
-  checks: Record<string, 'up' | 'down'>;
+  checks: Record<string, "up" | "down">;
   timestamp: string;
 }
 
@@ -30,6 +30,12 @@ export class HealthRegistry {
     this.checks.set(name, checker);
   }
 
+  /** Clear the cached result so the next run() re-evaluates all checks. */
+  clearCache(): void {
+    this.cache = null;
+    this.cacheExpiry = 0;
+  }
+
   async run(serviceName: string): Promise<HealthCheckResult> {
     const now = Date.now();
 
@@ -38,23 +44,23 @@ export class HealthRegistry {
       return this.cache;
     }
 
-    const checks: Record<string, 'up' | 'down'> = {};
+    const checks: Record<string, "up" | "down"> = {};
 
     await Promise.all(
       Array.from(this.checks.entries()).map(async ([name, checker]) => {
         try {
           await checker();
-          checks[name] = 'up';
+          checks[name] = "up";
         } catch {
-          checks[name] = 'down';
+          checks[name] = "down";
         }
-      }),
+      })
     );
 
-    const allUp = Object.values(checks).every((v) => v === 'up');
+    const allUp = Object.values(checks).every((v) => v === "up");
 
     this.cache = {
-      status: allUp ? 'ok' : 'degraded',
+      status: allUp ? "ok" : "degraded",
       service: serviceName,
       checks,
       timestamp: new Date().toISOString(),
@@ -81,7 +87,7 @@ export function databaseCheck(prisma: PrismaClient): HealthChecker {
 
 // ── Fastify integration ──────────────────────────────────────────────────────
 
-declare module 'fastify' {
+declare module "fastify" {
   interface FastifyInstance {
     healthRegistry: HealthRegistry;
   }
@@ -95,14 +101,22 @@ export function registerHealthChecks(fastify: FastifyInstance, prisma: PrismaCli
   const registry = new HealthRegistry();
 
   // Access dependencies lazily — they may not be decorated yet at registration time
-  registry.register('redis', async () => { await fastify.redis.ping(); });
-  registry.register('db', databaseCheck(prisma));
+  registry.register("redis", async () => {
+    await fastify.redis.ping();
+  });
+  registry.register("db", databaseCheck(prisma));
+  // AUTH-018 FIX: Register Kafka health check
+  registry.register("kafka", async () => {
+    if (!fastify.kafka || !fastify.kafka.isProducerReady) {
+      throw new Error("Kafka producer not ready");
+    }
+  });
 
-  fastify.decorate('healthRegistry', registry);
+  fastify.decorate("healthRegistry", registry);
 
-  fastify.get('/health', async (_req, reply) => {
-    const result = await registry.run('auth-service');
-    if (result.status === 'degraded') {
+  fastify.get("/health", async (_req, reply) => {
+    const result = await registry.run("auth-service");
+    if (result.status === "degraded") {
       reply.status(503);
     }
     return result;

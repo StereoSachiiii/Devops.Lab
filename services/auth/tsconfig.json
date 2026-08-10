@@ -10,11 +10,7 @@
     "moduleResolution": "nodenext",
     "lib": ["ES2022"],
     "outDir": "./dist",
-    "rootDir": "../../",
-
-
-    
-    /* Aggressive Strictness */
+    "rootDir": "src",
     "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
@@ -24,27 +20,20 @@
     "noImplicitThis": true,
     "useUnknownInCatchVariables": true,
     "alwaysStrict": true,
-
-    /* Linter-like Rigor */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
-    
-    /* Type Safety */
     "exactOptionalPropertyTypes": true,
     "noPropertyAccessFromIndexSignature": true,
-    
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-
-    "paths": {
-      "@devops/db": ["../../packages/db"],
-      "@prisma/client": ["../../node_modules/.prisma/client"]
-    }
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "allowJs": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

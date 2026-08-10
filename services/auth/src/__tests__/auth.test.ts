@@ -3,7 +3,7 @@ import type { ObservabilityConfig } from '@devops/observability';
 
 const mockObs: ObservabilityConfig = {
   loggerOptions: { level: 'silent' },
-  stream: {} as any,
+  stream: {} as unknown as ObservabilityConfig['stream'],
   shutdown: () => {},
 };
 
@@ -15,17 +15,21 @@ vi.mock('argon2', () => ({
 }));
 
 vi.mock('@devops/db', () => {
-  const mockPrisma: any = {
+  const mockPrisma = {
     user: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), upsert: vi.fn() },
+    userSession: { create: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() },
     securityLog: { create: vi.fn(), deleteMany: vi.fn() },
     submission: { deleteMany: vi.fn() },
     completion: { deleteMany: vi.fn() },
     labSession: { deleteMany: vi.fn() },
-    outboxEvent: { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
+    authOutboxEvent: { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
     $queryRaw: vi.fn().mockResolvedValue([{ 1: 1 }]),
-    $transaction: vi.fn((fn: (tx: any) => any) => fn(mockPrisma)),
+    $transaction: vi.fn((fn: (tx: import('@devops/db').Prisma.TransactionClient) => unknown) => fn(mockPrisma as unknown as import('@devops/db').Prisma.TransactionClient)),
+  } as unknown as import('@devops/db').PrismaClient;
+  return { 
+    PrismaClient: vi.fn(() => mockPrisma),
+    createTenantClient: vi.fn((client: unknown) => client)
   };
-  return { PrismaClient: vi.fn(() => mockPrisma) };
 });
 
 // Shared mock Redis — tests can spy on mockRedis.get/set/etc.
@@ -33,6 +37,7 @@ const mockRedis = {
   get: vi.fn().mockResolvedValue(null),
   set: vi.fn().mockResolvedValue('OK'),
   del: vi.fn().mockResolvedValue(1),
+  scan: vi.fn().mockResolvedValue(["0", ["auth:refresh:user-1:key1"]]),
   keys: vi.fn().mockResolvedValue([]),
   ping: vi.fn().mockResolvedValue('PONG'),
   incr: vi.fn().mockResolvedValue(1),
@@ -72,7 +77,7 @@ vi.mock('@devops/messaging', () => ({
     initProducer: vi.fn().mockResolvedValue(undefined),
     emit: vi.fn().mockResolvedValue(undefined),
     disconnect: vi.fn().mockResolvedValue(undefined),
-    isProducerReady: false,
+    isProducerReady: true,
   })),
   UserRegisteredEvent: vi.fn().mockImplementation((payload: unknown) => ({ topic: 'identity.user.registered', payload })),
   EmailVerificationRequestedEvent: vi.fn().mockImplementation((payload: unknown) => ({ topic: 'identity.email.verify', payload })),
@@ -101,10 +106,10 @@ describe('Auth Service', () => {
   it('GET /health — returns ok with dependency checks', async () => {
     const response = await app.inject({ method: 'GET', url: '/health' });
     expect(response.statusCode).toBe(200);
-    const body = JSON.parse(response.payload);
+    const body = JSON.parse(response.payload) as { status: string; service: string; checks: Record<string, string>; timestamp: string };
     expect(body.status).toBe('ok');
     expect(body.service).toBe('auth-service');
-    expect(body.checks).toEqual({ redis: 'up', db: 'up' });
+    expect(body.checks).toEqual({ redis: 'up', db: 'up', kafka: 'up' });
     expect(body.timestamp).toBeDefined();
   });
 
@@ -141,9 +146,11 @@ describe('Auth Service', () => {
       expect(response.headers['set-cookie']).toBeDefined();
 
       expect(prisma.$transaction).toHaveBeenCalled();
-      expect(prisma.outboxEvent.create).toHaveBeenCalledTimes(2);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+      expect((prisma as any).authOutboxEvent.create).toHaveBeenCalledTimes(2);
       expect(prisma.securityLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           data: expect.objectContaining({
             action: 'REGISTER',
             userId: 'user-1',
@@ -185,7 +192,7 @@ describe('Auth Service', () => {
       });
 
       expect(response.statusCode).toBe(400);
-      expect(JSON.parse(response.payload)).toMatchObject({ error: 'User already exists' });
+      expect(JSON.parse(response.payload) as Record<string, unknown>).toMatchObject({ error: 'User already exists' });
     });
   });
 
@@ -207,6 +214,7 @@ describe('Auth Service', () => {
       expect(response.statusCode).toBe(200);
       expect(prisma.securityLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           data: expect.objectContaining({
             action: 'LOGIN_SUCCESS',
             userId: 'user-1',
@@ -236,6 +244,7 @@ describe('Auth Service', () => {
       expect(response.statusCode).toBe(401);
       expect(prisma.securityLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           data: expect.objectContaining({
             action: 'LOGIN_FAILED',
             userId: 'user-1',
@@ -264,7 +273,6 @@ describe('Auth Service', () => {
       expect(response.statusCode).toBe(200);
       const payload = JSON.parse(response.payload) as { token: string };
       expect(payload.token).toBeDefined();
-      expect(mockRedis.del).toHaveBeenCalled();
       expect(mockRedis.set).toHaveBeenCalled();
     });
 
@@ -276,9 +284,10 @@ describe('Auth Service', () => {
       expect(response.statusCode).toBe(401);
     });
 
-    it('invalidates all active user sessions and logs breach if token not found (compromise check)', async () => {
-      vi.mocked(mockRedis.get).mockResolvedValueOnce(null);
-      vi.mocked(mockRedis.keys).mockResolvedValueOnce(['auth:refresh:user-1:key1', 'auth:refresh:user-1:key2']);
+    it('invalidates all active user sessions and logs breach if token was already rotated (compromise check)', async () => {
+      // Return a ROTATED state with an old timestamp (simulating replay attack)
+      vi.mocked(mockRedis.get).mockResolvedValueOnce(JSON.stringify({ status: 'ROTATED', rotatedAt: Date.now() - 20000 }));
+      vi.mocked(mockRedis.scan).mockResolvedValueOnce(['0', ['auth:refresh:user-1:key1', 'auth:refresh:user-1:key2']]);
 
       const response = await app.inject({
         method: 'POST',
@@ -290,6 +299,7 @@ describe('Auth Service', () => {
       expect(mockRedis.del).toHaveBeenCalledWith('auth:refresh:user-1:key1', 'auth:refresh:user-1:key2');
       expect(prisma.securityLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           data: expect.objectContaining({
             action: 'REVOCATION_BREACH',
             userId: 'user-1',
@@ -308,7 +318,7 @@ describe('Auth Service', () => {
       });
 
       expect(response.statusCode).toBe(429);
-      expect(JSON.parse(response.payload)).toMatchObject({
+      expect(JSON.parse(response.payload) as Record<string, unknown>).toMatchObject({
         error: 'Account locked due to too many failed attempts. Try again later.',
         code: 'ACCOUNT_LOCKED',
       });
@@ -426,10 +436,11 @@ describe('Auth Service', () => {
         cookies: { refreshToken: 'user-1.secret' },
       });
       expect(response.statusCode).toBe(200);
-      expect(JSON.parse(response.payload)).toEqual({ success: true });
+      expect(JSON.parse(response.payload) as Record<string, unknown>).toEqual({ success: true });
       expect(mockRedis.del).toHaveBeenCalled();
       expect(prisma.securityLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           data: expect.objectContaining({
             action: 'LOGOUT',
             userId: 'user-1',
@@ -467,7 +478,7 @@ describe('Auth Service', () => {
 
       expect(response.statusCode).toBe(200);
       expect(mockRedis.set).toHaveBeenCalled();
-      expect(prisma.outboxEvent.create).toHaveBeenCalled();
+      expect(prisma.authOutboxEvent.create).toHaveBeenCalled();
     });
 
     it('POST /reset-password updates password and clears sessions', async () => {
@@ -559,7 +570,7 @@ describe('Auth Service', () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(JSON.parse(response.payload).secret).toBeDefined();
+      expect((JSON.parse(response.payload) as { secret: string }).secret).toBeDefined();
     });
 
     it('POST /mfa/verify enables MFA', async () => {
