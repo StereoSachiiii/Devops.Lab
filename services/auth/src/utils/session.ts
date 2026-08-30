@@ -4,23 +4,29 @@ import { prisma } from "./db";
 import crypto from "crypto";
 import { requireEnv } from "@devops/observability";
 
-/** Parse a duration string like "30d", "15m", "1h" into seconds. */
+/** Parse a duration string like "30d", "15m", "1h", "2w", "1y" into seconds. */
 function parseDurationToSeconds(duration: string): number {
-  const match = duration.match(/^(\d+)(s|m|h|d)$/);
+  const match = duration.trim().match(/^([\d.]+)\s*(s|m|h|d|w|M|y)$/);
   if (!match) {
-    throw new Error(`Invalid duration format: "${duration}". Expected e.g. "30d", "1h", "15m".`);
+    throw new Error(`Invalid duration format: "${duration}". Expected e.g. "30d", "1h", "15m", "2w", "1y".`);
   }
-  const value = parseInt(match[1] as string, 10);
+  const value = parseFloat(match[1] as string);
   const unit = match[2] as string;
   switch (unit) {
     case "s":
-      return value;
+      return Math.round(value);
     case "m":
-      return value * 60;
+      return Math.round(value * 60);
     case "h":
-      return value * 3600;
+      return Math.round(value * 3600);
     case "d":
-      return value * 86400;
+      return Math.round(value * 86400);
+    case "w":
+      return Math.round(value * 604800);
+    case "M":
+      return Math.round(value * 2592000); // 30 days
+    case "y":
+      return Math.round(value * 31536000); // 365 days
     default:
       throw new Error(`Unknown duration unit: ${unit}`);
   }
@@ -41,6 +47,7 @@ declare module "@fastify/jwt" {
       role: string;
       orgId?: string;
       iss?: string;
+      jti?: string;
       pendingMfa?: boolean;
     };
   }
@@ -91,13 +98,40 @@ export function signAccessToken(
   fastify: FastifyInstance,
   user: { id: string; email: string; role: string; orgId?: string | null }
 ): string {
+  const jti = crypto.randomUUID();
   return fastify.jwt.sign({
     sub: user.id,
     email: user.email,
     role: user.role,
     orgId: user.orgId || undefined,
     iss: config.jwtIssuer,
+    jti,
   });
+}
+
+/** Denylist an access token by JTI in Redis for its remaining TTL (default 15 mins). */
+export async function denylistAccessToken(
+  fastify: FastifyInstance,
+  jti?: string,
+  expRemainingSeconds: number = 900
+): Promise<void> {
+  if (!jti) return;
+  await fastify.redis.set(
+    `auth:denylist:jti:${jti}`,
+    "revoked",
+    "EX",
+    expRemainingSeconds
+  );
+}
+
+/** Check if an access token JTI is denylisted in Redis. */
+export async function isTokenDenylisted(
+  fastify: FastifyInstance,
+  jti?: string
+): Promise<boolean> {
+  if (!jti) return false;
+  const status = await fastify.redis.get(`auth:denylist:jti:${jti}`);
+  return status === "revoked";
 }
 
 // ─── Session management ───────────────────────────────────────────────────────
@@ -136,7 +170,7 @@ export async function setSessionCookies(
     .setCookie("token", accessToken, cookieOpts)
     .setCookie("refreshToken", refreshToken, cookieOpts);
 
-  return { accessToken, user };
+  return { accessToken, user, tokenHash };
 }
 
 export async function createSession(
@@ -144,15 +178,16 @@ export async function createSession(
   reply: FastifyReply,
   user: UserForSession
 ) {
-  const { accessToken } = await setSessionCookies(fastify, reply, user);
+  const { accessToken, tokenHash } = await setSessionCookies(fastify, reply, user);
 
   return reply.send({
     token: accessToken,
+    tokenHash,
     user: { id: user.id, email: user.email, role: user.role },
   });
 }
 
-export async function trackLogin(request: FastifyRequest, userId: string) {
+export async function trackLogin(request: FastifyRequest, userId: string, tokenHash?: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { firstLoginAt: true },
@@ -169,6 +204,7 @@ export async function trackLogin(request: FastifyRequest, userId: string) {
   return prisma.userSession.create({
     data: {
       userId,
+      tokenHash: tokenHash ?? null,
       ip: request.ip,
       userAgent: request.headers["user-agent"] ?? null,
     },

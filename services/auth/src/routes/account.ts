@@ -15,6 +15,8 @@ import {
   parseRefreshToken,
   logSecurityEvent,
   trackLogin,
+  denylistAccessToken,
+  isTokenDenylisted,
 } from "../utils/session";
 
 const tracer = trace.getTracer("auth-service");
@@ -47,6 +49,7 @@ const ResetPasswordSchema = Type.Object({
 
 const UpdateProfileSchema = Type.Object({
   name: Type.Optional(Type.String()),
+  jobTitle: Type.Optional(Type.String()),
 });
 
 const ChangePasswordSchema = Type.Object({
@@ -89,6 +92,15 @@ async function handleLoginFail(
 }
 
 export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
+  // PreHandler hook: verify access token JTI is not denylisted in Redis
+  fastify.addHook("preHandler", async (req, reply) => {
+    if (req.user?.jti) {
+      if (await isTokenDenylisted(fastify, req.user.jti)) {
+        return errorReply(reply, 401, "UNAUTHORIZED", "Token has been revoked");
+      }
+    }
+  });
+
   fastify.get("/public-key", async () => ({
     publicKey: fastify.jwtPublicKey,
   }));
@@ -102,7 +114,7 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
           const { email, password, name } = req.body;
           span.setAttribute("auth.email", email);
 
-          if (await req.prisma.user.findUnique({ where: { email } })) {
+          if (await prisma.user.findUnique({ where: { email } })) {
             span.setAttribute("auth.outcome", "user_exists");
             fastify.log.info({ email }, "Register failed: user exists");
             fastify.metrics.registerCounter.inc({ outcome: "user_exists" }); //this is fast because only increments the counter in memory control blockl and then metrics endpoint scrapes later (can be synchronous)
@@ -113,7 +125,7 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
           const verificationToken = crypto.randomUUID();
 
           // Create user + outbox events + audit log in a single transaction.
-          const user = await req.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          const user = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const u = await tx.user.create({
               data: {
                 email,
@@ -160,6 +172,7 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
           span.setAttribute("auth.outcome", "success");
           span.setAttribute("auth.user_id", user.id);
           fastify.metrics.registerCounter.inc({ outcome: "success" });
+          reply.status(201);
           return await createSession(fastify, reply, user);
         } catch (err) {
           span.setAttribute("auth.outcome", "error");
@@ -246,8 +259,12 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
           fastify.metrics.loginCounter.inc({ outcome: "success" });
           loginTimer();
 
-          await trackLogin(req, user.id);
-          return await createSession(fastify, reply, user);
+          const { accessToken, tokenHash } = await setSessionCookies(fastify, reply, user);
+          await trackLogin(req, user.id, tokenHash);
+          return reply.send({
+            token: accessToken,
+            user: { id: user.id, email: user.email, role: user.role },
+          });
         } catch (err) {
           span.setAttribute("auth.outcome", "error");
           span.recordException(err as Error);
@@ -264,23 +281,35 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
   // ── Verify email ────────────────────────────────────────────────────────────
 
   fastify.post("/verify-email", { schema: { body: VerifyEmailSchema } }, async (req, reply) => {
-    const { token } = req.body as Static<typeof VerifyEmailSchema>;
-    const userId = await fastify.redis.get(`auth:verify-email:${token}`);
+    return tracer.startActiveSpan("auth.verify_email", async (span) => {
+      try {
+        const { token } = req.body as Static<typeof VerifyEmailSchema>;
+        const userId = await fastify.redis.get(`auth:verify-email:${token}`);
 
-    if (!userId) {
-      fastify.log.info({ token }, "Email verification failed: invalid or expired token");
-      return errorReply(
-        reply,
-        400,
-        "INVALID_VERIFICATION_TOKEN",
-        "Invalid or expired verification token"
-      );
-    }
+        if (!userId) {
+          span.setAttribute("auth.outcome", "invalid_token");
+          fastify.log.info({ token }, "Email verification failed: invalid or expired token");
+          return errorReply(
+            reply,
+            400,
+            "INVALID_VERIFICATION_TOKEN",
+            "Invalid or expired verification token"
+          );
+        }
 
-    await req.prisma.user.update({ where: { id: userId }, data: { emailVerified: new Date() } });
-    await fastify.redis.del(`auth:verify-email:${token}`);
+        await req.prisma.user.update({ where: { id: userId }, data: { emailVerified: new Date() } });
+        await fastify.redis.del(`auth:verify-email:${token}`);
+        span.setAttribute("auth.outcome", "success");
+        span.setAttribute("auth.user_id", userId);
 
-    return reply.send({ success: true });
+        return reply.send({ success: true });
+      } catch (err) {
+        span.recordException(err as Error);
+        throw err;
+      } finally {
+        span.end();
+      }
+    });
   });
 
   // ── Forgot password ─────────────────────────────────────────────────────────
@@ -289,37 +318,49 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
     "/forgot-password",
     { schema: { body: ForgotPasswordSchema } },
     async (req, reply) => {
-      const { email } = req.body as Static<typeof ForgotPasswordSchema>;
-      const user = await req.prisma.user.findUnique({ where: { email } });
+      return tracer.startActiveSpan("auth.forgot_password", async (span) => {
+        try {
+          const { email } = req.body as Static<typeof ForgotPasswordSchema>;
+          span.setAttribute("auth.email", email);
+          const user = await req.prisma.user.findUnique({ where: { email } });
 
-      if (user) {
-        const resetToken = crypto.randomBytes(32).toString("hex");
+          if (user) {
+            const resetToken = crypto.randomBytes(32).toString("hex");
 
-        // AUTH-006 FIX: Write outbox event inside transaction, then set Redis.
-        // If Redis fails, the email is still queued (acceptable — token just won't work).
-        await req.prisma.$transaction(
-          async (tx: Parameters<Parameters<typeof req.prisma.$transaction>[0]>[0]) => {
-            await tx.authOutboxEvent.create({
-              data: {
-                eventType: "PasswordResetRequestedEvent",
-                payload: { userId: user.id, email: user.email, token: resetToken },
-              },
-            });
+            // AUTH-006 FIX: Write outbox event inside transaction, then set Redis.
+            // If Redis fails, the email is still queued (acceptable — token just won't work).
+            await req.prisma.$transaction(
+              async (tx: Parameters<Parameters<typeof req.prisma.$transaction>[0]>[0]) => {
+                await tx.authOutboxEvent.create({
+                  data: {
+                    eventType: "PasswordResetRequestedEvent",
+                    payload: { userId: user.id, email: user.email, token: resetToken },
+                  },
+                });
+              }
+            );
+
+            await fastify.redis.set(
+              `auth:reset-password:${resetToken}`,
+              user.id,
+              "EX",
+              config.expiry.passwordReset
+            );
+            span.setAttribute("auth.user_id", user.id);
           }
-        );
 
-        await fastify.redis.set(
-          `auth:reset-password:${resetToken}`,
-          user.id,
-          "EX",
-          config.expiry.passwordReset
-        );
-      }
-
-      // Always return success to prevent email enumeration.
-      return reply.send({
-        success: true,
-        message: "If the email exists, a password reset link has been sent.",
+          span.setAttribute("auth.outcome", "success");
+          // Always return success to prevent email enumeration.
+          return reply.send({
+            success: true,
+            message: "If the email exists, a password reset link has been sent.",
+          });
+        } catch (err) {
+          span.recordException(err as Error);
+          throw err;
+        } finally {
+          span.end();
+        }
       });
     }
   );
@@ -327,31 +368,43 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
   // ── Reset password ──────────────────────────────────────────────────────────
 
   fastify.post("/reset-password", { schema: { body: ResetPasswordSchema } }, async (req, reply) => {
-    const { token, newPassword } = req.body as Static<typeof ResetPasswordSchema>;
-    const userId = await fastify.redis.get(`auth:reset-password:${token}`);
+    return tracer.startActiveSpan("auth.reset_password", async (span) => {
+      try {
+        const { token, newPassword } = req.body as Static<typeof ResetPasswordSchema>;
+        const userId = await fastify.redis.get(`auth:reset-password:${token}`);
 
-    if (!userId) {
-      return errorReply(reply, 400, "INVALID_RESET_TOKEN", "Invalid or expired reset token");
-    }
+        if (!userId) {
+          span.setAttribute("auth.outcome", "invalid_token");
+          return errorReply(reply, 400, "INVALID_RESET_TOKEN", "Invalid or expired reset token");
+        }
 
-    const hashedPassword = await argon2.hash(newPassword);
+        const hashedPassword = await argon2.hash(newPassword);
 
-    await req.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.user.update({ where: { id: userId }, data: { password: hashedPassword } });
-      await tx.securityLog.create({
-        data: {
-          userId,
-          action: "PASSWORD_RESET",
-          ip: req.ip,
-          userAgent: req.headers["user-agent"] ?? null,
-        },
-      });
+        await req.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          await tx.user.update({ where: { id: userId }, data: { password: hashedPassword } });
+          await tx.securityLog.create({
+            data: {
+              userId,
+              action: "PASSWORD_RESET",
+              ip: req.ip,
+              userAgent: req.headers["user-agent"] ?? null,
+            },
+          });
+        });
+
+        await fastify.redis.del(`auth:reset-password:${token}`);
+        await invalidateAllSessions(fastify, userId);
+        span.setAttribute("auth.outcome", "success");
+        span.setAttribute("auth.user_id", userId);
+
+        return reply.send({ success: true });
+      } catch (err) {
+        span.recordException(err as Error);
+        throw err;
+      } finally {
+        span.end();
+      }
     });
-
-    await fastify.redis.del(`auth:reset-password:${token}`);
-    await invalidateAllSessions(fastify, userId);
-
-    return reply.send({ success: true });
   });
 
   // ── Refresh token rotation ──────────────────────────────────────────────────
@@ -534,18 +587,19 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
     { schema: { body: UpdateProfileSchema }, onRequest: [async (r) => r.jwtVerify()] },
     async (req, reply) => {
       const { sub } = req.user;
-      const { name } = req.body as Static<typeof UpdateProfileSchema>;
+      const { name, jobTitle } = req.body as Static<typeof UpdateProfileSchema>;
 
       const updateData: Record<string, string> = {};
       if (name !== undefined) updateData["name"] = name;
+      if (jobTitle !== undefined) updateData["jobTitle"] = jobTitle;
 
       const user = await req.prisma.user.update({
         where: { id: sub },
         data: updateData,
-        select: { id: true, name: true, email: true },
+        select: { id: true, name: true, email: true, jobTitle: true },
       });
 
-      return reply.send({ success: true, user });
+      return reply.send({ success: true, message: "Profile updated successfully", user });
     }
   );
 
@@ -555,89 +609,160 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
     "/change-password",
     { schema: { body: ChangePasswordSchema }, onRequest: [async (r) => r.jwtVerify()] },
     async (req, reply) => {
-      const { sub } = req.user;
-      const { currentPassword, newPassword } = req.body as Static<typeof ChangePasswordSchema>;
+      return tracer.startActiveSpan("auth.change_password", async (span) => {
+        try {
+          const { sub } = req.user;
+          span.setAttribute("auth.user_id", sub);
+          const { currentPassword, newPassword } = req.body as Static<typeof ChangePasswordSchema>;
 
-      const user = await req.prisma.user.findUnique({ where: { id: sub } });
-      if (!user) return errorReply(reply, 404, "USER_NOT_FOUND", "User not found");
-      if (!user.password)
-        return errorReply(reply, 400, "OAUTH_NO_PASSWORD", "User uses OAuth and has no password");
+          const user = await req.prisma.user.findUnique({ where: { id: sub } });
+          if (!user) return errorReply(reply, 404, "USER_NOT_FOUND", "User not found");
+          if (!user.password)
+            return errorReply(reply, 400, "OAUTH_NO_PASSWORD", "User uses OAuth and has no password");
 
-      if (!(await argon2.verify(user.password, currentPassword))) {
-        return errorReply(reply, 401, "INCORRECT_PASSWORD", "Incorrect current password");
-      }
+          if (!(await argon2.verify(user.password, currentPassword))) {
+            span.setAttribute("auth.outcome", "invalid_current_password");
+            return errorReply(reply, 401, "INCORRECT_PASSWORD", "Incorrect current password");
+          }
 
-      await req.prisma.user.update({
-        where: { id: sub },
-        data: { password: await argon2.hash(newPassword) },
+          await req.prisma.user.update({
+            where: { id: sub },
+            data: { password: await argon2.hash(newPassword) },
+          });
+          span.setAttribute("auth.outcome", "success");
+          return reply.send({ success: true });
+        } catch (err) {
+          span.recordException(err as Error);
+          throw err;
+        } finally {
+          span.end();
+        }
       });
-      return reply.send({ success: true });
     }
   );
 
   // ── Delete account ──────────────────────────────────────────────────────────
 
   fastify.delete("/me", { onRequest: [async (r) => r.jwtVerify()] }, async (req, reply) => {
-    const { sub } = req.user;
+    return tracer.startActiveSpan("auth.delete_account", async (span) => {
+      try {
+        const { sub } = req.user;
+        span.setAttribute("auth.user_id", sub);
 
-    await req.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.authOutboxEvent.create({
-        data: { eventType: "UserDeletedEvent", payload: { userId: sub } },
-      });
-      await tx.securityLog.deleteMany({ where: { userId: sub } });
-      await tx.submission.deleteMany({ where: { userId: sub } });
-      await tx.completion.deleteMany({ where: { userId: sub } });
-      await tx.labSession.deleteMany({ where: { userId: sub } });
-      await tx.user.delete({ where: { id: sub } });
+        await req.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          await tx.authOutboxEvent.create({
+            data: { eventType: "UserDeletedEvent", payload: { userId: sub } },
+          });
+          await tx.securityLog.deleteMany({ where: { userId: sub } });
+          await tx.submission.deleteMany({ where: { userId: sub } });
+          await tx.completion.deleteMany({ where: { userId: sub } });
+          await tx.labSession.deleteMany({ where: { userId: sub } });
+          await tx.user.delete({ where: { id: sub } });
+        });
+
+        await invalidateAllSessions(fastify, sub);
+        span.setAttribute("auth.outcome", "success");
+
+        return clearSessionCookies(reply).send({ success: true });
+      } catch (err) {
+        span.recordException(err as Error);
+        throw err;
+      } finally {
+        span.end();
+      }
     });
-
-    await invalidateAllSessions(fastify, sub);
-
-    return clearSessionCookies(reply).send({ success: true });
   });
 
   // ── Logout (single session) ─────────────────────────────────────────────────
 
   fastify.post("/logout", async (req, reply) => {
-    const parsed = parseRefreshToken(req.cookies["refreshToken"]);
+    return tracer.startActiveSpan("auth.logout", async (span) => {
+      try {
+        try {
+          await req.jwtVerify();
+        } catch {}
 
-    if (parsed) {
-      await fastify.redis.del(parsed.redisKey);
-      await logSecurityEvent(prisma, req, { userId: parsed.userId, action: "LOGOUT" });
-    }
+        const parsed = parseRefreshToken(req.cookies["refreshToken"]);
 
-    return clearSessionCookies(reply).send({ success: true });
+        if (parsed) {
+          await fastify.redis.del(parsed.redisKey);
+          await logSecurityEvent(prisma, req, { userId: parsed.userId, action: "LOGOUT" });
+          span.setAttribute("auth.user_id", parsed.userId);
+        }
+
+        if (req.user?.jti) {
+          await denylistAccessToken(fastify, req.user.jti);
+        }
+
+        span.setAttribute("auth.outcome", "success");
+        return clearSessionCookies(reply).send({ success: true });
+      } catch (err) {
+        span.recordException(err as Error);
+        throw err;
+      } finally {
+        span.end();
+      }
+    });
   });
 
   // ── Logout (all sessions) ───────────────────────────────────────────────────
 
   fastify.post("/logout-all", { onRequest: [async (r) => r.jwtVerify()] }, async (req, reply) => {
-    const { sub } = req.user;
+    return tracer.startActiveSpan("auth.logout_all", async (span) => {
+      try {
+        const { sub, jti } = req.user;
+        span.setAttribute("auth.user_id", sub);
 
-    await invalidateAllSessions(fastify, sub);
-    await logSecurityEvent(prisma, req, { userId: sub, action: "LOGOUT_ALL" });
+        await invalidateAllSessions(fastify, sub);
+        if (jti) {
+          await denylistAccessToken(fastify, jti);
+        }
+        await logSecurityEvent(prisma, req, { userId: sub, action: "LOGOUT_ALL" });
+        span.setAttribute("auth.outcome", "success");
 
-    return clearSessionCookies(reply).send({ success: true });
+        return clearSessionCookies(reply).send({ success: true });
+      } catch (err) {
+        span.recordException(err as Error);
+        throw err;
+      } finally {
+        span.end();
+      }
+    });
   });
+
+const SecurityLogQuerySchema = Type.Object({
+  page: Type.Optional(Type.String({ pattern: "^[0-9]+$" })),
+  limit: Type.Optional(Type.String({ pattern: "^[0-9]+$" })),
+});
 
   // ── Security Log ────────────────────────────────────────────────────────────
 
-  fastify.get("/security-log", { onRequest: [async (r) => r.jwtVerify()] }, async (req, _reply) => {
-    const { sub } = req.user;
-    const page = parseInt((req.query as { page?: string }).page || "1");
-    const limit = 20;
+  fastify.get(
+    "/security-log",
+    {
+      onRequest: [async (r) => r.jwtVerify()],
+      schema: { querystring: SecurityLogQuerySchema },
+    },
+    async (req, _reply) => {
+      const { sub } = req.user;
+      const query = req.query as { page?: string; limit?: string };
+      const rawPage = parseInt(query?.page || "1", 10);
+      const rawLimit = parseInt(query?.limit || "20", 10);
+      const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+      const limit = isNaN(rawLimit) || rawLimit < 1 ? 20 : Math.min(rawLimit, 100);
 
-    const logs = await prisma.securityLog.findMany({
-      where: { userId: sub },
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+      const logs = await prisma.securityLog.findMany({
+        where: { userId: sub },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+      });
 
-    const total = await prisma.securityLog.count({ where: { userId: sub } });
+      const total = await prisma.securityLog.count({ where: { userId: sub } });
 
-    return { logs, total, page, limit };
-  });
+      return { logs, total, page, limit };
+    }
+  );
 
   // ── Active Sessions ─────────────────────────────────────────────────────────
 
@@ -653,16 +778,41 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     "/sessions/:sessionId/revoke",
     { onRequest: [async (r) => r.jwtVerify()] },
-    async (req, _reply) => {
-      const { sub } = req.user;
-      const { sessionId } = req.params as { sessionId: string };
+    async (req, reply) => {
+      return tracer.startActiveSpan("auth.revoke_session", async (span) => {
+        try {
+          const { sub } = req.user;
+          const { sessionId } = req.params as { sessionId: string };
+          span.setAttribute("auth.user_id", sub);
+          span.setAttribute("auth.session_id", sessionId);
 
-      await prisma.userSession.updateMany({
-        where: { id: sessionId, userId: sub },
-        data: { revokedAt: new Date() },
+          const session = await prisma.userSession.findFirst({
+            where: { id: sessionId, userId: sub, revokedAt: null },
+          });
+
+          if (!session) {
+            span.setAttribute("auth.outcome", "session_not_found");
+            return errorReply(reply, 404, "SESSION_NOT_FOUND", "Active session not found");
+          }
+
+          await prisma.userSession.update({
+            where: { id: session.id },
+            data: { revokedAt: new Date() },
+          });
+
+          if (session.tokenHash) {
+            await fastify.redis.del(`auth:refresh:${sub}:${session.tokenHash}`);
+          }
+
+          span.setAttribute("auth.outcome", "success");
+          return reply.send({ success: true });
+        } catch (err) {
+          span.recordException(err as Error);
+          throw err;
+        } finally {
+          span.end();
+        }
       });
-
-      return { success: true };
     }
   );
 }

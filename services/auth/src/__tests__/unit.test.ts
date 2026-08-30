@@ -42,7 +42,8 @@ describe("Auth Unit Tests", () => {
         email: "test@test.com",
         role: "LEARNER",
         orgId: "org-1",
-        iss: expect.any(String) as unknown
+        iss: expect.any(String) as unknown,
+        jti: expect.any(String) as unknown,
       });
     });
   });

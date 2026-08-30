@@ -3,7 +3,6 @@ import cors from "@fastify/cors";
 import { TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import type { ObservabilityConfig } from "@devops/observability";
 import type { OAuth2Namespace } from "@fastify/oauth2";
-import pino from "pino";
 
 import { jwtPlugin } from "./plugins/jwt";
 import { oauth2Plugin } from "./plugins/oauth2";
@@ -32,7 +31,7 @@ export function buildApp(obs: ObservabilityConfig) {
   const isTest = requireEnv("NODE_ENV") === "test";
 
   const fastify = Fastify({
-    ...(isTest ? { logger: false } : { logger: pino(obs.loggerOptions, obs.stream as pino.DestinationStream) }),
+    ...(isTest ? { logger: false } : { logger: obs.logger }),
     requestIdHeader: "x-request-id",
     requestIdLogLabel: "request_id",
     genReqId: (req) => (req.headers["x-request-id"] as string) ?? crypto.randomUUID(),
@@ -41,6 +40,12 @@ export function buildApp(obs: ObservabilityConfig) {
   const corsOrigins = requireEnv("CORS_ORIGIN")
     .split(",")
     .map((o) => o.trim());
+
+  fastify.addHook("onRequest", async (_req, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0");
+    reply.header("Pragma", "no-cache");
+    reply.header("Expires", "0");
+  });
 
   fastify.register(cors, { origin: corsOrigins, credentials: true });
 
@@ -60,13 +65,13 @@ export function buildApp(obs: ObservabilityConfig) {
   fastify.register(oauthRoutes);
 
   fastify.setErrorHandler(function (error, request, reply) {
-    console.error("APP ERROR DEBUG:", error);
-    try {
-      this.log.error({ err: error, method: request.method, url: request.url }, "Unhandled error");
-      console.error("APP_TS_500_ERROR:", error);
-    } catch {}
-
     const status = error.statusCode ?? 500;
+
+    if (status >= 500) {
+      try {
+        this.log.error({ err: error, method: request.method, url: request.url }, "Unhandled error");
+      } catch {}
+    }
 
     if (status >= 400 && status < 500) {
       return reply.send(error);

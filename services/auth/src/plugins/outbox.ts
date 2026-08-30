@@ -30,9 +30,11 @@ export const outboxPlugin = fp(async (fastify: FastifyInstance) => {
         payload: unknown;
         createdAt: Date;
         processed: boolean;
+        retryCount: number;
+        failed: boolean;
       }[] = await prisma.$queryRaw`
         SELECT * FROM "AuthOutboxEvent"
-        WHERE processed = false
+        WHERE processed = false AND failed = false
         ORDER BY "createdAt" ASC
         LIMIT 10
         FOR UPDATE SKIP LOCKED
@@ -75,7 +77,23 @@ export const outboxPlugin = fp(async (fastify: FastifyInstance) => {
             data: { processed: true },
           });
         } catch (err) {
-          fastify.log.error({ err, eventId: event.id }, "Failed to emit outbox event to Kafka");
+          const nextRetry = (event.retryCount || 0) + 1;
+          const isFailed = nextRetry >= 5;
+
+          fastify.log.error(
+            { err, eventId: event.id, retryCount: nextRetry, failed: isFailed },
+            isFailed
+              ? "Outbox event exceeded max retries (5) — marking as failed poison-pill"
+              : "Failed to emit outbox event to Kafka — incrementing retry count"
+          );
+
+          await prisma.authOutboxEvent.update({
+            where: { id: event.id },
+            data: {
+              retryCount: nextRetry,
+              failed: isFailed,
+            },
+          });
           break;
         }
       }

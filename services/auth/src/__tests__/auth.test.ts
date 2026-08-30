@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vites
 import type { ObservabilityConfig } from '@devops/observability';
 
 const mockObs: ObservabilityConfig = {
+  logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() } as unknown as ObservabilityConfig['logger'],
   loggerOptions: { level: 'silent' },
   stream: {} as unknown as ObservabilityConfig['stream'],
   shutdown: () => {},
@@ -139,7 +140,7 @@ describe('Auth Service', () => {
         payload: { email: 'test@example.com', password: 'password123', name: 'Test User' },
       });
 
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode).toBe(201);
       const payload = JSON.parse(response.payload) as { token: string; user: { email: string } };
       expect(payload.user.email).toBe('test@example.com');
       expect(payload.token).toBeDefined();
@@ -177,7 +178,7 @@ describe('Auth Service', () => {
         payload: { email: 'test2@example.com', password: 'password123', name: 'Test User 2' },
       });
 
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode).toBe(201);
       const payload = JSON.parse(response.payload) as { token: string; user: { email: string } };
       expect(payload.user.email).toBe('test2@example.com');
     });

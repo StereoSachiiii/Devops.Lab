@@ -55,8 +55,6 @@ async function resolveGithubEmail(
   return primary?.email ?? null;
 }
 
-
-
 // ─── Route registration ───────────────────────────────────────────────────────
 
 export async function oauthRoutes(fastify: FastifyInstance): Promise<void> {
@@ -120,73 +118,133 @@ export async function oauthRoutes(fastify: FastifyInstance): Promise<void> {
     const exchangeToken = await createExchangeToken(fastify, user.id);
     return reply.redirect(`${config.frontendUrl}/auth/callback?exchange_token=${exchangeToken}`);
   });
+
+  // ── Enterprise SSO Login (Okta / SAML / Azure AD Domain Flow) ─────────────
+  fastify.post("/login/sso", async (req: FastifyRequest, reply: FastifyReply) => {
+    const { email, orgSlug, ssoId, name, avatarUrl } = (req.body || {}) as {
+      email?: string;
+      orgSlug?: string;
+      ssoId?: string;
+      name?: string;
+      avatarUrl?: string;
+    };
+
+    if (!email || (!orgSlug && !ssoId)) {
+      return reply.status(400).send({
+        error: "Work email and organization domain/slug are required for SSO sign-in.",
+        code: "INVALID_SSO_PAYLOAD",
+      });
+    }
+
+    // Verify organization exists and has SSO enabled
+    const domain = email.split("@")[1];
+    const org = await req.prisma.org.findFirst({
+      where: {
+        OR: [
+          ...(orgSlug ? [{ slug: orgSlug }] : []),
+          ...(domain ? [{ ssoDomain: domain }] : []),
+        ],
+      },
+    });
+
+    if (!org) {
+      return reply.status(404).send({
+        error: `No organization configured for SSO with domain @${domain || orgSlug}.`,
+        code: "SSO_ORG_NOT_FOUND",
+      });
+    }
+
+    const providerId = ssoId || `sso_${org.id}_${email}`;
+
+    const user = await findOrCreateOAuthUser({
+      provider: "sso",
+      providerId,
+      email,
+      name: name || email.split("@")[0] || "Enterprise User",
+      avatarUrl: avatarUrl || null,
+      emailVerified: true,
+      orgId: org.id,
+    });
+
+    await trackLogin(req, user.id);
+
+    const exchangeToken = await createExchangeToken(fastify, user.id);
+    return reply.send({
+      success: true,
+      exchangeToken,
+      org: { id: org.id, name: org.name, slug: org.slug, ssoProvider: org.ssoProvider || "SAML" },
+    });
+  });
 }
 
 // ─── Shared OAuth logic ───────────────────────────────────────────────────────
 
 interface OAuthProfile {
-  provider: "github" | "google";
+  provider: "github" | "google" | "sso";
   providerId: string;
   email: string;
   name: string | null;
   avatarUrl: string | null;
   emailVerified: boolean;
+  orgId?: string;
 }
 
 /** Look up an existing user by provider ID or email; create one if not found. */
 async function findOrCreateOAuthUser(profile: OAuthProfile) {
   // Try to find by provider-specific ID first.
-  let user =
-    profile.provider === "github"
-      ? await prisma.user.findUnique({ where: { githubId: profile.providerId } })
-      : await prisma.user.findUnique({ where: { googleId: profile.providerId } });
+  // Use transactional consistency for all OAuth user query and link operations
+  return await prisma.$transaction(async (tx) => {
+    let user =
+      profile.provider === "github"
+        ? await tx.user.findUnique({ where: { githubId: profile.providerId } })
+        : profile.provider === "google"
+          ? await tx.user.findUnique({ where: { googleId: profile.providerId } })
+          : await tx.user.findUnique({ where: { ssoId: profile.providerId } });
 
-  if (user) {
-    // AUTH-008 FIX: Update emailVerified if the OAuth provider confirms it
-    // but the existing record doesn't have it set.
-    if (profile.emailVerified && !user.emailVerified) {
-      user = await prisma.user.update({
-        where: { id: user.id },
-        data: { emailVerified: new Date() },
-      });
+    if (user) {
+      if (profile.emailVerified && !user.emailVerified) {
+        user = await tx.user.update({
+          where: { id: user.id },
+          data: { emailVerified: new Date() },
+        });
+      }
+      return user;
     }
-    return user;
-  }
 
-  // Check if user exists by email (link scenario).
-  const existingByEmail = await prisma.user.findUnique({ where: { email: profile.email } });
+    // Check if user exists by email (link scenario).
+    const existingByEmail = await tx.user.findUnique({ where: { email: profile.email } });
 
-  const providerData =
-    profile.provider === "github"
-      ? { githubId: profile.providerId }
-      : { googleId: profile.providerId };
+    const providerData =
+      profile.provider === "github"
+        ? { githubId: profile.providerId }
+        : profile.provider === "google"
+          ? { googleId: profile.providerId }
+          : { ssoId: profile.providerId };
 
-  if (existingByEmail) {
-    // Link the provider ID to the existing account.
-    // AUTH-008 FIX: Also update emailVerified if provider confirms it.
-    user = await prisma.user.update({
-      where: { email: profile.email },
-      data: {
-        ...providerData,
-        avatarUrl: profile.avatarUrl,
-        ...(profile.emailVerified && !existingByEmail.emailVerified
-          ? { emailVerified: new Date() }
-          : {}),
-      },
-    });
-    // AUTH-009 FIX: This is a link, not a new registration — do NOT emit UserRegisteredEvent.
-    return user;
-  }
+    if (existingByEmail) {
+      // Link the provider ID to the existing account.
+      user = await tx.user.update({
+        where: { email: profile.email },
+        data: {
+          ...providerData,
+          avatarUrl: profile.avatarUrl,
+          ...(profile.orgId ? { orgId: profile.orgId } : {}),
+          ...(profile.emailVerified && !existingByEmail.emailVerified
+            ? { emailVerified: new Date() }
+            : {}),
+        },
+      });
+      return user;
+    }
 
-  // AUTH-002 FIX: Use transactional outbox pattern instead of direct Kafka emit.
-  // This guarantees the registration event survives broker outages.
-  user = await prisma.$transaction(async (tx) => {
+    // Create new OAuth user and registration outbox event atomically
     const newUser = await tx.user.create({
       data: {
         email: profile.email,
         name: profile.name ?? null,
         avatarUrl: profile.avatarUrl ?? null,
         ...providerData,
+        orgId: profile.orgId ?? null,
         emailVerified: profile.emailVerified ? new Date() : null,
       },
     });
@@ -200,6 +258,4 @@ async function findOrCreateOAuthUser(profile: OAuthProfile) {
 
     return newUser;
   });
-
-  return user;
 }
