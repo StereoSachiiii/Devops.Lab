@@ -1,11 +1,11 @@
-import type { FastifyInstance } from 'fastify';
-import type { PrismaClient } from '@devops/db';
-import type { MessagingService } from '@devops/messaging';
+import type { FastifyInstance } from "fastify";
+import type { PrismaClient } from "@devops/db";
+import type { MessagingService } from "@devops/messaging";
 
 export interface HealthCheckResult {
-  status: 'ok' | 'degraded';
+  status: "ok" | "degraded";
   service: string;
-  checks: Record<string, 'up' | 'down'>;
+  checks: Record<string, "up" | "down">;
   timestamp: string;
 }
 
@@ -35,23 +35,23 @@ export class HealthRegistry {
       return this.cache;
     }
 
-    const checks: Record<string, 'up' | 'down'> = {};
+    const checks: Record<string, "up" | "down"> = {};
 
     await Promise.all(
       Array.from(this.checks.entries()).map(async ([name, checker]) => {
         try {
           await checker();
-          checks[name] = 'up';
+          checks[name] = "up";
         } catch {
-          checks[name] = 'down';
+          checks[name] = "down";
         }
-      }),
+      })
     );
 
-    const allUp = Object.values(checks).every((v) => v === 'up');
+    const allUp = Object.values(checks).every((v) => v === "up");
 
     this.cache = {
-      status: allUp ? 'ok' : 'degraded',
+      status: allUp ? "ok" : "degraded",
       service: serviceName,
       checks,
       timestamp: new Date().toISOString(),
@@ -71,12 +71,12 @@ export function databaseCheck(prisma: PrismaClient): HealthChecker {
 export function kafkaCheck(kafka: MessagingService): HealthChecker {
   return async () => {
     if (!kafka.isProducerReady) {
-      throw new Error('Kafka producer not ready');
+      throw new Error("Kafka producer not ready");
     }
   };
 }
 
-declare module 'fastify' {
+declare module "fastify" {
   interface FastifyInstance {
     healthRegistry: HealthRegistry;
   }
@@ -85,18 +85,18 @@ declare module 'fastify' {
 export function registerHealthChecks(
   fastify: FastifyInstance,
   prisma: PrismaClient,
-  kafka: MessagingService,
+  kafka: MessagingService
 ): void {
   const registry = new HealthRegistry();
 
-  registry.register('db', databaseCheck(prisma));
-  registry.register('kafka', kafkaCheck(kafka));
+  registry.register("db", databaseCheck(prisma));
+  registry.register("kafka", kafkaCheck(kafka));
 
-  fastify.decorate('healthRegistry', registry);
+  fastify.decorate("healthRegistry", registry);
 
-  fastify.get('/health', async (_req, reply) => {
-    const result = await registry.run('core-service');
-    if (result.status === 'degraded') {
+  fastify.get("/health", async (_req, reply) => {
+    const result = await registry.run("core-service");
+    if (result.status === "degraded") {
       reply.status(503);
     }
     return result;

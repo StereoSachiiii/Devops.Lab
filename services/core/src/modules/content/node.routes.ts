@@ -1,5 +1,5 @@
-import type { FastifyInstance } from 'fastify';
-import { PrismaClient, Node, Edge } from '@devops/db';
+import type { FastifyInstance } from "fastify";
+import { Node, Edge } from "@devops/db";
 
 type EdgeWithTo = Edge & { to: Node };
 type EdgeWithFrom = Edge & { from: Node };
@@ -7,55 +7,54 @@ type CompletionWithNodeId = { nodeId: string };
 type NodeWithOutgoing = Node & { outgoing: { toId: string }[] };
 
 export async function nodeRoutes(fastify: FastifyInstance) {
-  const prisma = fastify.prisma as PrismaClient;
 
-  fastify.get('/nodes/:id', async (request, reply) => {
+  fastify.get("/nodes/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
-      const node = await prisma.node.findUnique({ where: { id } });
-      if (!node) return reply.status(404).send({ error: 'Node not found', code: 'NOT_FOUND' });
+      const node = await request.prisma.node.findUnique({ where: { id } });
+      if (!node) return reply.status(404).send({ error: "Node not found", code: "NOT_FOUND" });
       return node;
     } catch (error) {
       fastify.log.error(error);
-      return reply.status(500).send({ error: 'Internal Server Error' });
+      return reply.status(500).send({ error: "Internal Server Error" });
     }
   });
 
-  fastify.get('/nodes/:id/parents', async (request, reply) => {
+  fastify.get("/nodes/:id/parents", async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
-      const edges = await prisma.edge.findMany({
+      const edges = (await request.prisma.edge.findMany({
         where: { fromId: id },
         include: { to: true },
-      }) as EdgeWithTo[];
+      })) as EdgeWithTo[];
 
       return { nodes: edges.map((edge: EdgeWithTo) => edge.to) };
     } catch (error) {
       fastify.log.error(error);
-      return reply.status(500).send({ error: 'Internal Server Error' });
+      return reply.status(500).send({ error: "Internal Server Error" });
     }
   });
 
-  fastify.get('/nodes/:id/children', async (request, reply) => {
+  fastify.get("/nodes/:id/children", async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
-      const edges = await prisma.edge.findMany({
+      const edges = (await request.prisma.edge.findMany({
         where: { toId: id },
         include: { from: true },
-      }) as EdgeWithFrom[];
+      })) as EdgeWithFrom[];
 
       return { nodes: edges.map((edge: EdgeWithFrom) => edge.from) };
     } catch (error) {
       fastify.log.error(error);
-      return reply.status(500).send({ error: 'Internal Server Error' });
+      return reply.status(500).send({ error: "Internal Server Error" });
     }
   });
 
   // Recursive CTE walks all ancestors in a single query
-  fastify.get('/nodes/:id/ancestors', async (request, reply) => {
+  fastify.get("/nodes/:id/ancestors", async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
-      const ancestors = await prisma.$queryRaw<Node[]>`
+      const ancestors = await request.prisma.$queryRaw<Node[]>`
         WITH RECURSIVE ancestors AS (
           SELECT "toId" FROM "Edge" WHERE "fromId" = ${id}
           UNION
@@ -67,36 +66,36 @@ export async function nodeRoutes(fastify: FastifyInstance) {
       return { nodes: ancestors };
     } catch (error) {
       fastify.log.error(error);
-      return reply.status(500).send({ error: 'Internal Server Error' });
+      return reply.status(500).send({ error: "Internal Server Error" });
     }
   });
 
   // Frontier = incomplete nodes whose prerequisites are all satisfied
-  fastify.get('/users/:id/frontier', async (request, reply) => {
+  fastify.get("/users/:id/frontier", async (request, reply) => {
     const { id: userId } = request.params as { id: string };
     try {
-      const completions = await prisma.completion.findMany({
+      const completions = (await request.prisma.completion.findMany({
         where: { userId },
         select: { nodeId: true },
-      }) as CompletionWithNodeId[];
+      })) as CompletionWithNodeId[];
 
       const completedNodeIds = completions.map((c: CompletionWithNodeId) => c.nodeId);
 
-      const candidateNodes = await prisma.node.findMany({
+      const candidateNodes = (await request.prisma.node.findMany({
         where: { id: { notIn: completedNodeIds } },
         include: {
-          outgoing: { select: { toId: true } }
-        }
-      }) as NodeWithOutgoing[];
+          outgoing: { select: { toId: true } },
+        },
+      })) as NodeWithOutgoing[];
 
       const unlocked = candidateNodes.filter((node: NodeWithOutgoing) =>
         node.outgoing.every((edge: { toId: string }) => completedNodeIds.includes(edge.toId))
       );
 
-      return { nodes: unlocked.map(({ outgoing: _, ...node }: any) => node) };
+      return { nodes: unlocked.map(({ outgoing: _, ...node }: NodeWithOutgoing) => node) };
     } catch (error) {
       fastify.log.error(error);
-      return reply.status(500).send({ error: 'Internal Server Error' });
+      return reply.status(500).send({ error: "Internal Server Error" });
     }
   });
 }
