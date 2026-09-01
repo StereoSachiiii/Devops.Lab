@@ -1,0 +1,137 @@
+name: devops-dev
+
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.1.1
+    container_name: devops-redpanda-dev
+    command:
+      - redpanda start
+      - --smp 1
+      - --memory 1G
+      - --overprovisioned
+      - --node-id 0
+      - --check=false
+      - --reserve-memory 0M
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://127.0.0.1:19092
+    ports:
+      - "19092:19092"
+      - "9092:9092"
+    networks:
+      - dev-net
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.1.1
+    container_name: devops-redpanda-init-dev
+    networks:
+      - dev-net
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        BROKERS="redpanda:9092"
+        create_topic() {
+          local name=$$1 partitions=$$2 retention_ms=$$3
+          rpk topic create $$name --brokers $$BROKERS --partitions $$partitions --replicas 1 --topic-config retention.ms=$$retention_ms --topic-config cleanup.policy=delete 2>&1 | grep -v "TOPIC_ALREADY_EXISTS" || true
+          echo "Topic ready: $$name"
+        }
+        create_topic identity.user.registered 4 604800000
+        create_topic identity.email.verification 4 604800000
+        create_topic sandbox.session.started 8 604800000
+        create_topic sandbox.session.ended 8 604800000
+        create_topic sandbox.challenge.solved 4 604800000
+        create_topic sandbox.challenge.failed 4 604800000
+    restart: "no"
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: devops-rabbitmq-dev
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - dev-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.83.0
+    container_name: devops-otel-dev
+    command: ["--config=/etc/otel/config.yaml"]
+    ports:
+      - "4318:4318"
+      - "4317:4317"
+    volumes:
+      - ../infra/otel-config.yaml:/etc/otel/config.yaml:ro
+    networks:
+      - dev-net
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:2.8.2
+    container_name: devops-loki-dev
+    user: root
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ../infra/loki-config.yaml:/etc/loki/local-config.yaml:ro
+    networks:
+      - dev-net
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.3.1
+    container_name: devops-tempo-dev
+    command: ["-config.file=/etc/tempo.yaml"]
+    ports:
+      - "3200:3200"
+    volumes:
+      - ../infra/tempo-config.yaml:/etc/tempo.yaml:ro
+    networks:
+      - dev-net
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    container_name: devops-prometheus-dev
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../infra/prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml:ro
+    networks:
+      - dev-net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.3.1
+    container_name: devops-grafana-dev
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ../infra/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - dev-net
+    restart: unless-stopped
+
+networks:
+  dev-net:
+    name: devops-dev-net
+    external: true

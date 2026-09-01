@@ -11,6 +11,7 @@ build/
 bin/
 
 # Debug
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -21,6 +22,7 @@ yarn-error.log*
 
 # Environment variables
 .env
+.env.prod
 .env.local
 .env.development.local
 .env.test.local
@@ -55,6 +57,11 @@ infra/k8s/secrets/*.yaml
 # Prisma
 packages/db/prisma/dev.db
 packages/db/prisma/dev.db-journal
+packages/db/*.js
+packages/db/prisma/*.js
 
 # Private TODOs
 todo-private.md
+
+# Agent Customizations
+.agents/
