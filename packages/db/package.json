@@ -5,25 +5,29 @@
   "main": "./index.ts",
   "types": "./index.ts",
   "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "generate": "prisma generate",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
+    "db:seed": "prisma db seed",
     "lint": "eslint ."
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.3",
+    "@prisma/client": "^7.8.0",
     "dotenv-cli": "^11.0.0",
     "fast-check": "^3.23.2",
     "js-yaml": "^4.1.0",
-    "prisma": "^6.0.0"
+    "prisma": "^7.8.0"
   },
   "devDependencies": {
     "@devops/eslint-config": "*",
     "@types/js-yaml": "^4.0.9",
     "ts-node": "^10.9.2",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "yn": "^3.1.1"
   }
 }
