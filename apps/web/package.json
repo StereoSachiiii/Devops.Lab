@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "node -e \"require('fs').copyFileSync('../../.env', '.env.local')\"",
+    "predev": "node -e \"if (require('fs').existsSync('../../.env')) require('fs').copyFileSync('../../.env', '.env.local')\"",
     "dev": "next dev --webpack -H 127.0.0.1",
-    "prebuild": "node -e \"require('fs').copyFileSync('../../.env', '.env.local')\"",
+    "prebuild": "node -e \"if (require('fs').existsSync('../../.env')) require('fs').copyFileSync('../../.env', '.env.local')\"",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
@@ -13,6 +13,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@devops/types": "*",
     "@hookform/resolvers": "^5.4.0",
     "@monaco-editor/react": "^4.7.0",
     "@xterm/addon-fit": "^0.11.0",
