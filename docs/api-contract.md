@@ -31,6 +31,12 @@ Handles authentication, sessions, account recovery, and MFA.
 - **Rate Limiting (Kong)**: The gateway enforces **100 req/sec** per IP. Exceeding this returns `429 Too Many Requests`.
 - **Account Lockout**: **5 failed login attempts** lock the account for 15 minutes. Returns `429` with `ACCOUNT_LOCKED`.
 - **Token Rotation & Grace Period**: Refresh tokens are rotated upon use. Concurrent requests within a **10-second grace period** are honored. Reusing an old token outside this window triggers a `SESSION_COMPROMISED` breach, revoking all active user sessions instantly.
+- **Targeted Single-Session Revocation**: `UserSession` records in Postgres are linked 1:1 to their Redis refresh token via a unique `tokenHash` field. Revoking a specific session (`POST /api/auth/sessions/:sessionId/revoke`) deletes only that specific `auth:refresh:${userId}:${tokenHash}` key from Redis without logging out other devices.
+- **Access Token Denylist (`jti`)**: Every signed RS256 15-minute access token includes a unique UUID `jti` claim. Upon `/logout`, `/logout-all`, or session revocation, the token's `jti` is denylisted in Redis under `auth:denylist:jti:${jti}` with a 15-minute TTL.
+- **Sandbox Fail-Open Security Trade-Off**: Node.js services (`auth-service`, `core-service`) enforce strict `jti` denylist rejection. The `sandbox-worker` Go daemon checks Redis with a 250ms timeout; if Redis is down, slow, or unreachable, `sandbox-worker` **fails open** (allowing valid RS256 signature tokens) to protect demo-critical terminal WebSocket connections from breaking during Redis outages.
+
+### Security Audit Status
+- **Access Token Revocation Gap**: **CLOSED** (Access tokens carry `jti` denylisted in Redis; sandbox worker employs fail-open protection for high-availability terminal sessions).
 
 ### Standard Auth Error Codes
 Error responses follow the `AppErrorSchema` or `ValidationErrorSchema`.
@@ -50,14 +56,33 @@ Handles challenges, learning paths, quizzes, and user progress/leaderboard.
 | --------------------------------- | ------ | ------------------------------------- | -------------------------------------- |
 | `/api/challenges`                 | `GET`  | _None_                                | `Challenge[]`                          |
 | `/api/challenges/:id`             | `GET`  | _None_                                | `Challenge`                            |
+| `/api/challenges/:id/editorial`   | `GET`  | _None_ (Auth required)                | `EditorialResponse` (200) or `403 Forbidden` (`EDITORIAL_LOCKED`) |
+| `/api/challenges/:id/like`        | `POST` | _None_ (Auth required)                | `{ "likes": number, "liked": boolean }` |
+| `/api/challenges/:id/bookmark`    | `POST` | _None_ (Auth required)                | `{ "saved": boolean }`                 |
+| `/api/challenges/:id/interactions`| `GET`  | _None_                                | `{ "likes": number, "liked": boolean, "saved": boolean }` |
 | `/api/challenges/:id/start`       | `POST` | _None_                                | `Session` (starts a sandbox container) |
 | `/api/session/:id`                | `GET`  | _None_                                | `Session`                              |
+| `/api/users/me/feed`              | `GET`  | Query: `?limit=20` (Auth required)    | `ActivityFeedResponse` (chronological completions & badges) |
+| `/api/users/me/bookmarks`         | `GET`  | _None_ (Auth required)                | `Challenge[]` (user's saved challenges) |
+| `/api/users/me/following`         | `GET`  | _None_ (Auth required)                | `UserSummary[]` (list of followed users) |
+| `/api/users/:id/follow`           | `POST` | _None_ (Auth required)                | `{ "following": boolean, "followingCount": number, "followersCount": number }` |
+| `/api/users/:username/profile`    | `GET`  | _None_                                | `PublicProfile`                        |
 | `/api/content/nodes/:id`          | `GET`  | _None_                                | `Node`                                 |
 | `/api/content/quizzes`            | `GET`  | _None_                                | `QuizNode[]`                           |
-| `/api/content/quizzes/:id/submit` | `POST` | `{ "answers": { "q1": 0, "q2": 1 } }` | `SubmitResponse`                       |
+| `/api/content/quizzes/:id/submit` | `POST` | `{ "answers": { "q1": 0, "q2": 1 } }` (Auth session or optional `userId` in body) | `SubmitResponse` |
 | `/api/leaderboard`                | `GET`  | _None_                                | `LeaderboardResponse`                  |
-| `/api/dashboard`                  | `GET`  | _None_                                | `DashboardData`                        |
-| `/api/assistant/chat`             | `POST` | `{ "message": "How do I exit vim?" }` | `{ "content": "..." }`                 |
+| `/api/dashboard`                  | `GET`  | _None_ (Auth required)                | `DashboardData`                        |
+| `/api/assistant/chat`             | `POST` | `{ "message": "string" }` or `{ "messages": ChatMessage[] }` | `{ "content": "..." }` |
+| `/api/articles`                   | `GET`  | Query: `?category=...&tag=...`        | `Article[]`                            |
+| `/api/articles/:slug`             | `GET`  | _None_                                | `Article`                              |
+| `/api/articles`                   | `POST` | Article JSON body (Admin/Contributor) | `Article` (201 Created)                |
+| `/api/content/flashcards`         | `GET`  | _None_                                | `FlashcardDeck[]`                      |
+| `/api/orgs/me`                    | `GET`  | _None_ (Auth required)                | `OrgDetails & { myRole }`              |
+| `/api/orgs/:orgId/members`        | `GET`  | _None_ (Auth required, `/me` alias)   | `OrgMember[]`                          |
+| `/api/orgs/:orgId/invites`        | `POST` | `{ "email": "...", "orgRole": "..." }` (Admin required, `/me` alias) | `StandardResponse & { invite }` |
+| `/api/orgs/:orgId/analytics`      | `GET`  | _None_ (Admin required, `/me` alias)  | `OrgAnalytics`                         |
+| `/api/orgs/:orgId/scenarios`      | `GET`  | _None_ (Auth required, `/me` alias)   | `OrgScenario[]`                        |
+| `/api/orgs/:orgId/scenarios`      | `POST` | Create scenario JSON (Admin required, `/me` alias) | `OrgScenario` (201 Created) |
 
 ---
 
@@ -82,6 +107,94 @@ It consumes events from RabbitMQ and Kafka (such as `UserRegisteredEvent` or `Em
 
 ## Standard JSON Payload Examples
 
+### `EditorialResponse` (200 OK)
+
+```json
+{
+  "id": "chal-123",
+  "title": "Fix the Broken Nginx Config",
+  "category": "DOCKER",
+  "difficulty": "JUNIOR",
+  "editorial": "# Official Editorial: Fix the Broken Nginx Config\n\n## Root Cause Analysis...",
+  "authorNotes": "Remember that nginx -t reports the exact line number where syntax parsing breaks."
+}
+```
+
+### `EditorialLockedResponse` (403 Forbidden)
+
+Returned when a learner requests an editorial for a challenge they have not yet passed.
+
+```json
+{
+  "error": "Editorial locked. Solve this challenge first to view the official solution and deep dive.",
+  "code": "EDITORIAL_LOCKED",
+  "canUnlock": true,
+  "challengeId": "chal-123"
+}
+```
+
+### `ActivityFeedResponse` (200 OK)
+
+Returns chronological events (completions and badge unlocks) from followed users.
+
+```json
+{
+  "feed": [
+    {
+      "id": "badge-user123-b1",
+      "type": "BADGE_EARNED",
+      "user": {
+        "id": "user123",
+        "name": "Jane Doe",
+        "username": "janedoe",
+        "avatarUrl": "https://...",
+        "jobTitle": "Staff Platform Engineer"
+      },
+      "badge": {
+        "id": "b1",
+        "title": "First Deployment",
+        "description": "Successfully solved your first DevOps.lab challenge lab.",
+        "iconRef": "🚀"
+      },
+      "timestamp": "2026-08-27T02:00:00.000Z"
+    },
+    {
+      "id": "completion-sess456",
+      "type": "CHALLENGE_SOLVED",
+      "user": {
+        "id": "user123",
+        "name": "Jane Doe",
+        "username": "janedoe",
+        "avatarUrl": "https://...",
+        "jobTitle": "Staff Platform Engineer"
+      },
+      "challenge": {
+        "id": "chal-123",
+        "title": "Fix the Broken Nginx Config",
+        "difficulty": "JUNIOR",
+        "category": "DOCKER",
+        "xp": 100
+      },
+      "timestamp": "2026-08-27T01:10:00.000Z"
+    }
+  ]
+}
+```
+
+### `LeaderboardResponse`
+
+```json
+{
+  "leaderboard": [
+    {
+      "id": "uuid-123",
+      "name": "Jane Doe",
+      "xp": 1500
+    }
+  ]
+}
+```
+
 ### `UserProfile` (Auth/Me)
 
 ```json
@@ -92,6 +205,7 @@ It consumes events from RabbitMQ and Kafka (such as `UserRegisteredEvent` or `Em
   "role": "ADMIN",
   "xp": 1500,
   "mfaEnabled": true,
+  "hasPassword": true,
   "avatarUrl": "https://example.com/avatar.png"
 }
 ```

@@ -1,5 +1,4 @@
-
-  what matters . * WE LITERALLY JUS START WITH BARE MINIMUM , seriously a working cached secure login form that has is secure , good ux is literally progress , a small app route/ /challenge  , a basic text editor for the coding interface that runs locally without crashing , even if we have to submit things manually for now it is progress . the goal is to incrementally improve the user experience and system design as we go , nothing crazy we . the whole complex dev stack will be apparent to us as we build it * 
+what matters . _ WE LITERALLY JUS START WITH BARE MINIMUM , seriously a working cached secure login form that has is secure , good ux is literally progress , a small app route/ /challenge , a basic text editor for the coding interface that runs locally without crashing , even if we have to submit things manually for now it is progress . the goal is to incrementally improve the user experience and system design as we go , nothing crazy we . the whole complex dev stack will be apparent to us as we build it _
 
 hey team let me walk you through the entire vision for why we are building this the hard way because every decision we made has a specific engineering purpose to ensure we survive real world scale
 1
@@ -23,24 +22,17 @@ finally our ci cd process uses argocd for gitops which means our repository is t
 
 this is not just a learning platform. setup is tough but it gives us the power to scale to thousands of users while maintaining a professional contributor experience for all of us
 
-
-
-
-
 you might wonder why we are using kafka instead of direct api calls in our other projects the reason is scale and reliability at the engineering level.
 
 this does work theres millions of spring , crud codebases like that in production right now,
 
- but here we are running actual infrastructure code which is dangerous and heavy if we used a simple api call and the connection dropped the whole job would be lost and we would have no way to know what happened,
- 
- like we know everything is buil around failure in cloud , everything is assumed to fail, ephemeral and you have to design the system around it .
+but here we are running actual infrastructure code which is dangerous and heavy if we used a simple api call and the connection dropped the whole job would be lost and we would have no way to know what happened,
 
-  kafka consumer groups give us a solid guarantee that every single sandbox job will be processed exactly as it should be even if a server restarts because uncommitted offsets are redelivered while also letting us build a truly decoupled system where new features like a leaderboard or an email service can be added later without ever touching the core code this is a professional engineering standard that you only see in high traffic production systems which is why we are implementing it now to ensure our platform is unbreakable from day one even if we reach tens of thousands of users simultaneously which is something a standard monolith simply cannot do without failing completely
+like we know everything is buil around failure in cloud , everything is assumed to fail, ephemeral and you have to design the system around it .
 
+kafka consumer groups give us a solid guarantee that every single sandbox job will be processed exactly as it should be even if a server restarts because uncommitted offsets are redelivered while also letting us build a truly decoupled system where new features like a leaderboard or an email service can be added later without ever touching the core code this is a professional engineering standard that you only see in high traffic production systems which is why we are implementing it now to ensure our platform is unbreakable from day one even if we reach tens of thousands of users simultaneously which is something a standard monolith simply cannot do without failing completely
 
-  its fine to not know any of these. we will learn asa we go . the point of this is not to teach us how to write a yaml file , but it is about trying to understand real painpoints when something starts to scale and the importance of architecture . 
-  how to choose best tools for the job we obviuosly might need to change something in he stack. that has always happened to me at least. no exception here probably. 
+its fine to not know any of these. we will learn asa we go . the point of this is not to teach us how to write a yaml file , but it is about trying to understand real painpoints when something starts to scale and the importance of architecture .
+how to choose best tools for the job we obviuosly might need to change something in he stack. that has always happened to me at least. no exception here probably.
 
-
-
-  what matters . * WE LITERALLY JUS START WITH BARE MINIMUM , seriously a working cached secure login form that has is secure , good ux is literally progress , a small app route/ /challenge  , a basic text editor for the coding interface that runs locally without crashing , even if we have to submit things manually for now it is progress . the goal is to incrementally improve the user experience and system design as we go , nothing crazy we . the whole complex dev stack will be apparent to us as we build it * 
+what matters . _ WE LITERALLY JUS START WITH BARE MINIMUM , seriously a working cached secure login form that has is secure , good ux is literally progress , a small app route/ /challenge , a basic text editor for the coding interface that runs locally without crashing , even if we have to submit things manually for now it is progress . the goal is to incrementally improve the user experience and system design as we go , nothing crazy we . the whole complex dev stack will be apparent to us as we build it _
