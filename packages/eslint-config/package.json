@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "main": "index.js",
+  "scripts": {
+    "lint": "eslint ."
+  },
   "dependencies": {
     "typescript-eslint": "^8.0.0"
   },

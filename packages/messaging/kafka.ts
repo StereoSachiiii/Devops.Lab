@@ -1,16 +1,21 @@
-import { Kafka, Producer, Consumer, logLevel } from 'kafkajs';
-import { EventClassMap, GroupId, BaseEvent } from './types';
-import { context, propagation, trace } from '@opentelemetry/api';
+import { Kafka, Producer, Consumer, logLevel } from "kafkajs";
+import { EventClassMap, GroupId, BaseEvent } from "./types";
+import { context, propagation, trace } from "@opentelemetry/api";
+import { requireEnv } from "@devops/observability";
 
 export class MessagingService {
   private kafka: Kafka;
   private producer: Producer | null = null;
+  private connectPromise: Promise<Producer> | null = null;
   private consumers: Consumer[] = [];
+  private isRetryScheduled: boolean = false;
+  private failedAttempts: number = 0;
+  private lastLogMs: number = 0;
 
-  constructor(clientId: string = process.env['KAFKA_CLIENT_ID'] || 'devops-platform') {
+  constructor(clientId: string = requireEnv("KAFKA_CLIENT_ID")) {
     this.kafka = new Kafka({
       clientId,
-      brokers: (process.env['KAFKA_BROKERS'] || 'localhost:19092').split(','),
+      brokers: requireEnv("KAFKA_BROKERS").split(","),
       logLevel: logLevel.INFO,
     });
   }
@@ -20,11 +25,59 @@ export class MessagingService {
   }
 
   async initProducer(): Promise<Producer> {
-    if (!this.producer) {
-      this.producer = this.kafka.producer();
-      await this.producer.connect();
+    if (this.producer) {
+      return this.producer;
     }
-    return this.producer;
+
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
+
+    this.connectPromise = (async () => {
+      const candidateProducer = this.kafka.producer();
+      try {
+        await candidateProducer.connect();
+        this.producer = candidateProducer;
+        if (this.failedAttempts > 0) {
+          console.log(`[Kafka] Connected successfully (recovered after ${this.failedAttempts} background attempts)`);
+        }
+        this.failedAttempts = 0;
+        return this.producer;
+      } catch (err) {
+        this.producer = null;
+        this.failedAttempts++;
+        const now = Date.now();
+        if (this.failedAttempts === 1 || now - this.lastLogMs > 45000) {
+          console.warn(
+            `[Kafka] Broker not yet available at ${requireEnv("KAFKA_BROKERS")} (will self-heal when started):`,
+            (err as any)?.message || err
+          );
+          this.lastLogMs = now;
+        }
+        this.scheduleProducerRetry();
+        throw err;
+      } finally {
+        this.connectPromise = null;
+      }
+    })();
+
+    return this.connectPromise;
+  }
+
+  private scheduleProducerRetry(): void {
+    if (this.isRetryScheduled) return;
+    this.isRetryScheduled = true;
+
+    setTimeout(async () => {
+      this.isRetryScheduled = false;
+      if (!this.producer && !this.connectPromise) {
+        try {
+          await this.initProducer();
+        } catch {
+          // Handled in initProducer throttled logger
+        }
+      }
+    }, 10000);
   }
 
   /**
@@ -34,7 +87,7 @@ export class MessagingService {
   async emit<T>(event: BaseEvent<T>): Promise<void> {
     if (!this.producer) {
       console.warn(`[Kafka] emit skipped - producer not initialized (topic=${event.topic})`);
-      return;
+      throw new Error(`Kafka producer not initialized for topic=${event.topic}`);
     }
 
     // Inject the current span context into a carrier object as W3C traceparent/tracestate headers
@@ -42,8 +95,8 @@ export class MessagingService {
     propagation.inject(context.active(), carrier);
 
     const headers: Record<string, string> = {
-      'correlation-id': event.correlationId,
-      'content-type': 'application/json',
+      "correlation-id": event.correlationId,
+      "content-type": "application/json",
       ...carrier, // adds 'traceparent' and optionally 'tracestate'
     };
 
@@ -60,6 +113,7 @@ export class MessagingService {
       });
     } catch (err) {
       console.error(`[Kafka] emit failed for topic=${event.topic}:`, err);
+      throw err;
     }
   }
 
@@ -91,7 +145,7 @@ export class MessagingService {
           }
         }
         const parentCtx = propagation.extract(context.active(), carrier);
-        const span = trace.getTracer('messaging').startSpan(`consume:${topic}`, {}, parentCtx);
+        const span = trace.getTracer("messaging").startSpan(`consume:${topic}`, {}, parentCtx);
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
           try {
@@ -100,9 +154,12 @@ export class MessagingService {
             success = true;
             break;
           } catch (err) {
-            console.error(`[Messaging] Error processing topic ${topic} (attempt ${attempt}/${maxRetries}):`, err);
+            console.error(
+              `[Messaging] Error processing topic ${topic} (attempt ${attempt}/${maxRetries}):`,
+              err
+            );
             if (attempt < maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+              await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
             }
           }
         }
@@ -110,12 +167,14 @@ export class MessagingService {
         span.end();
 
         if (!success) {
-          console.warn(`[Messaging] Message failed after ${maxRetries} attempts, sending to DLQ: ${topic}.dlq`);
+          console.warn(
+            `[Messaging] Message failed after ${maxRetries} attempts, sending to DLQ: ${topic}.dlq`
+          );
           try {
             const producer = await this.initProducer();
             await producer.send({
               topic: `${topic}.dlq`,
-              messages: [{ key: message.key, value: rawPayload }]
+              messages: [{ key: message.key, value: rawPayload }],
             });
           } catch (dlqErr) {
             console.error(`[Messaging] CRITICAL: Failed to publish to DLQ for ${topic}`, dlqErr);

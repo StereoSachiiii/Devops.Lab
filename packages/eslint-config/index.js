@@ -1,20 +1,14 @@
-import tseslint from 'typescript-eslint';
+import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   ...tseslint.configs.recommended,
   {
-    ignores: [
-      "dist/**", 
-      "node_modules/**", 
-      ".turbo/**", 
-      "coverage/**",
-      "*.d.ts"
-    ],
+    ignores: ["dist/**", "node_modules/**", ".turbo/**", "coverage/**", "*.d.ts"],
   },
   {
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
-    }
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+    },
   }
 );

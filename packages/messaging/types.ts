@@ -1,45 +1,48 @@
 export const TOPICS = {
-  USER_REGISTERED: 'identity.user.registered',
-  EMAIL_VERIFICATION_REQUESTED: 'identity.email.verify',
-  CHALLENGE_SOLVED: 'curriculum.challenge.solved',
-  CHALLENGE_FAILED: 'curriculum.challenge.failed',
-  QUIZ_COMPLETED: 'curriculum.quiz.completed',
-  SESSION_STARTED: 'sandbox.session.started',
-  SESSION_ENDED: 'sandbox.session.ended',
+  USER_REGISTERED: "identity.user.registered",
+  EMAIL_VERIFICATION_REQUESTED: "identity.email.verification",
+  PASSWORD_RESET_REQUESTED: "identity.password.reset",
+  USER_DELETED: "identity.user.deleted",
+  CHALLENGE_SOLVED: "sandbox.challenge.solved",
+  CHALLENGE_FAILED: "sandbox.challenge.failed",
+
+  SESSION_STARTED: "sandbox.session.started",
+  SESSION_ENDED: "sandbox.session.ended",
 } as const;
 
-export type Topic = typeof TOPICS[keyof typeof TOPICS];
+export type Topic = (typeof TOPICS)[keyof typeof TOPICS];
 
 export const QUEUES = {
-  PROVISION_SANDBOX: 'provision.sandbox',
-  TERMINATE_SANDBOX: 'terminate.sandbox',
-  SEND_EMAIL: 'send.email',
+  PROVISION_SANDBOX: "provision.sandbox",
+  TERMINATE_SANDBOX: "terminate.sandbox",
+  SEND_EMAIL: "send.email",
 } as const;
 
-export type Queue = typeof QUEUES[keyof typeof QUEUES];
+export type Queue = (typeof QUEUES)[keyof typeof QUEUES];
 
 export const GROUPS = {
-  NOTIFICATIONS: 'group.notifications',
-  PROGRESS: 'group.progress',
-  ANALYTICS: 'group.analytics',
-  SANDBOX: 'group.sandbox',
+  NOTIFICATIONS: "group.notifications",
+  PROGRESS: "group.progress",
+  ANALYTICS: "group.analytics",
+  SANDBOX: "group.sandbox",
 } as const;
 
-export type GroupId = typeof GROUPS[keyof typeof GROUPS];
-
+export type GroupId = (typeof GROUPS)[keyof typeof GROUPS];
 
 export abstract class BaseEvent<T> {
   abstract readonly topic: Topic;
-  readonly version: string = '1.0.0';
+  readonly version: string = "1.0.0";
   readonly timestamp: string;
   readonly correlationId: string;
 
-  constructor(public readonly payload: T, correlationId?: string) {
+  constructor(
+    public readonly payload: T,
+    correlationId?: string
+  ) {
     this.timestamp = new Date().toISOString();
     this.correlationId = correlationId || crypto.randomUUID();
   }
 }
-
 
 export class UserRegisteredEvent extends BaseEvent<{
   userId: string;
@@ -57,6 +60,19 @@ export class EmailVerificationRequestedEvent extends BaseEvent<{
   readonly topic = TOPICS.EMAIL_VERIFICATION_REQUESTED;
 }
 
+export class PasswordResetRequestedEvent extends BaseEvent<{
+  userId: string;
+  email: string;
+  token: string;
+}> {
+  readonly topic = TOPICS.PASSWORD_RESET_REQUESTED;
+}
+
+export class UserDeletedEvent extends BaseEvent<{
+  userId: string;
+}> {
+  readonly topic = TOPICS.USER_DELETED;
+}
 
 export class ChallengeSolvedEvent extends BaseEvent<{
   submissionId: string;
@@ -67,6 +83,7 @@ export class ChallengeSolvedEvent extends BaseEvent<{
   stderr: string;
   exitCode: number;
   durationMs: number;
+  checks?: { checkId: string; passed: boolean; message: string }[];
 }> {
   readonly topic = TOPICS.CHALLENGE_SOLVED;
 }
@@ -80,13 +97,13 @@ export class ChallengeFailedEvent extends BaseEvent<{
   stderr: string;
   exitCode: number;
   durationMs: number;
+  checks?: { checkId: string; passed: boolean; message: string }[];
 }> {
   readonly topic = TOPICS.CHALLENGE_FAILED;
 }
 
-
 export class SessionStartedEvent extends BaseEvent<{
-  type: 'session.started';
+  type: "session.started";
   sessionId: string;
   userId: string;
   challengeId: string;
@@ -97,23 +114,24 @@ export class SessionStartedEvent extends BaseEvent<{
 }
 
 export enum SessionEndReason {
-  COMPLETED = 'completed',
-  TERMINATED = 'terminated',
-  EXPIRED = 'expired'
+  COMPLETED = "completed",
+  TERMINATED = "terminated",
+  EXPIRED = "expired",
 }
 
 export class SessionEndedEvent extends BaseEvent<{
-  type: 'session.ended';
+  type: "session.ended";
   sessionId: string;
   reason: SessionEndReason;
 }> {
   readonly topic = TOPICS.SESSION_ENDED;
 }
 
-
 export type EventClassMap = {
   [TOPICS.USER_REGISTERED]: UserRegisteredEvent;
   [TOPICS.EMAIL_VERIFICATION_REQUESTED]: EmailVerificationRequestedEvent;
+  [TOPICS.PASSWORD_RESET_REQUESTED]: PasswordResetRequestedEvent;
+  [TOPICS.USER_DELETED]: UserDeletedEvent;
   [TOPICS.CHALLENGE_SOLVED]: ChallengeSolvedEvent;
   [TOPICS.CHALLENGE_FAILED]: ChallengeFailedEvent;
   [TOPICS.SESSION_STARTED]: SessionStartedEvent;
