@@ -1,0 +1,56 @@
+groups:
+  - name: platform_alerts
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Service {{ .job }} is down'
+          description: 'Target {{ .instance }} has been unreachable for more than 1 minute.'
+
+      - alert: High5xxErrorRate
+        expr: sum(rate(http_request_duration_seconds_count{status=~"5.."}[5m])) / sum(rate(http_request_duration_seconds_count[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'High HTTP 5xx error rate on {{ .job }}'
+          description: 'Over 5% of requests are failing with 5xx HTTP responses for more than 2 minutes.'
+
+      - alert: HighLoginFailureRate
+        expr: rate(auth_login_total{outcome="invalid_credentials"}[5m]) > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'High authentication failure rate'
+          description: 'Authentication failure rate exceeded 10 failures/second over 5 minutes (potential brute force attack).'
+
+      - alert: HighContainerDiskKills
+        expr: increase(sandbox_disk_quota_kills_total[5m]) > 5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Spike in sandbox disk quota kills'
+          description: 'Over 5 sandbox containers killed due to disk quota breaches in the last 5 minutes.'
+
+      - alert: SlowSandboxProvisioning
+        expr: histogram_quantile(0.95, sum(rate(sandbox_provision_duration_seconds_bucket[5m])) by (le)) > 15
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Slow sandbox container provisioning'
+          description: '95th percentile provisioning duration is above 15 seconds.'
+
+      - alert: RabbitMQDeadLetterQueueSpike
+        expr: rabbitmq_queue_messages{queue=~"dlq.*"} > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Messages detected in RabbitMQ Dead-Letter Queue'
+          description: 'Unprocessable messages have landed in {{ .queue }}. Inspect DLQ consumer logs.'
