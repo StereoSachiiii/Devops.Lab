@@ -38,13 +38,13 @@ func (r *Reaper) Start(ctx context.Context) {
 			r.log.Info("Session reaper shutting down")
 			return
 		case <-ticker.C:
-			r.sweep(ctx)
+			r.Sweep(ctx)
 		}
 	}
 }
 
-// sweep checks all active sessions and destroys any that have exceeded TTL.
-func (r *Reaper) sweep(ctx context.Context) {
+// Sweep checks all active sessions and destroys any that have exceeded TTL.
+func (r *Reaper) Sweep(ctx context.Context) {
 	sessions := r.manager.AllActive()
 	if len(sessions) == 0 {
 		return
@@ -58,14 +58,30 @@ func (r *Reaper) sweep(ctx context.Context) {
 		if age > r.ttl {
 			r.log.Info("Reaping expired session",
 				"sessionId", s.SessionID,
-				"age", age.Round(time.Second),
-				"ttl", r.ttl,
+				"age", age,
 			)
 			if err := r.manager.Destroy(ctx, s.SessionID); err != nil {
-				r.log.Error("Reaper failed to destroy session",
-					"sessionId", s.SessionID,
-					"error", err,
-				)
+				r.log.Error("Failed to reap session", "sessionId", s.SessionID, "error", err)
+			} else {
+				reaped++
+			}
+			continue
+		}
+
+		// Proactive death detection: check if container is still running
+		isRunning, err := r.manager.provider.IsRunning(ctx, s.ContainerID)
+		if err != nil {
+			r.log.Error("Failed to check container status", "sessionId", s.SessionID, "error", err)
+			continue
+		}
+
+		if !isRunning {
+			r.log.Info("Reaping dead session (container stopped prematurely)",
+				"sessionId", s.SessionID,
+				"containerId", s.ContainerID,
+			)
+			if err := r.manager.Destroy(ctx, s.SessionID); err != nil {
+				r.log.Error("Failed to reap dead session", "sessionId", s.SessionID, "error", err)
 			} else {
 				reaped++
 			}

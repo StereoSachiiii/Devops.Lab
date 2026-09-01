@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/devops-platform/sandbox/internal/config"
-	"github.com/devops-platform/sandbox/internal/db"
 	"github.com/devops-platform/sandbox/internal/messaging"
+	"github.com/devops-platform/sandbox/internal/metrics"
 	"github.com/devops-platform/sandbox/internal/sandbox"
 	"github.com/devops-platform/sandbox/internal/session"
 	"github.com/devops-platform/sandbox/internal/store"
@@ -40,12 +40,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	dbClient, err := db.NewClient(cfg.DatabaseURL, log)
-	if err != nil {
-		log.Error("Postgres connection failed", "error", err)
-		os.Exit(1)
-	}
-	defer dbClient.Close()
+
 
 	redisStore, err := store.NewRedisStore(cfg.RedisURL, cfg.SessionTTLMins, log, encryptionKey)
 	if err != nil {
@@ -55,8 +50,13 @@ func main() {
 	defer redisStore.Close()
 
 	var provider sandbox.SandboxProvider
+	var isolationDowngraded bool
 	switch cfg.SandboxProvider {
 	case "flintlock":
+		if os.Getenv("FLINTLOCK_NETWORK_ISOLATION_CONFIRMED") != "true" {
+			log.Error("Flintlock provider selected but FLINTLOCK_NETWORK_ISOLATION_CONFIRMED is not true. Refusing to boot due to network isolation risks.")
+			os.Exit(1)
+		}
 		provider, err = sandbox.NewFlintlockProvider(cfg.FlintlockAddress, log)
 		if err != nil {
 			log.Error("Flintlock provider init failed", "error", err)
@@ -71,8 +71,13 @@ func main() {
 	case "gvisor":
 		provider, err = sandbox.NewGVisorProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
 		if err != nil {
-			log.Error("gVisor provider init failed", "error", err)
-			os.Exit(1)
+			log.Warn("gVisor provider init failed, falling back to standard Docker provider for dev compatibility", "error", err)
+			provider, err = sandbox.NewDockerProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
+			if err != nil {
+				log.Error("Docker provider fallback failed", "error", err)
+				os.Exit(1)
+			}
+			isolationDowngraded = true
 		}
 	case "docker":
 		fallthrough
@@ -87,20 +92,25 @@ func main() {
 	kafkaProducer := messaging.NewKafkaProducer(cfg.KafkaBrokers, cfg.KafkaClientID, log)
 	defer kafkaProducer.Close()
 
-	sessionMgr, err := session.NewManager(provider, redisStore, cfg.SessionTTLMins, log)
+	sessionMgr, err := session.NewManager(provider, redisStore, cfg.SessionTTLMins, cfg.WorkerAddr, log)
 	if err != nil {
 		log.Error("Session manager init failed", "error", err)
 		os.Exit(1)
 	}
+	sessionMgr.IsolationDowngraded = isolationDowngraded
+	sessionMgr.StartDiskMonitor(ctx)
 
 	val := validator.NewValidator(provider, log)
 
 	reaper := session.NewReaper(sessionMgr, time.Duration(cfg.SessionTTLMins)*time.Minute, log)
 	go reaper.Start(ctx)
 
-	mux := http.NewServeMux()
+	// ── 5. Terminal Multiplexer ──────────────────────────────────────────
+	multiplexer := terminal.NewMultiplexer(provider, log)
 
-	mux.HandleFunc("/sessions/", terminal.Handler(sessionMgr, provider, cfg.JWTPublicKey, cfg.AllowedOrigins, log))
+	// ── 6. HTTP Server ──────────────────────────────────────────────────
+	mux := http.NewServeMux()
+	mux.HandleFunc("/sessions/", terminal.Handler(sessionMgr, multiplexer, provider, cfg.JWTPublicKey, cfg.AllowedOrigins, log))
 
 	mux.HandleFunc("/validate/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -119,11 +129,28 @@ func main() {
 			return
 		}
 
+		startVal := time.Now()
 		result, err := val.Check(r.Context(), data.ContainerID, sessionID)
+		valDuration := time.Since(startVal).Seconds()
 		if err != nil {
+			metrics.ValidationDuration.WithLabelValues("error").Observe(valDuration)
 			log.Error("Validator error", "sessionId", sessionID, "error", err)
 			http.Error(w, "validator error", http.StatusInternalServerError)
 			return
+		}
+		if result.Passed {
+			metrics.ValidationDuration.WithLabelValues("true").Observe(valDuration)
+		} else {
+			metrics.ValidationDuration.WithLabelValues("false").Observe(valDuration)
+		}
+
+		var checks []messaging.ChallengeCheck
+		for _, check := range result.CheckResults {
+			checks = append(checks, messaging.ChallengeCheck{
+				CheckID: check.CheckID,
+				Passed:  check.Passed,
+				Message: check.Message,
+			})
 		}
 
 		if result.Passed {
@@ -134,27 +161,36 @@ func main() {
 				Passed:       true,
 				ExitCode:     result.ExitCode,
 				DurationMs:   0,
+				Checks:       checks,
 			}
 			if err := kafkaProducer.EmitResult(r.Context(), messaging.TopicChallengeSolved, event); err != nil {
 				log.Error("Failed to emit challenge.solved", "error", err)
 			}
-			// Update submission status to COMPLETED in Postgres
-			if err := dbClient.UpdateSubmissionStatus(r.Context(), sessionID, db.StatusCompleted, map[string]any{
-				"passed":   true,
-				"exitCode": result.ExitCode,
-				"feedback": result.Feedback,
-			}); err != nil {
-				log.Error("Failed to update submission status to COMPLETED", "sessionId", sessionID, "error", err)
-			}
 		} else {
-			// Update submission status to FAILED in Postgres
-			if err := dbClient.UpdateSubmissionStatus(r.Context(), sessionID, db.StatusFailed, map[string]any{
-				"passed":   false,
-				"exitCode": result.ExitCode,
-				"feedback": result.Feedback,
-			}); err != nil {
-				log.Error("Failed to update submission status to FAILED", "sessionId", sessionID, "error", err)
+			event := messaging.ChallengeResultEvent{
+				SubmissionID: sessionID,
+				ChallengeID:  data.ChallengeID,
+				UserID:       data.UserID,
+				Passed:       false,
+				ExitCode:     result.ExitCode,
+				DurationMs:   0,
+				Checks:       checks,
 			}
+			if err := kafkaProducer.EmitResult(r.Context(), messaging.TopicChallengeFailed, event); err != nil {
+				log.Error("Failed to emit challenge.failed", "error", err)
+			}
+		}
+
+		type validationHTTPResponse struct {
+			Passed       bool                    `json:"passed"`
+			Feedback     string                  `json:"feedback"`
+			CheckResults []validator.CheckResult `json:"checkResults,omitempty"`
+		}
+
+		respBody := validationHTTPResponse{
+			Passed:       result.Passed,
+			Feedback:     result.Feedback,
+			CheckResults: result.CheckResults,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -163,7 +199,7 @@ func main() {
 		} else {
 			w.WriteHeader(http.StatusUnprocessableEntity)
 		}
-		_, _ = w.Write([]byte(`{"passed":` + boolStr(result.Passed) + `,"feedback":` + jsonStr(result.Feedback) + `}`))
+		_ = json.NewEncoder(w).Encode(respBody)
 	})
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -186,30 +222,65 @@ func main() {
 	}()
 
 	// RabbitMQ session consumer (Replaces Kafka for Sandbox Orchestration)
-	queues := []string{"provision.sandbox", "terminate.sandbox"}
+	provisionQueue := "provision.sandbox." + cfg.SandboxProvider
+	queues := []string{provisionQueue, "terminate.sandbox"}
 	consumer := messaging.NewSessionConsumer(cfg.RabbitMQURL, queues, log)
-	if err := consumer.Connect(); err != nil {
-		log.Error("Failed to connect RabbitMQ consumer", "error", err)
-		os.Exit(1)
-	}
-	defer consumer.Close()
-
-	log.Info("Sandbox Service ready",
-		"httpPort", cfg.HTTPPort,
-		"rabbitmq", cfg.RabbitMQURL,
-	)
-
-	errCh := make(chan error, 1)
+	
+	// Start consumer in a resilient reconnect loop
 	go func() {
-		errCh <- consumer.Consume(ctx, messaging.Handlers{
-			OnSessionStarted: func(ctx context.Context, job messaging.SessionStartedJob) error {
-				_, err := sessionMgr.Create(ctx, job.SessionID, job.UserID, job.ChallengeID, job.Image)
-				return err
-			},
-			OnSessionEnded: func(ctx context.Context, job messaging.SessionEndedJob) error {
-				return sessionMgr.Destroy(ctx, job.SessionID)
-			},
-		})
+		var failCount int
+		var lastLog time.Time
+		for {
+			if ctx.Err() != nil {
+				return // Shutting down
+			}
+
+			if err := consumer.Connect(); err != nil {
+				failCount++
+				if failCount == 1 || time.Since(lastLog) > 45*time.Second {
+					log.Warn("RabbitMQ consumer not connected (retrying in background, will self-heal when broker starts)", "error", err)
+					lastLog = time.Now()
+				}
+				select {
+				case <-time.After(5 * time.Second):
+					continue
+				case <-ctx.Done():
+					return
+				}
+			}
+
+			if failCount > 0 {
+				log.Info("RabbitMQ Consumer connected and running (self-healed after retries)", "retryCount", failCount)
+			} else {
+				log.Info("RabbitMQ Consumer running")
+			}
+			failCount = 0
+
+			err := consumer.Consume(ctx, messaging.Handlers{
+				OnSessionStarted: func(ctx context.Context, job messaging.SessionStartedJob) error {
+					_, err := sessionMgr.Create(ctx, job.SessionID, job.UserID, job.ChallengeID, job.Image)
+					return err
+				},
+				OnSessionEnded: func(ctx context.Context, job messaging.SessionEndedJob) error {
+					return sessionMgr.Destroy(ctx, job.SessionID)
+				},
+			})
+
+			consumer.Close()
+
+			if err != nil && ctx.Err() == nil {
+				failCount++
+				if failCount == 1 || time.Since(lastLog) > 45*time.Second {
+					log.Warn("RabbitMQ consumer disconnected with error, reconnecting in background...", "error", err)
+					lastLog = time.Now()
+				}
+				select {
+				case <-time.After(5 * time.Second):
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
 	}()
 
 	<-ctx.Done()
@@ -220,22 +291,5 @@ func main() {
 		log.Error("HTTP server shutdown error", "error", err)
 	}
 
-	if err := <-errCh; err != nil {
-		log.Error("Consumer exited with error", "error", err)
-		return
-	}
-
 	log.Info("Sandbox Service shut down cleanly")
-}
-
-func boolStr(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
-}
-
-func jsonStr(s string) string {
-	b, _ := json.Marshal(s)
-	return string(b)
 }

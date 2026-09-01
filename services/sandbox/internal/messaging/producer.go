@@ -12,23 +12,30 @@ import (
 )
 
 const (
-	TopicChallengeSolved = "curriculum.challenge.solved"
-	TopicChallengeFailed = "curriculum.challenge.failed"
+	TopicChallengeSolved = "sandbox.challenge.solved"
+	TopicChallengeFailed = "sandbox.challenge.failed"
 )
+
+type ChallengeCheck struct {
+	CheckID string `json:"checkId"`
+	Passed  bool   `json:"passed"`
+	Message string `json:"message"`
+}
 
 // ChallengeResultEvent is published to Kafka after sandbox execution completes.
 type ChallengeResultEvent struct {
-	SubmissionID  string `json:"submissionId"`
-	ChallengeID   string `json:"challengeId"`
-	UserID        string `json:"userId"`
-	Passed        bool   `json:"passed"`
-	Stdout        string `json:"stdout"`
-	Stderr        string `json:"stderr"`
-	ExitCode      int    `json:"exitCode"`
-	DurationMs    int64  `json:"durationMs"`
-	Timestamp     string `json:"timestamp"`
-	CorrelationID string `json:"correlationId"`
-	Version       string `json:"version"`
+	SubmissionID  string           `json:"submissionId"`
+	ChallengeID   string           `json:"challengeId"`
+	UserID        string           `json:"userId"`
+	Passed        bool             `json:"passed"`
+	Stdout        string           `json:"stdout"`
+	Stderr        string           `json:"stderr"`
+	ExitCode      int              `json:"exitCode"`
+	DurationMs    int64            `json:"durationMs"`
+	Checks        []ChallengeCheck `json:"checks,omitempty"`
+	Timestamp     string           `json:"timestamp"`
+	CorrelationID string           `json:"correlationId"`
+	Version       string           `json:"version"`
 }
 
 // KafkaProducer wraps kafka-go writer for publishing challenge result events.
@@ -67,14 +74,15 @@ func (k *KafkaProducer) EmitResult(ctx context.Context, topic string, event Chal
 
 	// Inner payload matching the TS Event Payload
 	payloadStruct := struct {
-		SubmissionID string `json:"submissionId"`
-		ChallengeID  string `json:"challengeId"`
-		UserID       string `json:"userId"`
-		Passed       bool   `json:"passed"`
-		Stdout       string `json:"stdout"`
-		Stderr       string `json:"stderr"`
-		ExitCode     int    `json:"exitCode"`
-		DurationMs   int64  `json:"durationMs"`
+		SubmissionID string           `json:"submissionId"`
+		ChallengeID  string           `json:"challengeId"`
+		UserID       string           `json:"userId"`
+		Passed       bool             `json:"passed"`
+		Stdout       string           `json:"stdout"`
+		Stderr       string           `json:"stderr"`
+		ExitCode     int              `json:"exitCode"`
+		DurationMs   int64            `json:"durationMs"`
+		Checks       []ChallengeCheck `json:"checks,omitempty"`
 	}{
 		SubmissionID: event.SubmissionID,
 		ChallengeID:  event.ChallengeID,
@@ -84,6 +92,7 @@ func (k *KafkaProducer) EmitResult(ctx context.Context, topic string, event Chal
 		Stderr:       event.Stderr,
 		ExitCode:     event.ExitCode,
 		DurationMs:   event.DurationMs,
+		Checks:       event.Checks,
 	}
 
 	// Standard envelope wrapper

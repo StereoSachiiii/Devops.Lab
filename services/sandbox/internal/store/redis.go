@@ -24,6 +24,7 @@ type SessionData struct {
 	ChallengeID string    `json:"challengeId"`
 	Image       string    `json:"image"`
 	CreatedAt   time.Time `json:"createdAt"`
+	WorkerAddr  string    `json:"workerAddr"`
 }
 
 // RedisStore manages session persistence in Redis.
@@ -224,4 +225,21 @@ func (s *RedisStore) AllSessions(ctx context.Context) ([]SessionData, error) {
 // Close releases the Redis connection.
 func (s *RedisStore) Close() error {
 	return s.client.Close()
+}
+
+// IsDenylisted checks if an access token JTI is present in the Redis denylist auth:denylist:jti:{jti}.
+// Returns true if denylisted ("revoked"), false if not present, and error if Redis lookup fails/times out.
+func (s *RedisStore) IsDenylisted(ctx context.Context, jti string) (bool, error) {
+	if jti == "" || s == nil || s.client == nil {
+		return false, nil
+	}
+	key := fmt.Sprintf("auth:denylist:jti:%s", jti)
+	val, err := s.client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return val == "revoked", nil
 }

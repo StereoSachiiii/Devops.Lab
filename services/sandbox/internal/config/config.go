@@ -43,13 +43,14 @@ type Config struct {
 	// Provider selection
 	SandboxProvider  string
 	FlintlockAddress string
+	WorkerAddr       string
 
 	// HTTP / WebSocket
 	AllowedOrigins string // comma-separated list of allowed CORS origins
 }
 
 func Load() (*Config, error) {
-	_ = godotenv.Load()
+	_ = godotenv.Load("../../.env")
 	keyStr := getEnv("ENCRYPTION_KEY", "")
 
 	cfg := &Config{
@@ -66,7 +67,8 @@ func Load() (*Config, error) {
 		NetworkMode:    getEnv("DOCKER_NETWORK_MODE", "none"),
 		SandboxProvider:  getEnv("SANDBOX_PROVIDER", "docker"),
 		FlintlockAddress: getEnv("FLINTLOCK_ADDRESS", "localhost:9090"),
-		AllowedOrigins:   getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173"),
+		WorkerAddr:       getEnv("WORKER_ADDR", "sandbox-worker:8090"),
+		AllowedOrigins:   getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173"),
 	}
 	if cfg.RedisURL == "" {
 		return nil, fmt.Errorf("REDIS_URL is required")

@@ -109,16 +109,27 @@ func (p *FlintlockProvider) Provision(ctx context.Context, image string) (string
 		rootfsImage = rootfsPrefix + image
 	}
 
+	vmName := fmt.Sprintf("sbx-%d", time.Now().UnixNano())
+	kernelFilename := "vmlinux.bin"
 	resp, err := p.client.CreateMicroVM(ctx, &flintv1.CreateMicroVMRequest{
 		Microvm: &flinktypes.MicroVMSpec{
+			Id:         vmName,
+			Uid:        &vmName,
 			Namespace:  flintlockNamespace,
 			Vcpu:       p.vcpus,
-			MemoryInMb: p.memoryMB,
+			MemoryInMb: 1024,
 			Labels: map[string]string{
 				"managed-by": "devops-platform-sandbox",
 			},
 			Kernel: &flinktypes.Kernel{
-				Image: flintlockKernelImage,
+				Image:    flintlockKernelImage,
+				Filename: &kernelFilename,
+			},
+			Interfaces: []*flinktypes.NetworkInterface{
+				{
+					DeviceId: "eth0",
+					Type:     flinktypes.NetworkInterface_TAP,
+				},
 			},
 			RootVolume: &flinktypes.Volume{
 				Id:         "root",
@@ -260,6 +271,18 @@ func (p *FlintlockProvider) Remove(ctx context.Context, vmID string) error {
 	return nil
 }
 
+// IsRunning checks if the MicroVM is currently running.
+func (p *FlintlockProvider) IsRunning(ctx context.Context, vmID string) (bool, error) {
+	_, err := p.client.GetMicroVM(ctx, &flintv1.GetMicroVMRequest{Uid: vmID})
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return false, nil
+		}
+		return false, fmt.Errorf("flintlock: GetMicroVM failed: %w", err)
+	}
+	return true, nil
+}
+
 // resolveGuestIP queries Flintlock for the microVM's network interface status,
 // then performs an ARP-style lookup to find the guest's IPv4 address via the host tap device.
 func (p *FlintlockProvider) resolveGuestIP(ctx context.Context, vmID string) (string, error) {
@@ -321,4 +344,73 @@ func (s *sshSessionRWC) Close() error {
 	_ = s.stdin.Close()
 	_ = s.sess.Close()
 	return s.client.Close()
+}
+
+// ExecInteractiveCmd starts a microVM SSH session and runs the specified command inside a PTY.
+func (f *FlintlockProvider) ExecInteractiveCmd(ctx context.Context, containerID string, cols, rows uint, cmd []string) (io.ReadWriteCloser, ResizeFunc, error) {
+	ip, err := f.resolveGuestIP(ctx, containerID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("flintlock: get guest IP: %w", err)
+	}
+
+	client, err := ssh.Dial("tcp", net.JoinHostPort(ip, "22"), f.sshConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("flintlock: ssh dial failed: %w", err)
+	}
+
+	sess, err := client.NewSession()
+	if err != nil {
+		client.Close()
+		return nil, nil, fmt.Errorf("flintlock: ssh session creation failed: %w", err)
+	}
+
+	stdout, err := sess.StdoutPipe()
+	if err != nil {
+		sess.Close()
+		client.Close()
+		return nil, nil, fmt.Errorf("flintlock: ssh stdout pipe failed: %w", err)
+	}
+
+	stdin, err := sess.StdinPipe()
+	if err != nil {
+		sess.Close()
+		client.Close()
+		return nil, nil, fmt.Errorf("flintlock: ssh stdin pipe failed: %w", err)
+	}
+
+	// Set up PTY size and environment
+	modes := ssh.TerminalModes{
+		ssh.ECHO:          1,     // enable echoing
+		ssh.TTY_OP_ISPEED: 14400, // input speed = 14.4kbaud
+		ssh.TTY_OP_OSPEED: 14400, // output speed = 14.4kbaud
+	}
+	if err := sess.RequestPty("xterm-256color", int(rows), int(cols), modes); err != nil {
+		sess.Close()
+		client.Close()
+		return nil, nil, fmt.Errorf("flintlock: ssh request pty failed: %w", err)
+	}
+
+	fullCmd := strings.Join(cmd, " ")
+	if err := sess.Start(fullCmd); err != nil {
+		sess.Close()
+		client.Close()
+		return nil, nil, fmt.Errorf("flintlock: ssh start command %q failed: %w", fullCmd, err)
+	}
+
+	resize := func(w, h uint) error {
+		return sess.WindowChange(int(h), int(w))
+	}
+
+	return &sshSessionRWC{
+		stdin:  stdin,
+		stdout: stdout,
+		sess:   sess,
+		client: client,
+	}, resize, nil
+}
+
+// EnforceDiskQuotas is a no-op for FlintlockProvider because MicroVMs
+// have strictly pre-allocated disk sizes that act as hard quotas at the block layer.
+func (f *FlintlockProvider) EnforceDiskQuotas(ctx context.Context, maxBytes int64) ([]string, error) {
+	return nil, nil
 }

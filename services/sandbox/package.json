@@ -1,0 +1,11 @@
+{
+  "name": "@devops/sandbox",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "go build -o bin/sandbox main.go",
+    "dev": "go run main.go",
+    "test": "go test ./...",
+    "lint": "echo 'No lint for Go'"
+  }
+}

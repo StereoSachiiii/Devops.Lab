@@ -58,6 +58,7 @@ func (d *DockerProvider) Provision(ctx context.Context, imageName string) (strin
 		return "", fmt.Errorf("docker: image pull failed: %w", err)
 	}
 
+	pidsLimit := int64(256)
 	resp, err := d.client.ContainerCreate(ctx, &container.Config{
 		Image: imageName,
 		Cmd:   []string{"sleep", "infinity"}, // stays alive waiting for exec
@@ -71,10 +72,12 @@ func (d *DockerProvider) Provision(ctx context.Context, imageName string) (strin
 		ReadonlyRootfs: false, // lab environments need a writable FS
 		AutoRemove:     false,
 		Resources: container.Resources{
-			Memory:   d.memoryBytes,
-			NanoCPUs: d.nanoCPUs,
+			Memory:    d.memoryBytes,
+			NanoCPUs:  d.nanoCPUs,
+			PidsLimit: &pidsLimit,
 		},
 		CapDrop:     []string{"ALL"},
+		CapAdd:      []string{"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID", "NET_BIND_SERVICE", "KILL", "SYS_CHROOT"},
 		SecurityOpt: []string{"no-new-privileges:true"},
 	}, nil, nil, "")
 
@@ -110,6 +113,18 @@ func (d *DockerProvider) Exec(ctx context.Context, containerID string, cmd []str
 	if err != nil {
 		return ExecResult{}, fmt.Errorf("docker: exec attach failed: %w", err)
 	}
+
+	// Close the hijacked connection if the context times out,
+	// otherwise stdcopy.StdCopy will block forever.
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-ctx.Done():
+			resp.Close()
+		case <-done:
+		}
+	}()
 	defer resp.Close()
 
 	var stdout, stderr bytes.Buffer
@@ -133,8 +148,8 @@ func (d *DockerProvider) Exec(ctx context.Context, containerID string, cmd []str
 // ExecInteractive opens a PTY inside a running container for WebSocket terminal use.
 // Returns a ReadWriteCloser (the PTY stream) and a ResizeFunc (for SIGWINCH events).
 // The PTY runs /bin/bash by default.
-func (d *DockerProvider) ExecInteractive(ctx context.Context, containerID string, cols, rows uint) (io.ReadWriteCloser, ResizeFunc, error) {
-	return d.execInteractiveWithCmd(ctx, containerID, cols, rows, []string{"/bin/bash"})
+func (p *DockerProvider) ExecInteractive(ctx context.Context, containerID string, cols, rows uint) (io.ReadWriteCloser, ResizeFunc, error) {
+	return p.ExecInteractiveCmd(ctx, containerID, cols, rows, []string{"/bin/sh", "-i"})
 }
 
 // ExecInteractiveCmd opens a PTY running the specified command.
@@ -179,18 +194,38 @@ func (d *DockerProvider) execInteractiveWithCmd(ctx context.Context, containerID
 	return resp.Conn, resizeFn, nil
 }
 
-// Remove force-removes a container. Called on session end or TTL expiry.
+// Remove force-removes a container and its volumes.
 func (d *DockerProvider) Remove(ctx context.Context, containerID string) error {
-	err := d.client.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true})
+	err := d.client.ContainerRemove(ctx, containerID, container.RemoveOptions{
+		Force:         true,
+		RemoveVolumes: true,
+	})
 	if err != nil {
 		return fmt.Errorf("docker: remove failed: %w", err)
 	}
-	d.log.Info("Container removed", "containerID", containerID[:12])
+	d.log.Debug("Container removed", "containerId", containerID[:12])
 	return nil
+}
+
+// IsRunning checks if the container is currently running.
+func (d *DockerProvider) IsRunning(ctx context.Context, containerID string) (bool, error) {
+	c, err := d.client.ContainerInspect(ctx, containerID)
+	if err != nil {
+		if client.IsErrNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("docker: inspect failed: %w", err)
+	}
+	return c.State.Running, nil
 }
 
 // ensureImage pulls the image if not already cached.
 func (d *DockerProvider) ensureImage(ctx context.Context, imageName string) error {
+	// Check if image exists locally first
+	if _, _, err := d.client.ImageInspectWithRaw(ctx, imageName); err == nil {
+		return nil
+	}
+
 	reader, err := d.client.ImagePull(ctx, imageName, image.PullOptions{})
 	if err != nil {
 		return err
@@ -198,4 +233,33 @@ func (d *DockerProvider) ensureImage(ctx context.Context, imageName string) erro
 	defer reader.Close()
 	_, _ = io.Copy(io.Discard, reader)
 	return nil
+}
+
+// EnforceDiskQuotas checks all managed containers for disk usage exceeding maxBytes.
+func (d *DockerProvider) EnforceDiskQuotas(ctx context.Context, maxBytes int64) ([]string, error) {
+	containers, err := d.client.ContainerList(ctx, container.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("docker: failed to list containers: %w", err)
+	}
+
+	var killed []string
+	for _, c := range containers {
+		if c.Labels["managed-by"] != "devops-platform-sandbox" {
+			continue
+		}
+
+		inspect, _, err := d.client.ContainerInspectWithRaw(ctx, c.ID, true)
+		if err != nil {
+			d.log.Warn("Failed to inspect container for quota check", "containerId", c.ID[:12], "error", err)
+			continue
+		}
+
+		if inspect.SizeRw != nil && *inspect.SizeRw > maxBytes {
+			d.log.Warn("Container exceeded disk quota, killing", "containerId", c.ID[:12], "size", *inspect.SizeRw, "max", maxBytes)
+			_ = d.Remove(ctx, c.ID)
+			killed = append(killed, c.ID)
+		}
+	}
+
+	return killed, nil
 }
