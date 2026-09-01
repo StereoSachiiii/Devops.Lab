@@ -1,0 +1,15 @@
+﻿global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'job']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'webhook_receiver'
+
+receivers:
+  - name: 'webhook_receiver'
+    webhook_configs:
+      - url: 'http://host-gateway:9099/alert-webhook'
+        send_resolved: true
