@@ -1,0 +1,15 @@
+{
+  "name": "@devops/contracts",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "generate": "openapi-typescript openapi.yaml -o src/schema.d.ts",
+    "build": "npm run generate",
+    "dev": "npm run generate",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "openapi-typescript": "^6.7.0",
+    "typescript": "^5.0.0"
+  }
+}

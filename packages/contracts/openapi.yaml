@@ -1,0 +1,96 @@
+openapi: 3.0.3
+info:
+  title: DevOps Platform API
+  version: 1.0.0
+  description: Shared API contracts across TS and Go microservices.
+paths:
+  /api/challenges/{id}/start:
+    post:
+      summary: Start a new sandbox session
+      operationId: startSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Sandbox session started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+  /validate/{sessionId}:
+    post:
+      summary: Validate a running sandbox solution
+      operationId: validateSession
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Solution passed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResponse'
+        '422':
+          description: Solution failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResponse'
+components:
+  schemas:
+    SessionResponse:
+      type: object
+      required:
+        - sessionId
+        - challengeId
+        - challengeTitle
+        - terminalUrl
+        - validateUrl
+        - ttlMins
+      properties:
+        sessionId:
+          type: string
+        challengeId:
+          type: string
+        challengeTitle:
+          type: string
+        terminalUrl:
+          type: string
+        validateUrl:
+          type: string
+        ttlMins:
+          type: integer
+    CheckResult:
+      type: object
+      required:
+        - check_id
+        - passed
+        - message
+      properties:
+        check_id:
+          type: string
+        passed:
+          type: boolean
+        message:
+          type: string
+    ValidationResponse:
+      type: object
+      required:
+        - passed
+      properties:
+        passed:
+          type: boolean
+        feedback:
+          type: string
+        checkResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckResult'
