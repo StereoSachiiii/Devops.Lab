@@ -4,53 +4,140 @@
 generator client {
   provider = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-3.0.x"]
-  output = "../../../node_modules/.prisma/client"
+  engineType = "library"
 }
 
 
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DATABASE_DIRECT_URL")
+  provider = "postgresql"
+}
+
+model Org {
+  id              String       @id @default(cuid())
+  name            String
+  slug            String       @unique
+  planTier        PlanTier     @default(FREE)
+  seatsPurchased  Int          @default(1)
+  ssoProvider     String?      // e.g. "OKTA", "SAML", "AZURE_AD"
+  ssoDomain       String?      // e.g. "acme.corp"
+  ssoMetadataUrl  String?      // IdP SAML / OIDC metadata endpoint
+  users           User[]
+  learningPaths   LearningPath[]
+  members         OrgMember[]
+  invites         OrgInvite[]
+  scenarios       OrgScenario[]
+  assignments     PathAssignment[]
+  contributedChallenges Challenge[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+enum PlanTier {
+  FREE
+  PRO
+  TEAM
 }
 
 model User {
   id            String    @id @default(cuid())
   name          String?
+  username      String?   @unique  // public-facing handle e.g. @sachini
   email         String    @unique
   password      String?   // Optional for OAuth users
   role          Role      @default(LEARNER)
   xp            Int       @default(0)
-  
+  bio           String?   // Short public bio
+  location      String?   // e.g. "Colombo, LK"
+  websiteUrl    String?   // Personal site / LinkedIn
+  isPublic      Boolean   @default(true)  // Public profile visibility
+  orgId         String?
+  org           Org?      @relation(fields: [orgId], references: [id])
+
+  // Onboarding — DB is source of truth, JWT carries a cheap hint (ob: 0|1) refreshed on normal token cycle
+  // onboarding_version: bump this integer when the tour is redesigned — every user becomes "new" for that version
+  onboardingState   OnboardingState @default(NEW)
+  onboardingVersion Int             @default(1)
+
   // Auth & Verification
   emailVerified DateTime?
   githubId      String?   @unique
   googleId      String?   @unique
+  ssoId         String?   @unique  // Enterprise IdP subject identifier
   mfaEnabled    Boolean   @default(false)
-  mfaSecret     String?  
-  submissions   Submission[]
-  completions   Completion[]
-  sessions      LabSession[]
+  mfaSecret     String?
+  avatarUrl     String?
+  jobTitle      String?
+  lastLoginAt   DateTime?
+  firstLoginAt  DateTime?
+  currentStreak Int       @default(0)
+  longestStreak Int       @default(0)
+  lastActivityDate DateTime?
+
+  submissions        Submission[]
+  completions        Completion[]
+  quizAttempts       QuizAttempt[]
+  sessions           LabSession[]
+  userSessions       UserSession[]
+  checkResults       ChallengeCheckResult[]
+  badges             UserBadge[]
+  notificationPref   NotificationPreference?
+  orgMemberships     OrgMember[]
+  createdScenarios   OrgScenario[]
+  articleLikes       ArticleLike[]
+  articleBookmarks   ArticleBookmark[]
+  articleReports     ArticleReport[]
+  challengeLikes     ChallengeLike[]
+  challengeBookmarks ChallengeBookmark[]
+  // Follow graph
+  following          UserFollow[]    @relation("Follower")
+  followers          UserFollow[]    @relation("Followed")
+  // Social Shares & Discussions
+  shareTokens        ShareToken[]
+  comments           ChallengeComment[]
+  commentVotes       CommentVote[]
+  customLists        ChallengeList[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  @@index([xp(sort: Desc)])
+  @@index([isPublic, currentStreak(sort: Desc), xp(sort: Desc)])
 }
 
 
 model Completion {
   userId    String
   nodeId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   node      Node     @relation(fields: [nodeId], references: [id])
   createdAt DateTime @default(now())
 
   @@id([userId, nodeId])
 }
 
+model QuizAttempt {
+  id        String   @id @default(cuid())
+  userId    String
+  nodeId    String   // Refers to the Quiz Node
+  score     Int
+  total     Int
+  passed    Boolean
+  answers   Json?    // Detailed question/answer breakdown
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  node      Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([nodeId])
+  @@index([userId, nodeId])
+}
+
 
 model Challenge {
   id          String    @id @default(cuid())
   title       String
+  slug        String?   @unique  // URL-friendly slug for linking
   description String
   difficulty  Difficulty
   category    Category
@@ -63,19 +150,35 @@ model Challenge {
   module      Module?   @relation(fields: [moduleId], references: [id])
   submissions Submission[]
   sessions    LabSession[]
+  likes          ChallengeLike[]
+  bookmarks      ChallengeBookmark[]
+  comments       ChallengeComment[]
+  shareTokens    ShareToken[]
+  listItems      ChallengeListItem[]
+  editorial      String?   @db.Text  // In-depth editorial / solution guide & architectural postmortem
+  authorNotes    String?   @db.Text  // Hints & author context
+  contributedByOrgId String?
+  contributedByOrg   Org?    @relation(fields: [contributedByOrgId], references: [id])
+  requiredProvider   String    @default("docker")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  @@index([moduleId])
 }
 
 model LabSession {
   id          String    @id @default(cuid()) // equals the sessionId in Redis/sandbox
   userId      String
   challengeId String
-  user        User      @relation(fields: [userId], references: [id])
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   challenge   Challenge @relation(fields: [challengeId], references: [id])
   status      SessionStatus @default(ACTIVE)
   startedAt   DateTime  @default(now())
   endedAt     DateTime?
+
+  @@index([userId, status])
+  @@index([userId, status, endedAt(sort: Desc)])
+  @@index([status, startedAt])
 }
 
 enum SessionStatus {
@@ -90,7 +193,10 @@ model LearningPath {
   title       String
   description String
   slug        String    @unique
+  orgId       String?
+  org         Org?      @relation(fields: [orgId], references: [id])
   modules     Module[]
+  assignments PathAssignment[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -106,6 +212,8 @@ model Module {
   incidents      IncidentMetadata[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+
+  @@index([pathId])
 }
 
 model IncidentMetadata {
@@ -122,16 +230,83 @@ model IncidentMetadata {
   updatedAt   DateTime  @updatedAt
 }
 
+model Article {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  title       String
+  summary     String
+  content     String    @db.Text
+  category    String    // e.g., "Postmortem", "Architecture", "Incident Analysis", "Security"
+  badge       String    // e.g., "Outage Analysis", "Performance", "Security"
+  authorName  String    @default("DevOps.lab SRE Team")
+  authorRole  String    @default("Incident Response Team")
+  authorAvatar String?
+  readTime    String    @default("5 min read")
+  tags        String[]
+  featured    Boolean   @default(false)
+  likes       Int       @default(0)
+  likesList   ArticleLike[]
+  bookmarks   ArticleBookmark[]
+  reports     ArticleReport[]
+  publishedAt DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([slug])
+  @@index([category])
+  @@index([publishedAt])
+}
+
+model ArticleLike {
+  id        String   @id @default(cuid())
+  articleId String
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([articleId, userId])
+  @@index([userId])
+}
+
+model ArticleBookmark {
+  id        String   @id @default(cuid())
+  articleId String
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([articleId, userId])
+  @@index([userId])
+}
+
+model ArticleReport {
+  id        String   @id @default(cuid())
+  articleId String
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reason    String
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@index([articleId])
+  @@index([userId])
+}
+
 model Submission {
   id          String    @id @default(cuid())
   code        String
   status      SubmissionStatus @default(PENDING)
   result      Json?
   userId      String
-  user        User      @relation(fields: [userId], references: [id])
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   challengeId String
   challenge   Challenge @relation(fields: [challengeId], references: [id])
   createdAt   DateTime  @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 enum NodeType {
@@ -152,8 +327,8 @@ model Node {
   outgoing    Edge[]       @relation("from")
   incoming    Edge[]       @relation("to")
   completions Completion[]
+  quizAttempts QuizAttempt[]
 }
-
 
 model Edge {
   fromId String
@@ -162,6 +337,7 @@ model Edge {
   to     Node   @relation("to", fields: [toId], references: [id])
 
   @@id([fromId, toId])
+  @@index([toId])
 }
 
 enum Role {
@@ -202,13 +378,340 @@ model SecurityLog {
   userAgent String?
   metadata  Json?
   createdAt DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
 }
 
-model OutboxEvent {
-  id        String   @id @default(cuid())
-  eventType String   // e.g., "UserRegisteredEvent", "EmailVerificationRequestedEvent"
-  payload   Json
-  processed Boolean  @default(false)
-  createdAt DateTime @default(now())
+model AuthOutboxEvent {
+  id         String   @id @default(cuid())
+  eventType  String
+  payload    Json
+  processed  Boolean  @default(false)
+  retryCount Int      @default(0)
+  failed     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([processed, failed, createdAt])
 }
+
+model CoreOutboxEvent {
+  id         String   @id @default(cuid())
+  eventType  String
+  payload    Json
+  processed  Boolean  @default(false)
+  retryCount Int      @default(0)
+  failed     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([processed, failed, createdAt])
+}
+
+// Per-check validator results — persisted the moment a check is evaluated.
+// Decouples "how far did the user get" from the sandbox lifecycle.
+// If a sandbox dies mid-challenge, this table answers "3 of 5 checks already verified"
+// before a new sandbox is even warm.
+model ChallengeCheckResult {
+  id          String   @id @default(cuid())
+  userId      String
+  challengeId String
+  checkId     String   // e.g. "pod_running", "service_exposed", "correct_labels"
+  status      CheckStatus
+  message     String   @default("")
+  lastRunAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, challengeId, checkId])
+  @@index([userId, challengeId])
+}
+
+enum OnboardingState {
+  NEW
+  TOUR_DISMISSED
+  TOUR_COMPLETED
+}
+
+enum CheckStatus {
+  PASSED
+  FAILED
+}
+
+model UserSession {
+  id            String    @id @default(cuid())
+  userId        String
+  tokenHash     String?   @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent     String?
+  ip            String?
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  revokedAt     DateTime?
+
+  @@index([userId, revokedAt])
+}
+
+model Badge {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  title         String
+  description   String
+  iconRef       String
+  roadmapId     String?
+
+  users         UserBadge[]
+
+  @@index([roadmapId])
+}
+
+model UserBadge {
+  userId        String
+  badgeId       String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge         Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  earnedAt      DateTime @default(now())
+
+  @@id([userId, badgeId])
+  @@index([userId, earnedAt(sort: Desc)])
+}
+
+model NotificationPreference {
+  userId              String  @id
+  user                User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weeklyDigest        Boolean @default(true)
+  productUpdates      Boolean @default(true)
+  challengeReminders  Boolean @default(true)
+}
+
+// B2B Models
+model OrgMember {
+  id        String   @id @default(cuid())
+  userId    String
+  orgId     String
+  orgRole   OrgRole  @default(MEMBER)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org       Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime @default(now())
+
+  @@unique([userId, orgId])
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model OrgInvite {
+  id        String          @id @default(cuid())
+  orgId     String
+  email     String
+  token     String          @unique @default(cuid())
+  orgRole   OrgRole         @default(MEMBER)
+  status    OrgInviteStatus @default(PENDING)
+  expiresAt DateTime
+  createdAt DateTime        @default(now())
+  org       Org             @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([orgId, status])
+}
+
+enum OrgInviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
+model OrgScenario {
+  id                String            @id @default(cuid())
+  orgId             String
+  createdByUserId   String
+  title             String
+  description       String
+  difficulty        Difficulty
+  category          Category
+  dockerImage       String
+  setupInstructions String            @db.Text
+  checks            Json              // [{ checkId, description, passCriteria }]
+  status            OrgScenarioStatus @default(PRIVATE)
+  challengeId       String?
+  org               Org               @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy         User              @relation(fields: [createdByUserId], references: [id])
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([orgId, status])
+}
+
+enum OrgScenarioStatus {
+  PRIVATE
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+model PathAssignment {
+  id               String       @id @default(cuid())
+  orgId            String
+  learningPathId   String
+  userId           String?
+  assignedByUserId String
+  assignedAt       DateTime     @default(now())
+  org              Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  learningPath     LearningPath @relation(fields: [learningPathId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, learningPathId, userId])
+  @@index([orgId])
+  @@index([userId])
+}
+
+// ──────────────────────────────────────────────
+// Challenge Interactions
+// ──────────────────────────────────────────────
+
+model ChallengeLike {
+  id          String    @id @default(cuid())
+  challengeId String
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([challengeId, userId])
+  @@index([userId])
+}
+
+model ChallengeBookmark {
+  id          String    @id @default(cuid())
+  challengeId String
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([challengeId, userId])
+  @@index([userId])
+}
+
+// ──────────────────────────────────────────────
+// Social Graph — Follow / Unfollow
+// ──────────────────────────────────────────────
+
+model UserFollow {
+  followerId  String
+  followedId  String
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followed    User     @relation("Followed", fields: [followedId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@id([followerId, followedId])
+  @@index([followerId])
+  @@index([followedId])
+}
+
+// ──────────────────────────────────────────────
+// Shareable Achievement & Proof-of-Skill Tokens
+// ──────────────────────────────────────────────
+
+model ShareToken {
+  id          String         @id @default(cuid())
+  token       String         @unique @default(cuid())
+  type        ShareTokenType @default(CHALLENGE_SOLVE)
+  userId      String
+  challengeId String?
+  metadata    Json           // Snapshot of solution: passed checks, execution time, timestamp
+  views       Int            @default(0)
+  createdAt   DateTime       @default(now())
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challenge   Challenge?     @relation(fields: [challengeId], references: [id], onDelete: SetNull)
+
+  @@index([token])
+  @@index([userId])
+}
+
+enum ShareTokenType {
+  CHALLENGE_SOLVE
+  BADGE_EARNED
+  QUIZ_MASTERY
+  CERTIFICATE
+}
+
+// ──────────────────────────────────────────────
+// Threaded Challenge Discussions & Upvotes
+// ──────────────────────────────────────────────
+
+model ChallengeComment {
+  id          String             @id @default(cuid())
+  challengeId String
+  userId      String
+  parentId    String?
+  content     String             @db.Text
+  isPinned    Boolean            @default(false)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  challenge   Challenge          @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent      ChallengeComment?  @relation("ThreadReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     ChallengeComment[] @relation("ThreadReplies")
+  votes       CommentVote[]
+
+  @@index([challengeId])
+  @@index([userId])
+  @@index([parentId])
+}
+
+model CommentVote {
+  id        String           @id @default(cuid())
+  commentId String
+  userId    String
+  vote      Int              // +1 (upvote) or -1 (downvote)
+  createdAt DateTime         @default(now())
+
+  comment   ChallengeComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
+  @@index([commentId])
+  @@index([userId])
+}
+
+// ──────────────────────────────────────────────
+// Custom Named Challenge Lists (Blind 75, Interview Prep)
+// ──────────────────────────────────────────────
+
+model ChallengeList {
+  id          String              @id @default(cuid())
+  userId      String
+  name        String              // e.g. "SRE Interview Must-Haves", "Kubernetes Deep Dive"
+  description String?
+  isPublic    Boolean             @default(false)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items       ChallengeListItem[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([isPublic])
+}
+
+model ChallengeListItem {
+  id          String        @id @default(cuid())
+  listId      String
+  challengeId String
+  order       Int           @default(0)
+  createdAt   DateTime      @default(now())
+
+  list        ChallengeList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  challenge   Challenge     @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, challengeId])
+  @@index([listId])
+  @@index([challengeId])
+}
+
 
