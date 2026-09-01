@@ -1,23 +1,51 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { API_BASE_URL } from "./apiBase";
 import { ApiError } from "./errors";
-import type { ApiResult, Challenge, Session, UserSession } from "./api-types";
+import type {
+  ApiResult,
+  Challenge,
+  Session,
+  UserSession,
+  Roadmap,
+  RoadmapProgress,
+  QuizNode,
+  QuizProgress,
+  SubmitResponse,
+  FlashcardDeck,
+  HistoryItem,
+  StandardResponse,
+} from "@devops/types";
 import { API_ROUTES } from "./api-routes";
 
 let refreshPromise: Promise<boolean> | null = null;
 
 async function refreshTokens(): Promise<boolean> {
+  if (typeof window !== "undefined") {
+    console.log(`[AUTH-DEBUG] refreshTokens() invoked. Existing refreshPromise? ${!!refreshPromise}`);
+  }
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
     try {
+      if (typeof window !== "undefined") {
+        console.log(`[AUTH-DEBUG] Initiating POST /api/auth/refresh`);
+        console.log(`[AUTH-DEBUG] Current document cookies: ${document.cookie}`);
+      }
       const res = await axios.post(
         `${API_BASE_URL}${API_ROUTES.auth.refresh}`,
         {},
         { withCredentials: true }
       );
+      if (typeof window !== "undefined") {
+        console.log(`[AUTH-DEBUG] /refresh success. Status: ${res.status}`);
+      }
       return res.status === 200;
-    } catch {
+    } catch (err: any) {
+      if (typeof window !== "undefined") {
+        // Change from console.error to console.log to prevent Next.js from throwing an error overlay
+        // since a 401 on /refresh is perfectly normal for a logged-out user.
+        console.log(`[AUTH-DEBUG] /refresh failed! (Normal if logged out)`, err.message, err.response?.status);
+      }
       return false;
     } finally {
       refreshPromise = null;
@@ -56,7 +84,10 @@ function makeFailure<T = unknown>(err: unknown): ApiResult<T> {
 
   if (err instanceof AxiosError) {
     const status = err.response?.status || 500;
-    const msg = (err.response?.data && (err.response!.data as { message?: string }).message) || err.message || "Request failed";
+    const msg =
+      (err.response?.data && (err.response!.data as { message?: string }).message) ||
+      err.message ||
+      "Request failed";
     return { ok: false, error: msg, status };
   }
 
@@ -72,14 +103,29 @@ engine.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
     const url = originalRequest.url || "";
-    
+
     const isRefreshRoute = url.includes(API_ROUTES.auth.refresh);
     const isLoginRoute = url.includes(API_ROUTES.auth.login);
 
-    if (error.response?.status === 401 && !isRefreshRoute && !isLoginRoute && !originalRequest._retry) {
+    if (typeof window !== "undefined") {
+      console.log(`[AUTH-DEBUG] Request failed: ${url} with status ${error.response?.status}. _retry=${originalRequest._retry}, isRefresh=${isRefreshRoute}, isLogin=${isLoginRoute}`);
+    }
+
+    if (
+      error.response?.status === 401 &&
+      !isRefreshRoute &&
+      !isLoginRoute &&
+      !originalRequest._retry
+    ) {
+      if (typeof window !== "undefined") {
+        console.log(`[AUTH-DEBUG] Triggering refresh flow for 401 on ${url}`);
+      }
       originalRequest._retry = true;
-      
+
       const refreshed = await refreshTokens();
+      if (typeof window !== "undefined") {
+        console.log(`[AUTH-DEBUG] refreshTokens() returned: ${refreshed}`);
+      }
       if (refreshed) {
         return engine(originalRequest);
       }
@@ -95,7 +141,7 @@ engine.interceptors.response.use(
       code = serverData.code;
     } else {
       if (status === 502 || status === 503 || status === 504) {
-        errorMsg = "Service unavailable — backend may not be running";
+        errorMsg = "Service unavailable - backend may not be running";
       }
     }
 
@@ -146,7 +192,12 @@ export const apiClient = {
       if (res.status >= 200 && res.status < 300) {
         return { ok: true, data: res.data as T, status: res.status };
       }
-      return { ok: false, error: (res.data && (res.data as { message?: string }).message) || "Request failed", status: res.status, data: res.data as T };
+      return {
+        ok: false,
+        error: (res.data && (res.data as { message?: string }).message) || "Request failed",
+        status: res.status,
+        data: res.data as T,
+      };
     } catch (err) {
       return makeFailure<T>(err);
     }
@@ -174,17 +225,74 @@ export const apiClient = {
     getAll: () => engine.get<Challenge[], Challenge[]>(API_ROUTES.challenges.base),
     getById: (id: string) => engine.get<Challenge, Challenge>(API_ROUTES.challenges.byId(id)),
     start: (id: string) => engine.post<Session, Session>(API_ROUTES.challenges.start(id)),
+    getHistory: (id: string) =>
+      engine.get<HistoryItem[], HistoryItem[]>(API_ROUTES.challenges.history(id)),
+  },
+
+  roadmaps: {
+    getAll: () => engine.get<Roadmap[], Roadmap[]>(API_ROUTES.roadmaps.base),
+    getBySlug: (slug: string) => engine.get<Roadmap, Roadmap>(API_ROUTES.roadmaps.bySlug(slug)),
+    getProgress: (slug: string) =>
+      engine.get<RoadmapProgress, RoadmapProgress>(API_ROUTES.roadmaps.progress(slug)),
+  },
+
+  quizzes: {
+    getAll: () => engine.get<QuizNode[], QuizNode[]>(API_ROUTES.quizzes.base),
+    getBySlug: (slug: string) => engine.get<QuizNode, QuizNode>(API_ROUTES.quizzes.bySlug(slug)),
+    submit: (slug: string, body: unknown) =>
+      engine.post<SubmitResponse, SubmitResponse>(API_ROUTES.quizzes.submit(slug), body),
+    getProgress: (slug: string) =>
+      engine.get<QuizProgress, QuizProgress>(API_ROUTES.quizzes.progress(slug)),
+    getHistory: (slug: string) =>
+      engine.get<HistoryItem[], HistoryItem[]>(API_ROUTES.quizzes.history(slug)),
+  },
+
+  flashcards: {
+    getAll: () => engine.get<FlashcardDeck[], FlashcardDeck[]>(API_ROUTES.flashcards.base),
+  },
+
+  articles: {
+    getAll: (params?: { query?: string; category?: string; tag?: string }) => {
+      const sp = new URLSearchParams();
+      if (params?.query) sp.set("query", params.query);
+      if (params?.category) sp.set("category", params.category);
+      if (params?.tag) sp.set("tag", params.tag);
+      const q = sp.toString() ? `?${sp.toString()}` : "";
+      return engine.get<import("@devops/types").Article[], import("@devops/types").Article[]>(
+        `${API_ROUTES.articles.base}${q}`
+      );
+    },
+    getBySlug: (slug: string) =>
+      engine.get<import("@devops/types").Article, import("@devops/types").Article>(
+        API_ROUTES.articles.bySlug(slug)
+      ),
+    create: (body: Partial<import("@devops/types").Article>) =>
+      engine.post<import("@devops/types").Article, import("@devops/types").Article>(
+        API_ROUTES.articles.create,
+        body
+      ),
+  },
+
+  assistant: {
+    chat: (message: string) =>
+      engine.post<{ content: string }, { content: string }>(API_ROUTES.assistant.chat, { message }),
   },
 
   sessions: {
     getById: (id: string) => engine.get<Session, Session>(API_ROUTES.sessions.byId(id)),
-    terminate: (id: string) => engine.delete<void, void>(API_ROUTES.sessions.byId(id)),
+    terminate: (id: string) =>
+      engine.delete<StandardResponse, StandardResponse>(API_ROUTES.sessions.byId(id)),
+    terminateActive: () =>
+      engine.delete<StandardResponse, StandardResponse>(API_ROUTES.sessions.terminateActive),
   },
 
   auth: {
     login: (body: unknown) => engine.post<UserSession, UserSession>(API_ROUTES.auth.login, body),
-    loginMfa: (body: unknown) => engine.post<UserSession, UserSession>(API_ROUTES.auth.loginMfa, body),
-    logout: () => engine.post<void, void>(API_ROUTES.auth.logout),
-  }
+    register: (body: unknown) =>
+      engine.post<UserSession, UserSession>(API_ROUTES.auth.register, body),
+    loginMfa: (body: unknown) =>
+      engine.post<UserSession, UserSession>(API_ROUTES.auth.loginMfa, body),
+    logout: () => engine.post<StandardResponse, StandardResponse>(API_ROUTES.auth.logout),
+    getHistory: () => engine.get<HistoryItem[], HistoryItem[]>(API_ROUTES.auth.history),
+  },
 };
-

@@ -7,7 +7,7 @@ import useSWR from "swr";
 import { apiClient } from "@/lib/apiClient";
 import { useAuth } from "@/providers/AuthProvider";
 import { API_ROUTES } from "@/lib/api-routes";
-import { CheckCircle, XCircle, Terminal, Play } from "lucide-react";
+import { CheckCircle, XCircle, Terminal, Play, Heart, Bookmark, Share2, Check } from "lucide-react";
 import { useTerminalMachine } from "@/lib/useTerminalMachine";
 import type { Challenge, CheckResult } from "@/lib/api-types";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
@@ -15,6 +15,7 @@ import { WorkspaceHeader } from "@/components/workspace/WorkspaceHeader";
 import { WorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 import { WorkspaceTerminal } from "@/components/workspace/WorkspaceTerminal";
 import { EyebrowHeader } from "@/components/ui/EyebrowHeader";
+import { SaveToListModal } from "@/components/challenge/SaveToListModal";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -24,6 +25,8 @@ function ChallengeWorkspacePage({ params }: PageProps) {
   const { id } = use(params);
   const router = useRouter();
   const { user } = useAuth();
+
+  const [listModalOpen, setListModalOpen] = useState(false);
 
   const {
     data: challenge,
@@ -56,9 +59,9 @@ function ChallengeWorkspacePage({ params }: PageProps) {
 
 
 
-  const [activeTab, setActiveTab] = useState<"description" | "hints" | "config" | "ask-ai">(
-    "description"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "description" | "hints" | "editorial" | "discussion" | "config" | "ask-ai" | "history"
+  >("description");
   const [hintsRevealed, setHintsRevealed] = useState<boolean[]>([false, false, false]);
 
   const [chatMessages, setChatMessages] = useState<
@@ -67,6 +70,62 @@ function ChallengeWorkspacePage({ params }: PageProps) {
   const [chatInput, setChatInput] = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Challenge interaction state
+  const { data: interactions } = useSWR<{ likes: number; liked: boolean; saved: boolean }>(
+    id ? `/api/challenges/${id}/interactions` : null,
+    () => apiClient.get<{ likes: number; liked: boolean; saved: boolean }>(`/api/challenges/${id}/interactions`)
+  );
+  const [likeCount, setLikeCount] = useState<number | null>(null);
+  const [liked, setLiked] = useState<boolean | null>(null);
+  const [saved, setSaved] = useState<boolean | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [iLiking, setILiking] = useState(false);
+  const [iSaving, setISaving] = useState(false);
+
+  const currentLikes = likeCount !== null ? likeCount : (interactions?.likes ?? 0);
+  const currentLiked = liked !== null ? liked : (interactions?.liked ?? false);
+  const currentSaved = saved !== null ? saved : (interactions?.saved ?? false);
+
+  const handleLike = useCallback(async () => {
+    if (!user) { router.push("/login"); return; }
+    if (iLiking) return;
+    const prev = { likes: currentLikes, liked: currentLiked };
+    setLiked(!prev.liked);
+    setLikeCount(prev.liked ? prev.likes - 1 : prev.likes + 1);
+    setILiking(true);
+    try {
+      const res = await apiClient.post<{ likes: number; liked: boolean }>(`/api/challenges/${id}/like`);
+      setLiked(res.liked);
+      setLikeCount(res.likes);
+    } catch {
+      setLiked(prev.liked);
+      setLikeCount(prev.likes);
+    } finally { setILiking(false); }
+  }, [user, router, id, iLiking, currentLikes, currentLiked]);
+
+  const handleSave = useCallback(async () => {
+    if (!user) { router.push("/login"); return; }
+    if (iSaving) return;
+    const prev = currentSaved;
+    setSaved(!prev);
+    setISaving(true);
+    try {
+      const res = await apiClient.post<{ saved: boolean }>(`/api/challenges/${id}/bookmark`);
+      setSaved(res.saved);
+    } catch { setSaved(prev); } finally { setISaving(false); }
+  }, [user, router, id, iSaving, currentSaved]);
+
+  const handleShare = useCallback(async () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      try { await navigator.share({ title: challenge?.title ?? "Challenge", url }); } catch {}
+    } else if (navigator.clipboard) {
+      await navigator.clipboard.writeText(url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2500);
+    }
+  }, [challenge]);
 
   const handleSendChat = async (msg: string) => {
     if (!msg.trim()) return;
@@ -147,9 +206,11 @@ function ChallengeWorkspacePage({ params }: PageProps) {
     }
   }, [startSession, challenge]);
 
+  const storageKey = user?.id && id ? `session_${user.id}_${id}` : null;
+
   useEffect(() => {
-    if (!id || state !== "IDLE") return;
-    const saved = localStorage.getItem(`session_${id}`);
+    if (!storageKey || state !== "IDLE") return;
+    const saved = localStorage.getItem(storageKey);
     if (!saved) return;
     try {
       const parsed = JSON.parse(saved);
@@ -157,19 +218,25 @@ function ChallengeWorkspacePage({ params }: PageProps) {
         .get<{ status: string }>(API_ROUTES.sessions.byId(parsed.sessionId))
         .then((r) => {
           if (r?.status === "ACTIVE") startSession(id);
-          else localStorage.removeItem(`session_${id}`);
+          else if (storageKey) localStorage.removeItem(storageKey);
         })
-        .catch(() => localStorage.removeItem(`session_${id}`));
+        .catch(() => {
+          if (storageKey) localStorage.removeItem(storageKey);
+        });
     } catch {
-      localStorage.removeItem(`session_${id}`);
+      localStorage.removeItem(storageKey);
     }
-  }, [id]);
+  }, [storageKey, id, state, startSession]);
 
   useEffect(() => {
-    if (session && state === "CONNECTED")
-      localStorage.setItem(`session_${id}`, JSON.stringify(session));
-    if (state === "SANDBOX_LOST" || state === "IDLE") localStorage.removeItem(`session_${id}`);
-  }, [session, state, id]);
+    if (!storageKey) return;
+    if (session && state === "CONNECTED") {
+      localStorage.setItem(storageKey, JSON.stringify(session));
+    }
+    if (state === "SANDBOX_LOST" || state === "IDLE") {
+      localStorage.removeItem(storageKey);
+    }
+  }, [session, state, storageKey]);
 
   if (challengeLoading)
     return (
@@ -214,8 +281,8 @@ function ChallengeWorkspacePage({ params }: PageProps) {
           </div>
 
           <WorkspaceTabs
-            activeTab={activeTab as "description" | "hints" | "config" | "ask-ai" | "history"}
-            setActiveTab={setActiveTab as any}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
             challenge={challenge}
             hintsRevealed={hintsRevealed}
             setHintsRevealed={setHintsRevealed}
@@ -301,8 +368,60 @@ function ChallengeWorkspacePage({ params }: PageProps) {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-panel-muted-dim">
-              <div className="flex items-center gap-1.5 text-[11px] font-mono pr-2">
+            <div className="flex items-center gap-2">
+              {/* Challenge interaction buttons */}
+              <button
+                id="challenge-like-btn"
+                onClick={handleLike}
+                disabled={iLiking}
+                title={currentLiked ? "Unlike" : "Like this challenge"}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border font-mono text-[11px] font-semibold transition-all duration-200 ${
+                  currentLiked
+                    ? "bg-red/15 border-red/40 text-red"
+                    : "bg-panel-2/60 border-panel-border/60 text-panel-muted hover:border-red/30 hover:text-red"
+                }`}
+              >
+                <Heart size={12} className={currentLiked ? "fill-current" : ""} />
+                <span className="tabular-nums">{currentLikes}</span>
+              </button>
+
+              <div className="inline-flex items-center rounded-lg border border-panel-border/60 bg-panel-2/60 overflow-hidden">
+                <button
+                  id="challenge-save-btn"
+                  onClick={handleSave}
+                  disabled={iSaving}
+                  title={currentSaved ? "Remove bookmark" : "Quick save challenge"}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 font-mono text-[11px] font-semibold transition-all duration-200 cursor-pointer ${
+                    currentSaved
+                      ? "bg-amber/15 text-amber"
+                      : "text-panel-muted hover:text-amber"
+                  }`}
+                >
+                  <Bookmark size={12} className={currentSaved ? "fill-current" : ""} />
+                </button>
+                <button
+                  onClick={() => setListModalOpen(true)}
+                  title="Add to custom list track"
+                  className="px-2 py-1.5 font-mono text-[11px] font-semibold text-panel-muted hover:text-panel-text border-l border-panel-border/60 transition-colors cursor-pointer"
+                >
+                  + List
+                </button>
+              </div>
+
+              <button
+                id="challenge-share-btn"
+                onClick={handleShare}
+                title="Copy link"
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border font-mono text-[11px] font-semibold transition-all duration-200 ${
+                  shareCopied
+                    ? "bg-teal/15 border-teal/40 text-teal"
+                    : "bg-panel-2/60 border-panel-border/60 text-panel-muted hover:border-teal/30 hover:text-teal"
+                }`}
+              >
+                {shareCopied ? <Check size={12} /> : <Share2 size={12} />}
+              </button>
+
+              <div className="flex items-center gap-1.5 text-[11px] font-mono pl-2 border-l border-panel-border/40">
                 <span className="w-1.5 h-1.5 rounded-full bg-teal animate-pulse" />
                 <span className="text-panel-muted text-[10.5px]">Auto-grading ready</span>
               </div>
@@ -362,26 +481,49 @@ function ChallengeWorkspacePage({ params }: PageProps) {
             </div>
           )}
 
-          {/* Validation Feedback */}
+          {/* Validation Feedback & Celebratory Badge Unlocked Alert */}
           {validationResult && (
-            <div
-              className={`border rounded-2xl p-4 backdrop-blur-xl transition-all shadow-[0_4px_20px_rgba(0,0,0,0.25)] ${
-                validationResult.passed
-                  ? "bg-teal/10 border-teal/30"
-                  : "bg-red/10 border-red/30"
-              }`}
-            >
+            <div className="flex flex-col gap-3">
+              {validationResult.passed && (
+                <div className="bg-gradient-to-r from-amber/20 via-teal/15 to-amber/20 border-2 border-amber/50 rounded-2xl p-4 shadow-[0_0_30px_rgba(245,158,11,0.2)] animate-in fade-in zoom-in-95 duration-300">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber/20 border border-amber/40 flex items-center justify-center text-xl shadow-inner animate-bounce">
+                      🎉
+                    </div>
+                    <div>
+                      <div className="font-space font-bold text-sm text-panel-text flex items-center gap-1.5">
+                        <span>Challenge Solved!</span>
+                        <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-amber/20 text-amber border border-amber/40">
+                          +{challenge.xp} XP
+                        </span>
+                      </div>
+                      <p className="font-mono text-[11px] text-panel-muted mt-0.5">
+                        Progress recorded. Milestone badges and daily streak updated.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div
-                className={`font-mono text-[11px] font-bold mb-2.5 flex items-center gap-1.5 ${
-                  validationResult.passed ? "text-teal" : "text-red"
+                className={`border rounded-2xl p-4 backdrop-blur-xl transition-all shadow-[0_4px_20px_rgba(0,0,0,0.25)] ${
+                  validationResult.passed
+                    ? "bg-teal/10 border-teal/30"
+                    : "bg-red/10 border-red/30"
                 }`}
               >
-                <span>{validationResult.passed ? "✓" : "✗"}</span>
-                <span>Validator Result</span>
+                <div
+                  className={`font-mono text-[11px] font-bold mb-2.5 flex items-center gap-1.5 ${
+                    validationResult.passed ? "text-teal" : "text-red"
+                  }`}
+                >
+                  <span>{validationResult.passed ? "✓" : "✗"}</span>
+                  <span>Validator Result</span>
+                </div>
+                <pre className="m-0 font-mono text-[10.5px] text-panel-muted whitespace-pre-wrap break-words leading-[1.65] bg-bg/50 p-2.5 rounded-lg border border-panel-border/40">
+                  {validationResult.feedback}
+                </pre>
               </div>
-              <pre className="m-0 font-mono text-[10.5px] text-panel-muted whitespace-pre-wrap break-words leading-[1.65] bg-bg/50 p-2.5 rounded-lg border border-panel-border/40">
-                {validationResult.feedback}
-              </pre>
             </div>
           )}
 
@@ -392,8 +534,8 @@ function ChallengeWorkspacePage({ params }: PageProps) {
             </div>
             <div className="flex flex-col gap-1">
               {[
-                { label: "Nginx Official Documentation", url: "https://nginx.org/en/docs/" },
-                { label: "Debugging Nginx Syntax Guide", url: "https://nginx.org/en/docs/beginners_guide.html" },
+                { label: `${challenge.category} & System Manuals`, url: "https://man7.org/linux/man-pages/" },
+                { label: "DevOps Best Practices Guide", url: "https://learn.microsoft.com/en-us/devops/" },
               ].map((r) => (
                 <a
                   key={r.label}
@@ -416,11 +558,19 @@ function ChallengeWorkspacePage({ params }: PageProps) {
               <span>State Persistence</span>
             </div>
             <p className="m-0 text-panel-muted-dim">
-              Your edits in <code className="text-panel-text bg-panel-2 px-1 py-0.5 rounded">/etc/nginx/nginx.conf</code> and test passes remain saved during this active session.
+              Container file modifications and environment state remain saved during this active session.
             </p>
           </div>
         </div>
       </div>
+
+      {/* Save to Custom List Modal */}
+      <SaveToListModal
+        isOpen={listModalOpen}
+        onClose={() => setListModalOpen(false)}
+        challengeId={id}
+        challengeTitle={challenge?.title}
+      />
     </div>
   );
 }

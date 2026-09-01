@@ -39,8 +39,10 @@ export const ErrorCodes = {
 const CODE_MESSAGES: Record<string, string> = {
   USER_EXISTS: "An account with this email address already exists.",
   INVALID_CREDENTIALS: "The email or password you entered is incorrect.",
-  ACCOUNT_LOCKED: "This account has been temporarily locked due to too many failed login attempts. Please try again later.",
-  INVALID_VERIFICATION_TOKEN: "The verification link is invalid or has expired. Please request a new one.",
+  ACCOUNT_LOCKED:
+    "This account has been temporarily locked due to too many failed login attempts. Please try again later.",
+  INVALID_VERIFICATION_TOKEN:
+    "The verification link is invalid or has expired. Please request a new one.",
   INVALID_RESET_TOKEN: "Your password reset link is invalid or has expired.",
   INVALID_MFA_CODE: "The verification code is incorrect. Please try again.",
   INVALID_MFA_TOKEN: "Your MFA session has expired. Please log in again.",
@@ -63,8 +65,8 @@ const STATUS_MESSAGES: Record<number, string> = {
   404: "The requested resource could not be found.",
   429: "Too many requests. Please slow down and try again later.",
   500: "A server error occurred. Please try again later.",
-  502: "Service unavailable — backend may not be running.",
-  503: "Service unavailable — please try again later.",
+  502: "Service unavailable - backend may not be running.",
+  503: "Service unavailable - please try again later.",
 };
 
 /**
