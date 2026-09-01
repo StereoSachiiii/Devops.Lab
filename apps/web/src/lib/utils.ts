@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const AUTH_PAGES = ["/login", "/register", "/forgot-password", "/reset-password", "/verify-email"];
+const AUTH_PAGES = ["/login", "/register", "/forgot-password", "/reset-password", "/verify-email", "/auth/callback"];
 const PUBLIC_PAGES = ["/", "/challenges", "/paths", "/quizzes", "/leaderboard"];
 
 export function getPageType(pathname: string | null) {
@@ -15,4 +15,3 @@ export function getPageType(pathname: string | null) {
 
   return { isAuthPage, isPublicPage, isProtectedPage };
 }
-

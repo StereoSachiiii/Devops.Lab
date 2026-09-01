@@ -55,7 +55,10 @@ function VerifyEmailForm() {
       {status === "success" && (
         <div className="flex flex-col gap-3">
           <p className="text-xs">Your email has been verified successfully.</p>
-          <Link href="/login" className="border border-neutral-700 p-2 font-semibold text-sm text-center">
+          <Link
+            href="/login"
+            className="border border-neutral-700 p-2 font-semibold text-sm text-center"
+          >
             Log In
           </Link>
         </div>
@@ -66,7 +69,10 @@ function VerifyEmailForm() {
           <div className="border border-neutral-800 p-2 text-xs">
             {errorMsg || "Failed to verify email."}
           </div>
-          <Link href="/login" className="border border-neutral-700 p-2 font-semibold text-sm text-center">
+          <Link
+            href="/login"
+            className="border border-neutral-700 p-2 font-semibold text-sm text-center"
+          >
             Back to Login
           </Link>
         </div>

@@ -1,8 +1,8 @@
 "use client";
 
-import React, { createContext, useContext, useEffect } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import { apiClient } from "@/lib/apiClient";
 import { API_ROUTES } from "@/lib/api-routes";
 import { getPageType } from "@/lib/utils";
@@ -21,19 +21,36 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { cache } = useSWRConfig();
+  // Track whether the component has fully mounted before attempting any navigation.
+  // This prevents "Router action dispatched before initialization" crashes.
+  const mounted = useRef(false);
 
   const { isAuthPage, isProtectedPage } = getPageType(pathname);
 
-  const { data: user, error, isLoading: isSwrLoading, mutate } = useSWR<UserSession>(
+  const {
+    data: user,
+    isLoading: isSwrLoading,
+    isValidating,
+    mutate,
+  } = useSWR<UserSession>(
     API_ROUTES.auth.me,
     () => apiClient.get<UserSession>(API_ROUTES.auth.me),
     {
-      shouldRetryOnError: false,
+      shouldRetryOnError: (err) => {
+        // Do not retry 401 Unauthorized since unauthenticated is an expected state
+        if (err?.status === 401 || err?.response?.status === 401) {
+          return false;
+        }
+        return true;
+      },
+      errorRetryCount: 3,
+      errorRetryInterval: 300,
       revalidateOnFocus: false,
     }
   );
-  
-  const isLoading = isSwrLoading && !error && !user;
+
+  const isLoading = (isSwrLoading || isValidating) && !user;
   const shouldBlockOnAuth = isProtectedPage && isLoading;
 
   const logout = async () => {
@@ -42,19 +59,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Ignore failures on logout API call
     }
+
+    // Clean up all user sandbox session states from localStorage
+    if (typeof window !== "undefined") {
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith("session_")) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
+      } catch (e) {
+        console.warn("Failed to clear localStorage sessions on logout", e);
+      }
+    }
+
+    // Clear entire SWR in-memory client cache to prevent cross-user data leaks
+    if (cache instanceof Map) {
+      cache.clear();
+    }
     await mutate(undefined, { revalidate: false });
-    router.push("/login");
+
+    if (mounted.current) router.push("/login");
   };
 
   useEffect(() => {
-    if (isLoading) return;
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (isLoading || !mounted.current) return;
 
     if (!user && isProtectedPage) {
       router.push("/login");
-    } else if (user && isAuthPage) {
+    } else if (user && isAuthPage && pathname !== "/auth/callback") {
       router.push("/");
     }
-  }, [user, isLoading, isProtectedPage, isAuthPage, router]);
+  }, [user, isLoading, isProtectedPage, isAuthPage, router, pathname]);
 
   const value = {
     user: user || null,
@@ -66,8 +110,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   if (shouldBlockOnAuth) {
     return <div className="p-8">Loading...</div>;
   }
-
-  // Suppress auth fallback errors in the console to keep it clean.
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

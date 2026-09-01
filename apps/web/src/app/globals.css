@@ -1,1 +1,225 @@
 @import "tailwindcss";
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  
+  --font-sans: var(--font-inter);
+  --font-outfit: var(--font-outfit);
+  --font-space: var(--font-space);
+  --font-mono: var(--font-mono);
+
+  --color-bg: var(--theme-bg);
+  --color-panel: var(--theme-panel);
+  --color-panel-2: var(--theme-panel-2);
+  --color-panel-border: var(--theme-panel-border);
+  --color-panel-text: var(--theme-panel-text);
+  --color-panel-muted: var(--theme-panel-muted);
+  --color-panel-muted-dim: var(--theme-panel-muted-dim);
+  --color-amber: var(--theme-amber);
+  --color-amber-dim: var(--theme-amber-dim);
+  --color-teal: var(--theme-teal);
+  --color-teal-dim: var(--theme-teal-dim);
+  --color-red-auth: var(--theme-red-auth);
+  --color-particle: var(--theme-particle);
+  --color-particle-2: var(--theme-particle-2);
+  --color-red-particle: var(--theme-red-particle);
+  --color-shadow: var(--theme-shadow);
+}
+
+@layer base {
+  :root, html[data-theme="light"] {
+    --background: #ffffff;
+    --foreground: #09090b;
+    --card: #ffffff;
+    --card-foreground: #09090b;
+    --border: #e4e4e7;
+    --input: #e4e4e7;
+    --primary: #18181b;
+    --primary-foreground: #fafafa;
+    --muted: #f4f4f5;
+    --muted-foreground: #71717a;
+    --destructive: #ef4444;
+    --destructive-foreground: #fafafa;
+
+    --theme-bg: #f3f5f9;
+    --theme-panel: #ffffff;
+    --theme-panel-2: #f6f7fa;
+    --theme-panel-border: #e1e5ec;
+    --theme-panel-text: #0f172a;
+    --theme-panel-muted: #475569;
+    --theme-panel-muted-dim: #94a3b8;
+    --theme-amber: #ea580c;
+    --theme-amber-dim: #ffedd5;
+    --theme-teal: #0f766e;
+    --theme-teal-dim: #ccfbf1;
+    --theme-red-auth: #dc2626;
+    --theme-particle: 234, 88, 12;
+    --theme-particle-2: 15, 118, 110;
+    --theme-red-particle: 220, 38, 38;
+    --theme-shadow: rgba(30, 35, 50, 0.12);
+  }
+
+  .dark, html[data-theme="dark"] {
+    --background: #030303;
+    --foreground: #ffffff;
+    --card: #171717;
+    --card-foreground: #ffffff;
+    --border: #262626;
+    --input: #262626;
+    --primary: #ffffff;
+    --primary-foreground: #000000;
+    --muted: #262626;
+    --muted-foreground: #a3a3a3;
+    --destructive: #991b1b;
+    --destructive-foreground: #f87171;
+
+    --theme-bg: #090b0f;
+    --theme-panel: #0d1016;
+    --theme-panel-2: #10141b;
+    --theme-panel-border: #1d232e;
+    --theme-panel-text: #ffffff;
+    --theme-panel-muted: #94a3b8;
+    --theme-panel-muted-dim: #475569;
+    --theme-amber: #ff9d5c;
+    --theme-amber-dim: #7a5535;
+    --theme-teal: #35d6b4;
+    --theme-teal-dim: #164a3f;
+    --theme-red-auth: #ff6b6b;
+    --theme-particle: 255, 157, 92;
+    --theme-particle-2: 53, 214, 180;
+    --theme-red-particle: 255, 107, 107;
+    --theme-shadow: rgba(0, 0, 0, 0.6);
+  }
+}
+
+@layer utilities {
+  .page-transition-enter {
+    animation: pageFadeIn 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  
+  .progressive-blur-in {
+    animation: progressiveBlurIn 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  
+  .press-feedback:active {
+    transform: scale(0.97);
+    transition: transform 100ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}
+
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes progressiveBlurIn {
+  from { opacity: 0; filter: blur(4px); transform: scale(0.98); }
+  to { opacity: 1; filter: blur(0px); transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+
+@layer utilities {
+  @keyframes marquee-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @keyframes orbPulse { 0%,100%{transform:scale(1);opacity:0.5} 50%{transform:scale(1.05);opacity:1} }
+  @keyframes orbSpin  { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  @keyframes dotBlink { 0%,100%{opacity:1} 50%{opacity:0} }
+  @keyframes cursorBlink { 0%,100%{opacity:1} 50%{opacity:0} }
+  @keyframes shimmer { 100% { transform: translateX(100%); } }
+  @keyframes reveal { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes heroFadeOut { to { opacity: 0; transform: translateY(-40px) scale(0.95); filter: blur(4px); } }
+  @keyframes ambientDrift {
+    0% { background-position: 0% 0%; }
+    25% { background-position: 100% 0%; }
+    50% { background-position: 100% 100%; }
+    75% { background-position: 0% 100%; }
+    100% { background-position: 0% 0%; }
+  }
+  @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+  @keyframes popIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+  @keyframes iconMorph { from { opacity: 0; transform: rotate(-90deg) scale(0.5); } to { opacity: 1; transform: rotate(0) scale(1); } }
+  @keyframes toastFade { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes burst { 0% { box-shadow: 0 0 0 0 rgba(53,214,180,0.8); } 100% { box-shadow: 0 0 0 20px rgba(53,214,180,0); } }
+  @keyframes node-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(255,157,92,0.4); }
+    70% { box-shadow: 0 0 0 14px rgba(255,157,92,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,157,92,0); }
+  }
+  @keyframes line-flow {
+    0% { background-position: 0 0; }
+    100% { background-position: 14px 0; }
+  }
+  @keyframes line-flow-vertical {
+    0% { background-position: 0 0; }
+    100% { background-position: 0 14px; }
+  }
+  
+  /* Expose custom anim utility classes for react components */
+  .animate-reveal {
+    animation: reveal 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .animate-cursor-blink {
+    animation: cursorBlink 1s step-end infinite;
+  }
+  .roadmap-path { position: relative; display: flex; align-items: flex-start; justify-content: space-between; }
+  .roadmap-line { position: absolute; top: 19px; left: 0; right: 0; height: 2px; background: linear-gradient(to right, var(--color-panel-border) 50%, transparent 50%); background-size: 14px 2px; animation: line-flow 0.8s linear infinite; }
+  .roadmap-line-active { position: absolute; top: 19px; left: 0; width: 42%; height: 2px; background: linear-gradient(to right, var(--color-teal) 50%, transparent 50%); background-size: 14px 2px; animation: line-flow 0.8s linear infinite; }
+  .roadmap-node { flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 8px; position: relative; z-index: 2; cursor: pointer; }
+  .roadmap-node > div:first-child { margin-bottom: 16px; transition: transform 0.2s; }
+  .roadmap-node-pulse { animation: node-pulse 2s infinite cubic-bezier(0.66, 0, 0, 1); }
+  .roadmap-node:hover > div:first-child { transform: scale(1.15); box-shadow: 0 10px 20px -5px rgba(0,0,0,0.5); }
+  .roadmap-node:hover h4 { color: #fff !important; }
+  
+  @media (prefers-reduced-motion: reduce) { 
+    [style*='marquee-scroll'], .roadmap-line, .roadmap-line-active, .roadmap-node-pulse { animation: none !important; } 
+  }
+  @media (max-width: 880px) {
+    .bento-grid { grid-template-columns: 1fr !important; grid-template-rows: none !important; }
+    .roadmap-path { flex-direction: column; align-items: flex-start; gap: 32px; }
+    .roadmap-line { 
+       top: 0; bottom: 0; left: 27px; right: auto; 
+       width: 2px; height: auto; 
+       background: linear-gradient(to bottom, var(--color-panel-border) 50%, transparent 50%);
+       background-size: 2px 14px; 
+       animation: line-flow-vertical 0.8s linear infinite;
+    }
+    .roadmap-line-active {
+       top: 0; left: 27px; right: auto; 
+       width: 2px; height: 44%; 
+       background: linear-gradient(to bottom, var(--color-teal) 50%, transparent 50%);
+       background-size: 2px 14px; 
+       animation: line-flow-vertical 0.8s linear infinite;
+    }
+    .roadmap-node {
+       flex-direction: row; text-align: left; gap: 16px; align-items: center; width: 100%;
+    }
+    .roadmap-node > div:first-child { margin-bottom: 0; flex-shrink: 0; }
+    .t-grid { grid-template-columns: 1fr !important; }
+    .stats-grid { grid-template-columns: repeat(2,1fr) !important; }
+  }
+}
