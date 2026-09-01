@@ -6,9 +6,7 @@ require (
 	github.com/docker/docker v26.1.3+incompatible
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.3
-	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.5.1
-	github.com/lib/pq v1.10.9
 	github.com/liquidmetal-dev/flintlock/api v0.0.0-20251202154859-49e881a25c36
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rabbitmq/amqp091-go v1.11.0

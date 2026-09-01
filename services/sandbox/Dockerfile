@@ -13,12 +13,14 @@ RUN go mod download
 # Copy source and build a statically linked binary
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /sandbox-worker .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /sandbox-router ./cmd/router
 
 # ── Runtime Stage ─────────────────────────────────────────────────────────────
 # Use distroless for a minimal attack surface — no shell, no package manager
 FROM gcr.io/distroless/static-debian12
 
 COPY --from=builder /sandbox-worker /sandbox-worker
+COPY --from=builder /sandbox-router /sandbox-router
 
 # Run as non-root user (distroless provides 'nonroot' = uid 65532)
 USER nonroot:nonroot

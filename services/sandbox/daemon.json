@@ -1,0 +1,16 @@
+{
+  "runtimes": {
+    "runsc": {
+      "path": "/usr/bin/runsc"
+    },
+    "kata-qemu": {
+      "runtimeType": "io.containerd.kata-qemu.v2"
+    },
+    "kata-fc": {
+      "runtimeType": "io.containerd.kata-fc.v2"
+    },
+    "kata": {
+      "runtimeType": "io.containerd.kata.v2"
+    }
+  }
+}

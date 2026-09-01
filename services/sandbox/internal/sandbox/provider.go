@@ -47,6 +47,15 @@ type SandboxProvider interface {
 
 	// Remove force-removes a container. Called on session end or TTL expiry.
 	Remove(ctx context.Context, containerID string) error
+
+	// IsRunning returns true if the container is currently running.
+	IsRunning(ctx context.Context, containerID string) (bool, error)
+
+	// EnforceDiskQuotas scans managed containers and forcibly terminates any
+	// that exceed the maxBytes limit. This acts as an application-level fail-safe
+	// when StorageOpt limits are not supported by the host's filesystem.
+	// Returns a list of container IDs that were killed.
+	EnforceDiskQuotas(ctx context.Context, maxBytes int64) ([]string, error)
 }
 
 // ResizeFunc resizes the PTY when the browser window is resized.

@@ -112,6 +112,8 @@ func (c *SessionConsumer) Consume(ctx context.Context, h Handlers) error {
 		}(msgs)
 	}
 
+	connClose := c.conn.NotifyClose(make(chan *amqp.Error, 1))
+
 	c.log.Info("👷 Waiting for session jobs from RabbitMQ...")
 
 	for {
@@ -119,6 +121,13 @@ func (c *SessionConsumer) Consume(ctx context.Context, h Handlers) error {
 		case <-ctx.Done():
 			c.log.Info("Session consumer shutting down")
 			return nil
+
+		case err := <-connClose:
+			if err != nil {
+				c.log.Error("RabbitMQ connection closed unexpectedly", "error", err)
+				return fmt.Errorf("rabbitmq connection closed: %w", err)
+			}
+			return fmt.Errorf("rabbitmq connection closed normally")
 
 		case msg := <-msgCh:
 			// Peek at the type field to route to the right handler
