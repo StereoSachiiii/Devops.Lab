@@ -1,13 +1,44 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "DATABASE_URL",
+    "JWT_SECRET",
+    "PORT",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "JWT_PRIVATE_KEY",
+    "JWT_PUBLIC_KEY",
+    "SANDBOX_SERVICE_HOST",
+    "REDIS_URL",
+    "RABBITMQ_URL",
+    "KAFKA_BROKERS",
+    "KAFKA_CLIENT_ID",
+    "KAFKA_GROUP_ID",
+    "SESSION_TTL_MINS",
+    "MAX_MEMORY_MB",
+    "MAX_CPUS",
+    "ENCRYPTION_KEY",
+    "SANDBOX_PROVIDER",
+    "FLINTLOCK_ADDRESS",
+    "FLINTLOCK_SSH_KEY_PATH",
+    "HTTP_PORT",
+    "PUBLIC_GATEWAY_URL",
+    "GEMINI_API_KEY",
+    "BASE_URL",
+    "FRONTEND_URL",
+    "GITHUB_CLIENT_ID",
+    "GITHUB_CLIENT_SECRET",
+    "GOCACHE",
+    "LOCALAPPDATA"
+  ],
   "tasks": {
     "generate": {
-      "cache": false
+      "dependsOn": ["^generate"],
+      "outputs": ["src/schema.d.ts"]
     },
     "build": {
-
-      "dependsOn": ["^build"],
-      "outputs": [".next/**", "dist/**"]
+      "dependsOn": ["^build", "^generate"],
+      "outputs": [".next/**", "dist/**", "bin/**"]
     },
     "lint": {
       "dependsOn": ["^lint"]
@@ -24,6 +55,5 @@
       "dependsOn": ["^build"],
       "outputs": []
     }
-
   }
 }
