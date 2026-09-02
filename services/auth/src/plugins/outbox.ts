@@ -14,8 +14,19 @@ export const outboxPlugin = fp(async (fastify: FastifyInstance) => {
   let intervalId: NodeJS.Timeout | null = null;
   let processing = false;
 
+  // Circuit breaker state for Kafka broker
+  let circuitOpenUntil = 0;
+  let consecutiveFailures = 0;
+  let backoffMs = 5000;
+  const MAX_BACKOFF_MS = 60000;
+
   const processOutbox = async () => {
     if (processing) return;
+
+    const now = Date.now();
+    if (now < circuitOpenUntil) {
+      return; // Skip cycle while circuit is OPEN
+    }
 
     if (!fastify.kafka || !fastify.kafka.isProducerReady) {
       return;
@@ -71,17 +82,27 @@ export const outboxPlugin = fp(async (fastify: FastifyInstance) => {
         }
 
         try {
-          await fastify.kafka.emit(eventInstance);
+          await Promise.race([
+            fastify.kafka.emit(eventInstance),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("Kafka emit timed out after 5s")), 5000)
+            ),
+          ]);
           await prisma.authOutboxEvent.update({
             where: { id: event.id },
             data: { processed: true },
           });
+
+          // Reset circuit breaker on successful delivery
+          consecutiveFailures = 0;
+          backoffMs = 5000;
         } catch (err) {
+          consecutiveFailures++;
           const nextRetry = (event.retryCount || 0) + 1;
           const isFailed = nextRetry >= 5;
 
           fastify.log.error(
-            { err, eventId: event.id, retryCount: nextRetry, failed: isFailed },
+            { err, eventId: event.id, retryCount: nextRetry, failed: isFailed, consecutiveFailures },
             isFailed
               ? "Outbox event exceeded max retries (5) — marking as failed poison-pill"
               : "Failed to emit outbox event to Kafka — incrementing retry count"
@@ -94,6 +115,15 @@ export const outboxPlugin = fp(async (fastify: FastifyInstance) => {
               failed: isFailed,
             },
           });
+
+          if (consecutiveFailures >= 3) {
+            circuitOpenUntil = Date.now() + backoffMs;
+            fastify.log.warn(
+              { consecutiveFailures, backoffMs },
+              "Kafka outbox circuit tripped to OPEN. Backing off before next poll cycle."
+            );
+            backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
+          }
           break;
         }
       }

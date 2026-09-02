@@ -14,8 +14,9 @@ export const redisPlugin = fp(async (fastify: FastifyInstance) => {
 
   const redis = new Redis(redisUrl, {
     lazyConnect: true,
-    enableOfflineQueue: true,
-    maxRetriesPerRequest: null,
+    enableOfflineQueue: false,
+    maxRetriesPerRequest: 3,
+    commandTimeout: 2000,
     retryStrategy: (times) => {
       const delay = Math.min(times * 100, 3000);
       return delay;

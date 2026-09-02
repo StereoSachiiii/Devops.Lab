@@ -7,6 +7,12 @@ import {
   QUEUES,
 } from "@devops/messaging";
 
+// Circuit Breaker state for sandbox-router health probes
+let probeCircuitOpenUntil = 0;
+let consecutiveProbeFailures = 0;
+const PROBE_FAILURE_THRESHOLD = 3;
+const CIRCUIT_COOLDOWN_MS = 15_000;
+
 export async function challengeRoutes(fastify: FastifyInstance) {
   const getGatewayUrls = (sessionId: string) => {
     const gatewayUrl = process.env["PUBLIC_GATEWAY_URL"] || "http://localhost:8000";
@@ -183,17 +189,46 @@ export async function challengeRoutes(fastify: FastifyInstance) {
 
       if (existingSession) {
         let isAlive = false;
-        try {
-          const authHeader = req.headers.authorization;
-          const healthRes = await fetch(`http://sandbox-router:8080/sessions/${existingSession.id}/health`, {
-            headers: authHeader ? { authorization: authHeader } : {},
-          });
-          if (healthRes.status === 200) {
-            const body = await healthRes.json() as { alive?: boolean };
-            isAlive = !!body.alive;
+        const now = Date.now();
+        const isCircuitOpen = now < probeCircuitOpenUntil;
+
+        if (isCircuitOpen) {
+          fastify.log.warn(
+            { sessionId: existingSession.id },
+            "Sandbox-router probe circuit is OPEN — skipping probe and recycling session"
+          );
+        } else {
+          try {
+            const authHeader = req.headers.authorization;
+            const healthRes = await fetch(
+              `http://sandbox-router:8080/sessions/${existingSession.id}/health`,
+              {
+                headers: authHeader ? { authorization: authHeader } : {},
+                signal: AbortSignal.timeout(2000),
+              }
+            );
+            if (healthRes.status === 200) {
+              const body = (await healthRes.json()) as { alive?: boolean };
+              isAlive = !!body.alive;
+              consecutiveProbeFailures = 0; // Reset circuit on success
+            } else {
+              consecutiveProbeFailures++;
+            }
+          } catch (e) {
+            consecutiveProbeFailures++;
+            fastify.log.warn(
+              { err: (e as Error).message, failures: consecutiveProbeFailures },
+              "Failed to probe session health from sandbox-router"
+            );
           }
-        } catch (e) {
-          fastify.log.error(e, "Failed to check session health from sandbox-router");
+
+          if (consecutiveProbeFailures >= PROBE_FAILURE_THRESHOLD) {
+            probeCircuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
+            fastify.log.error(
+              { consecutiveProbeFailures, cooldownMs: CIRCUIT_COOLDOWN_MS },
+              "Sandbox-router health probe circuit tripped to OPEN"
+            );
+          }
         }
 
         if (isAlive) {

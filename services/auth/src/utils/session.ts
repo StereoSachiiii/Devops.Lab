@@ -124,13 +124,14 @@ export async function denylistAccessToken(
   );
 }
 
+import { redisSafeGet } from "./redis-safe";
 /** Check if an access token JTI is denylisted in Redis. */
 export async function isTokenDenylisted(
   fastify: FastifyInstance,
   jti?: string
 ): Promise<boolean> {
   if (!jti) return false;
-  const status = await fastify.redis.get(`auth:denylist:jti:${jti}`);
+  const status = await redisSafeGet(fastify, `auth:denylist:jti:${jti}`, 250);
   return status === "revoked";
 }
 

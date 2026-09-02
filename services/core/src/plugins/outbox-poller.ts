@@ -12,7 +12,22 @@ const BATCH_SIZE = 10;
 export function startOutboxPoller(fastify: FastifyInstance): NodeJS.Timeout {
   fastify.log.info("Outbox poller started");
 
+  // Independent circuit breaker state for broker publishing
+  let circuitOpenUntil = 0;
+  let consecutiveFailures = 0;
+  let backoffMs = 5000;
+  const MAX_BACKOFF_MS = 60000;
+
   const poll = async () => {
+    const now = Date.now();
+    if (now < circuitOpenUntil) {
+      return; // Circuit OPEN - skip Postgres polling while brokers recover
+    }
+
+    if (fastify.kafka && !fastify.kafka.isProducerReady) {
+      return; // Skip cycle if producer not initialized
+    }
+
     const events: {
       id: string;
       eventType: string;
@@ -45,17 +60,37 @@ export function startOutboxPoller(fastify: FastifyInstance): NodeJS.Timeout {
             ttlMins: number;
             requiredProvider?: string;
           };
-          await fastify.kafka.emit(new SessionStartedEvent(payload));
+          await Promise.race([
+            fastify.kafka.emit(new SessionStartedEvent(payload)),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("Kafka emit timed out after 5s")), 5000)
+            ),
+          ]);
           const provider = (payload["requiredProvider"] as string) || "docker";
-          await fastify.rabbitmq.publish(`${QUEUES.PROVISION_SANDBOX}.${provider}`, payload);
+          await Promise.race([
+            fastify.rabbitmq.publish(`${QUEUES.PROVISION_SANDBOX}.${provider}`, payload),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("RabbitMQ publish timed out after 5s")), 5000)
+            ),
+          ]);
         } else if (event.eventType === "SessionEndedEvent" || event.eventType === "session.ended") {
           const payload = event.payload as {
             type: "session.ended";
             sessionId: string;
             reason: SessionEndReason;
           };
-          await fastify.kafka.emit(new SessionEndedEvent(payload));
-          await fastify.rabbitmq.publish(QUEUES.TERMINATE_SANDBOX, payload);
+          await Promise.race([
+            fastify.kafka.emit(new SessionEndedEvent(payload)),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("Kafka emit timed out after 5s")), 5000)
+            ),
+          ]);
+          await Promise.race([
+            fastify.rabbitmq.publish(QUEUES.TERMINATE_SANDBOX, payload),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("RabbitMQ publish timed out after 5s")), 5000)
+            ),
+          ]);
         }
 
         await fastify.prisma.coreOutboxEvent.update({
@@ -63,16 +98,20 @@ export function startOutboxPoller(fastify: FastifyInstance): NodeJS.Timeout {
           data: { processed: true },
         });
 
+        consecutiveFailures = 0;
+        backoffMs = 5000;
+
         fastify.log.debug(
           { eventId: event.id, eventType: event.eventType },
           "Outbox event delivered"
         );
       } catch (err) {
+        consecutiveFailures++;
         const nextRetry = (event.retryCount || 0) + 1;
         const isFailed = nextRetry >= 5;
 
         fastify.log.error(
-          { err, eventId: event.id, retryCount: nextRetry, failed: isFailed },
+          { err, eventId: event.id, retryCount: nextRetry, failed: isFailed, consecutiveFailures },
           isFailed
             ? "Core outbox poller: event exceeded max retries (5) — marking as failed poison-pill"
             : "Core outbox poller: failed to deliver event — incrementing retry count"
@@ -85,6 +124,16 @@ export function startOutboxPoller(fastify: FastifyInstance): NodeJS.Timeout {
             failed: isFailed,
           },
         });
+
+        if (consecutiveFailures >= 3) {
+          circuitOpenUntil = Date.now() + backoffMs;
+          fastify.log.warn(
+            { consecutiveFailures, backoffMs },
+            "Core outbox broker circuit tripped to OPEN. Backing off before next poll cycle."
+          );
+          backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
+          break;
+        }
       }
     }
   };

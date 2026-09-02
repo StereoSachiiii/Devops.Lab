@@ -18,6 +18,7 @@ import {
   denylistAccessToken,
   isTokenDenylisted,
 } from "../utils/session";
+import { redisSafeGet, redisSafeExecute } from "../utils/redis-safe";
 
 const tracer = trace.getTracer("auth-service");
 
@@ -76,13 +77,15 @@ async function handleLoginFail(
   const failsKey = `auth:fails:${email}`;
   const lockoutKey = `auth:lockout:${email}`;
 
-  const fails = await fastify.redis.incr(failsKey);
-  if (fails === 1) {
-    await fastify.redis.expire(failsKey, config.expiry.lockout);
-  }
-  if (fails >= config.security.maxFailedAttempts) {
-    await fastify.redis.set(lockoutKey, "1", "EX", config.expiry.lockout);
-  }
+  await redisSafeExecute(fastify, async () => {
+    const fails = await fastify.redis.incr(failsKey);
+    if (fails === 1) {
+      await fastify.redis.expire(failsKey, config.expiry.lockout);
+    }
+    if (fails >= config.security.maxFailedAttempts) {
+      await fastify.redis.set(lockoutKey, "1", "EX", config.expiry.lockout);
+    }
+  }, 300);
 
   await logSecurityEvent(prisma, request, {
     userId: userId ?? null,
@@ -198,8 +201,8 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
 
           const lockoutKey = `auth:lockout:${email}`;
 
-          // 1. Check lockout.
-          if (await fastify.redis.get(lockoutKey)) {
+          // 1. Check lockout (fail-open if Redis is slow/down).
+          if (await redisSafeGet(fastify, lockoutKey, 250)) {
             await logSecurityEvent(prisma, req, { action: "LOCKOUT", metadata: { email } });
             fastify.log.warn({ email }, "Login attempt while account locked");
             span.setAttribute("auth.outcome", "account_locked");
@@ -235,8 +238,8 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
             return errorReply(reply, 401, "INVALID_CREDENTIALS", "Invalid credentials");
           }
 
-          // 4. Clear fail counter.
-          await fastify.redis.del(`auth:fails:${email}`);
+          // 4. Clear fail counter (best effort).
+          await redisSafeExecute(fastify, () => fastify.redis.del(`auth:fails:${email}`), 250);
 
           await logSecurityEvent(prisma, req, { userId: user.id, action: "LOGIN_SUCCESS" });
 
