@@ -3,7 +3,7 @@
 /**
  * ChallengeTour - new-user onboarding tour for the challenge workspace page.
  *
- * Built with Driver.js (recommended over React Joyride per design report, Part 2):
+ * Built with Driver.js:
  *   - Framework-agnostic, MIT-licensed, smallest bundle of the viable options
  *   - Spotlight highlighting works correctly in dark mode (no mix-blend-mode issues)
  *   - Easy to skin to match the amber/teal/dark design system

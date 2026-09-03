@@ -179,37 +179,34 @@ export function CatalogContent() {
         </p>
       </div>
 
-      <div className="max-w-[1180px] mx-auto mb-6">
-        <section className="flex flex-col md:flex-row gap-6">
-          <div className="bg-[linear-gradient(135deg,rgba(53,214,180,0.05),rgba(255,157,92,0.05))] border border-panel-border rounded-[14px] p-8 flex-1">
-            <h2 className="font-space text-xl font-semibold text-panel-text mb-3">
-              Why hands-on beats reading
-            </h2>
-            <p className="text-panel-muted text-[15px] leading-[1.6] m-0">
-              You don't learn how to ride a bike by reading a physics textbook. DevOps is the same.
-              These aren't multiple choice questions—each challenge spins up a real container or VM
-              with a specific, realistic misconfiguration. You have root. Fix it.
-            </p>
-          </div>
-          <div className="bg-panel-2 border border-panel-border rounded-[14px] p-8 flex-1 md:max-w-[400px]">
-            <h2 className="font-space text-xl font-semibold text-panel-text mb-3">
-              How grading works
-            </h2>
-            <p className="text-panel-muted text-[15px] leading-[1.6] m-0">
-              Instant, honest grading. Our validation agent connects to your sandbox and runs real
-              tests against your environment to check if the issue is actually resolved.
-            </p>
-          </div>
-        </section>
-      </div>
-
       <div className="max-w-[1180px] mx-auto flex flex-col lg:flex-row gap-8">
-        <CategorySidebar
-          categories={filterOptions.type}
-          totalChallenges={challenges.length}
-          activeCategory={state.type[0] || null}
-          onSelectCategory={(cat) => updateState({ type: cat ? [cat] : [] })}
-        />
+        <div className="flex flex-col gap-6 lg:w-[240px] shrink-0">
+          <CategorySidebar
+            categories={filterOptions.type}
+            totalChallenges={challenges.length}
+            activeCategory={state.type[0] || null}
+            onSelectCategory={(cat) => updateState({ type: cat ? [cat] : [] })}
+          />
+
+          <div className="hidden lg:flex flex-col gap-4 pt-4 border-t border-panel-border">
+            <div className="bg-[linear-gradient(135deg,rgba(53,214,180,0.05),rgba(255,157,92,0.05))] border border-panel-border rounded-xl p-4">
+              <h3 className="font-space text-sm font-semibold text-panel-text mb-1.5">
+                Why hands-on beats reading
+              </h3>
+              <p className="text-panel-muted text-xs leading-[1.5] m-0">
+                You don't learn how to ride a bike by reading a physics textbook. Each challenge spins up a real container or VM with root access. Fix it.
+              </p>
+            </div>
+            <div className="bg-panel-2 border border-panel-border rounded-xl p-4">
+              <h3 className="font-space text-sm font-semibold text-panel-text mb-1.5">
+                How grading works
+              </h3>
+              <p className="text-panel-muted text-xs leading-[1.5] m-0">
+                Instant, honest grading. Our validation agent connects to your sandbox and runs real tests against your environment.
+              </p>
+            </div>
+          </div>
+        </div>
 
         <div className="flex-1 min-w-0">
           <CatalogToolbar

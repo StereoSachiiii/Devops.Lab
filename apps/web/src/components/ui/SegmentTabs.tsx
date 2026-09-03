@@ -16,7 +16,7 @@ export function SegmentTabs<T extends string>({
 }) {
   return (
     <div
-      className={`flex gap-1.5 bg-bg/80 backdrop-blur-md border border-panel-border/80 rounded-xl p-1.5 shadow-inner ${className}`}
+      className={`flex items-center gap-1 bg-panel-2/60 border border-panel-border/70 rounded-xl p-1 overflow-x-auto no-scrollbar ${className}`}
     >
       {options.map((tab) => {
         const isActive = activeTab === tab.id;
@@ -25,10 +25,10 @@ export function SegmentTabs<T extends string>({
             key={tab.id}
             id={tab.id === "description" ? "tab-description" : undefined}
             onClick={() => onChange(tab.id)}
-            className={`flex-1 font-mono text-[11px] font-semibold py-1.5 px-2.5 rounded-lg cursor-pointer transition-all duration-200 capitalize tracking-wide ${
+            className={`font-sans text-[11.5px] font-medium py-1.5 px-3 rounded-lg cursor-pointer transition-all duration-200 capitalize whitespace-nowrap shrink-0 ${
               isActive
-                ? "bg-panel-2 text-panel-text border border-panel-border shadow-[0_2px_10px_rgba(0,0,0,0.3)] font-bold text-amber"
-                : "bg-transparent text-panel-muted-dim hover:text-panel-muted border border-transparent hover:bg-panel-2/30"
+                ? "bg-panel text-panel-text font-semibold shadow-sm border border-panel-border text-amber"
+                : "text-panel-muted hover:text-panel-text hover:bg-panel-2/50"
             }`}
           >
             {tab.label}

@@ -58,16 +58,20 @@ export function Navbar() {
     `text-[15px] no-underline transition-colors ${isActive(path) ? "text-amber font-semibold" : "text-panel-text font-medium"}`;
 
   return (
-    <nav className="sticky top-0 z-40 backdrop-blur-md bg-bg/80 border-b border-panel-border">
-      <div className="max-w-[1180px] mx-auto px-8 flex items-center justify-between h-[68px]">
-        <Link href="/" className="flex items-center gap-2.5 no-underline text-current">
-          <div className="w-[30px] h-[30px] rounded-[7px] bg-gradient-to-br from-amber to-amber-dim flex items-center justify-center font-mono font-semibold text-[13px] text-[#241505]">
-            D/L
-          </div>
-          <span className="font-space font-semibold text-[16.5px] text-panel-text">DevOps.lab</span>
-        </Link>
+    <nav className="sticky top-0 z-40 backdrop-blur-md bg-bg/80 border-b border-panel-border w-full">
+      <div className="w-full px-6 md:px-8 flex items-center justify-between h-[68px]">
+        {/* Brand / Logo (Left) */}
+        <div className="flex items-center gap-8 shrink-0">
+          <Link href="/" className="flex items-center gap-2.5 no-underline text-current">
+            <div className="w-[30px] h-[30px] rounded-[7px] bg-gradient-to-br from-amber to-amber-dim flex items-center justify-center font-mono font-semibold text-[13px] text-[#241505]">
+              D/L
+            </div>
+            <span className="font-space font-semibold text-[16.5px] text-panel-text">DevOps.lab</span>
+          </Link>
+        </div>
 
-        <div className="hidden lg:flex items-center gap-[30px]">
+        {/* Navigation Links (Center / Left-aligned after logo) */}
+        <div className="hidden lg:flex items-center gap-6 xl:gap-7 ml-8 mr-auto">
           <Link href="/" className={desktopLinkClass("/")}>
             Home
           </Link>
@@ -104,7 +108,8 @@ export function Navbar() {
           </Link>
         </div>
 
-        <div className="flex items-center gap-4">
+        {/* Controls / Theme / Profile / CTA (Far Right) */}
+        <div className="flex items-center gap-3.5 ml-auto shrink-0">
           <NavThemeToggle />
 
           {user ? (
