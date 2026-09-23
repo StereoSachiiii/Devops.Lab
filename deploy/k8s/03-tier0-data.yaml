@@ -1,0 +1,252 @@
+# =============================================================================
+# TIER 0: Stateful Infrastructure (Databases & Message Brokers)
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PostgreSQL
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: devops-platform
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: devops-platform
+spec:
+  serviceName: "postgres"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - configMapRef:
+                name: devops-config
+            - secretRef:
+                name: devops-secrets
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d/init-wrapper.sh
+              subPath: init-wrapper.sh
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d/postgres-init.sql
+              subPath: postgres-init.sql
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: postgres-init-script
+            defaultMode: 0755
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 10Gi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Redis
+# ─────────────────────────────────────────────────────────────────────────────
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: devops-platform
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: devops-platform
+spec:
+  serviceName: "redis"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          # Enable AOF persistence so denylist state survives pod restarts
+          command: ["redis-server", "--appendonly", "yes"]
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RabbitMQ
+# ─────────────────────────────────────────────────────────────────────────────
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: devops-platform
+spec:
+  ports:
+    - port: 5672
+      name: amqp
+      targetPort: 5672
+    - port: 15672
+      name: management
+      targetPort: 15672
+    - port: 15692
+      name: prometheus
+      targetPort: 15692
+  selector:
+    app: rabbitmq
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  namespace: devops-platform
+spec:
+  serviceName: "rabbitmq"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3-management-alpine
+          ports:
+            - containerPort: 5672
+            - containerPort: 15672
+            - containerPort: 15692
+
+
+
+          envFrom:
+            - configMapRef:
+                name: devops-config
+            - secretRef:
+                name: devops-secrets
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
+  volumeClaimTemplates:
+    - metadata:
+        name: rabbitmq-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 5Gi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Redpanda
+# ─────────────────────────────────────────────────────────────────────────────
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redpanda
+  namespace: devops-platform
+spec:
+  ports:
+    - port: 9092
+      name: kafka-internal
+      targetPort: 9092
+    - port: 19092
+      name: kafka-external
+      targetPort: 19092
+  selector:
+    app: redpanda
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redpanda
+  namespace: devops-platform
+spec:
+  serviceName: "redpanda"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redpanda
+  template:
+    metadata:
+      labels:
+        app: redpanda
+    spec:
+      containers:
+        - name: redpanda
+          image: docker.redpanda.com/redpandadata/redpanda:latest
+          args:
+            - redpanda
+            - start
+            - --smp=1
+            - --memory=1G
+            - --overprovisioned
+            - --reserve-memory=0M
+            - --check=false
+            - --node-id=0
+            - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+            - --advertise-kafka-addr=internal://redpanda.devops-platform.svc.cluster.local:9092,external://localhost:19092
+          ports:
+            - containerPort: 9092
+            - containerPort: 19092
+
+
+
+          volumeMounts:
+            - name: redpanda-data
+              mountPath: /var/lib/redpanda/data
+  volumeClaimTemplates:
+    - metadata:
+        name: redpanda-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 10Gi

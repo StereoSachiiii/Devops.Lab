@@ -1,0 +1,128 @@
+# =============================================================================
+# TIER 2: Sandbox Worker (StatefulSet with DaemonSet-like scheduling)
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sandbox Worker Headless Service (For stable DNS)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-worker
+  namespace: devops-platform
+spec:
+  clusterIP: None # Headless service
+  ports:
+    - port: 8090
+      targetPort: 8090
+  selector:
+    app: sandbox-worker
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sandbox-worker
+  namespace: devops-platform
+spec:
+  serviceName: "sandbox-worker"
+  # Set replicas to the number of nodes in your sandbox node pool
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sandbox-worker
+  template:
+    metadata:
+      labels:
+        app: sandbox-worker
+    spec:
+      # Ensure pods only land on the dedicated sandbox node pool
+      # nodeSelector:
+      #   node-role.kubernetes.io/sandbox: "true"
+      # Tolerate the taint on the sandbox node pool
+      # tolerations:
+      #   - key: "node-role.kubernetes.io/sandbox"
+      #     operator: "Equal"
+      #     value: "true"
+      #     effect: "NoSchedule"
+      # Ensure only ONE worker pod runs per node
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - sandbox-worker
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+        # 1. The actual Sandbox Worker (Go App)
+        - name: sandbox-worker
+          image: docker.io/devops/sandbox-worker:latest
+          imagePullPolicy: Never
+          securityContext:
+            runAsUser: 0
+          ports:
+            - containerPort: 8090
+          envFrom:
+            - configMapRef:
+                name: devops-config
+            - secretRef:
+                name: devops-secrets
+          env:
+            - name: HTTP_PORT
+              value: "8090"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: WORKER_ADDR
+              value: "$(POD_NAME).sandbox-worker.devops-platform.svc.cluster.local:8090"
+            # Tell the Go client to use the shared socket from the dind sidecar
+            - name: DOCKER_HOST
+              value: "unix:///var/run/docker.sock"
+
+
+
+
+
+
+
+          volumeMounts:
+            - name: dind-socket
+              mountPath: /var/run
+              
+        # 2. Docker-in-Docker (DinD) Sidecar
+        - name: dind-daemon
+          image: docker:24-dind
+          securityContext:
+            privileged: true # DinD requires privileged mode
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: "" # Disable TLS for local unix socket sharing
+
+
+
+
+
+
+
+          volumeMounts:
+            - name: dind-socket
+              mountPath: /var/run
+            - name: dind-storage
+              mountPath: /var/lib/docker
+              
+      volumes:
+        # Shared memory volume for the docker socket
+        - name: dind-socket
+          emptyDir: {}
+
+  volumeClaimTemplates:
+    - metadata:
+        name: dind-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi

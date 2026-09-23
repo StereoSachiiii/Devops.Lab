@@ -1,0 +1,117 @@
+# =============================================================================
+# TIER 1: One-Shot Initialization & Migrations
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PostgreSQL Init Script ConfigMap
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-script
+  namespace: devops-platform
+data:
+  # The wrapper script that psql entrypoint will execute
+  init-wrapper.sh: |
+    #!/bin/bash
+    set -e
+    # Run the SQL script, passing the password from the environment variable injected by the Secret
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" -v app_user_password="$APP_USER_PASSWORD" -f /docker-entrypoint-initdb.d/postgres-init.sql
+
+  # The actual SQL script
+  postgres-init.sql: |
+    DO
+    $do$
+    BEGIN
+       IF NOT EXISTS (
+          SELECT FROM pg_catalog.pg_roles
+          WHERE  rolname = 'app_user') THEN
+          CREATE ROLE app_user LOGIN PASSWORD :'app_user_password';
+       END IF;
+    END
+    $do$;
+    
+    GRANT ALL PRIVILEGES ON DATABASE appdb TO app_user;
+    
+    \c appdb
+    GRANT ALL ON SCHEMA public TO app_user;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app_user;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO app_user;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO app_user;
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DB Migrate Job
+# ─────────────────────────────────────────────────────────────────────────────
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  namespace: devops-platform
+  annotations:
+    # Ensure this runs on Helm install/upgrade (if migrated to Helm later)
+    "helm.sh/hook": post-install,post-upgrade
+spec:
+  template:
+    spec:
+      containers:
+        - name: db-migrate
+          image: devops/core-service:latest
+          imagePullPolicy: Never
+          command: ["sh", "-c", "cd packages/db && npx prisma migrate deploy"]
+          envFrom:
+            - configMapRef:
+                name: devops-config
+            - secretRef:
+                name: devops-secrets
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://devops_user:<STRONG_PASSWORD_PLACEHOLDER>@postgres.devops-platform.svc.cluster.local:5432/devops_platform?schema=public"
+      restartPolicy: OnFailure
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Redpanda Topic Init Job
+# ─────────────────────────────────────────────────────────────────────────────
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redpanda-init
+  namespace: devops-platform
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+spec:
+  template:
+    spec:
+      containers:
+        - name: redpanda-init
+          image: docker.redpanda.com/redpandadata/redpanda:v24.1.1
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -e
+              # Wait for Redpanda to be ready
+              echo "Waiting for Redpanda to be ready..."
+              until rpk cluster info --brokers redpanda.devops-platform.svc.cluster.local:9092; do
+                sleep 2
+              done
+              
+              BROKERS="redpanda.devops-platform.svc.cluster.local:9092"
+              create_topic() {
+                local name=$1 partitions=$2 retention_ms=$3
+                rpk topic create $name --brokers $BROKERS --partitions $partitions --replicas 1 --topic-config retention.ms=$retention_ms --topic-config cleanup.policy=delete 2>&1 | grep -v "TOPIC_ALREADY_EXISTS" || true
+                echo "Topic ready: $name"
+              }
+              
+              create_topic identity.user.registered 4 604800000
+              create_topic identity.email.verification 4 604800000
+              create_topic sandbox.session.started 8 604800000
+              create_topic sandbox.session.ended 8 604800000
+              create_topic sandbox.challenge.solved 4 604800000
+              create_topic sandbox.challenge.failed 4 604800000
+              echo "All Kafka topics provisioned."
+          envFrom:
+            - configMapRef:
+                name: devops-config
+      restartPolicy: OnFailure
