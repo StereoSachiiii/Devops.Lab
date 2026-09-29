@@ -1,19 +1,32 @@
-import { Zap } from "lucide-react";
+import { Zap, Clock, UserPlus } from "lucide-react";
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
 import { TagPill } from "@/components/ui/TagPill";
+import Link from "next/link";
 
 export function WorkspaceHeader({
   title,
   difficulty,
   xp,
   onTourClick,
+  isGuestTrial,
+  trialSecondsLeft,
+  trialExpired,
 }: {
   title: string;
   difficulty: string;
   xp: number;
   onTourClick: () => void;
+  isGuestTrial?: boolean;
+  trialSecondsLeft?: number | null;
+  trialExpired?: boolean;
 }) {
   const diffVariant = difficulty === "SENIOR" ? "amber" : difficulty === "MID" ? "amber" : "teal";
+
+  const formatTimer = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
 
   return (
     <div
@@ -25,6 +38,31 @@ export function WorkspaceHeader({
       </div>
 
       <div className="flex items-center gap-2.5">
+        {isGuestTrial && trialSecondsLeft !== null && trialSecondsLeft !== undefined && (
+          <div className="flex items-center gap-2">
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border font-mono text-[11px] font-bold ${
+                trialSecondsLeft <= 120 || trialExpired
+                  ? "bg-red/10 border-red/40 text-red animate-pulse"
+                  : "bg-amber/10 border-amber/30 text-amber"
+              }`}
+            >
+              <Clock size={12} />
+              <span>Trial: {trialExpired ? "0:00 (Expired)" : formatTimer(trialSecondsLeft)}</span>
+            </div>
+
+            {(trialSecondsLeft <= 120 || trialExpired) && (
+              <Link
+                href="/register"
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-teal text-bg font-mono text-[11px] font-bold hover:bg-teal/90 transition-all shadow-sm cursor-pointer"
+              >
+                <UserPlus size={12} />
+                <span>Keep Learning &mdash; Sign Up</span>
+              </Link>
+            )}
+          </div>
+        )}
+
         <TagPill variant={diffVariant}>{difficulty}</TagPill>
         <TagPill variant="amber">
           <Zap size={11} className="fill-amber" />

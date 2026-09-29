@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Outfit, Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/providers/AuthProvider";
 import { Navbar } from "@/components/layout/Navbar";
@@ -8,12 +8,9 @@ import { SWRProvider } from "@/providers/SWRProvider";
 
 import Script from "next/script";
 
-const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const space = Space_Grotesk({ subsets: ["latin"], variable: "--font-space" });
+const inter = Inter({ subsets: ["latin"], variable: "--font-body" });
+const space = Space_Grotesk({ subsets: ["latin"], variable: "--font-heading" });
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
-
-
 
 export const metadata: Metadata = {
   title: "DevOps.lab | The Engineering Learning Platform",
@@ -33,7 +30,7 @@ export default function RootLayout({
         <meta httpEquiv="Expires" content="0" />
       </head>
       <body
-        className={`${outfit.variable} ${inter.variable} ${space.variable} ${jetbrains.variable} font-sans text-foreground antialiased min-h-screen flex flex-col bg-background`}
+        className={`${inter.variable} ${space.variable} ${jetbrains.variable} font-body text-foreground antialiased min-h-screen flex flex-col bg-background`}
       >
         <Script
           id="theme-script"

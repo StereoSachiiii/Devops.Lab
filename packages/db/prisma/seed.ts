@@ -17,7 +17,11 @@ import {
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-const connectionString = process.env['DATABASE_URL'] || "postgresql://postgres:postgres@localhost:5444/appdb?schema=public";
+const dbUrl = process.env['DATABASE_URL'];
+if (!dbUrl) {
+  throw new Error("Missing required environment variable: DATABASE_URL");
+}
+const connectionString = dbUrl;
 const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
@@ -184,11 +188,16 @@ async function main() {
   const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
   const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
 
+  // Common preseeded demo password: DemoPass123!
+  // Generated with argon2: $argon2id$v=19$m=65536,t=3,p=4$xs1++Zu8AaWcReacBeuJ3g$UFlMJZLPKRHZq5iXJ5W9vxRqvET9Y6ESzep1DbxYaYg
+  const demoHashedPassword = "$argon2id$v=19$m=65536,t=3,p=4$xs1++Zu8AaWcReacBeuJ3g$UFlMJZLPKRHZq5iXJ5W9vxRqvET9Y6ESzep1DbxYaYg";
+
   const jane = await prisma.user.upsert({
     where: { email: "jane@example.com" },
     update: {
       orgId: acmeOrg.id,
       username: "janedoe",
+      password: demoHashedPassword,
       currentStreak: 4,
       longestStreak: 7,
       lastActivityDate: now,
@@ -197,6 +206,7 @@ async function main() {
       name: "Jane Doe",
       username: "janedoe",
       email: "jane@example.com",
+      password: demoHashedPassword,
       role: Role.ADMIN,
       xp: 2450,
       orgId: acmeOrg.id,
@@ -219,6 +229,7 @@ async function main() {
     update: {
       orgId: acmeOrg.id,
       username: "alexr",
+      password: demoHashedPassword,
       currentStreak: 0,
       longestStreak: 5,
       lastActivityDate: fiveDaysAgo,
@@ -227,6 +238,7 @@ async function main() {
       name: "Alex Rivera",
       username: "alexr",
       email: "alex.rivera@cloudscale.io",
+      password: demoHashedPassword,
       role: Role.LEARNER,
       xp: 1850,
       orgId: acmeOrg.id,
@@ -248,6 +260,7 @@ async function main() {
     update: {
       orgId: devSecOpsOrg.id,
       username: "sarahc",
+      password: demoHashedPassword,
       currentStreak: 3,
       longestStreak: 12,
       lastActivityDate: now,
@@ -256,6 +269,7 @@ async function main() {
       name: "Sarah Chen",
       username: "sarahc",
       email: "sarah.chen@devsecops.org",
+      password: demoHashedPassword,
       role: Role.CONTRIBUTOR,
       xp: 3100,
       orgId: devSecOpsOrg.id,
@@ -277,6 +291,7 @@ async function main() {
     update: {
       orgId: finTechOrg.id,
       username: "marcusv",
+      password: demoHashedPassword,
       currentStreak: 1,
       longestStreak: 8,
       lastActivityDate: now,
@@ -285,6 +300,7 @@ async function main() {
       name: "Marcus Vance",
       username: "marcusv",
       email: "marcus.vance@fintech.com",
+      password: demoHashedPassword,
       role: Role.LEARNER,
       xp: 1200,
       orgId: finTechOrg.id,
@@ -306,6 +322,7 @@ async function main() {
     update: {
       orgId: openSourceOrg.id,
       username: "elenar",
+      password: demoHashedPassword,
       currentStreak: 8,
       longestStreak: 15,
       lastActivityDate: now,
@@ -314,6 +331,7 @@ async function main() {
       name: "Elena Rostova",
       username: "elenar",
       email: "elena.rostova@opensource.net",
+      password: demoHashedPassword,
       role: Role.ADMIN,
       xp: 4200,
       orgId: openSourceOrg.id,
@@ -335,6 +353,7 @@ async function main() {
     update: {
       orgId: acmeOrg.id,
       username: "demolearner",
+      password: demoHashedPassword,
       currentStreak: 0,
       longestStreak: 0,
       lastActivityDate: null,
@@ -343,6 +362,7 @@ async function main() {
       name: "Demo Learner",
       username: "demolearner",
       email: "learner.dev@example.com",
+      password: demoHashedPassword,
       role: Role.LEARNER,
       xp: 0,
       orgId: acmeOrg.id,
@@ -364,11 +384,20 @@ async function main() {
   console.log("🗺️ Seeding Learning Paths & Modules...");
   const linuxPath = await prisma.learningPath.upsert({
     where: { slug: "linux-fundamentals" },
-    update: {},
+    update: {
+      icon: "Terminal",
+      timeEstimate: "~60 mins",
+      category: "Linux",
+      tags: ["linux", "bash", "permissions", "systemd", "cli"],
+    },
     create: {
       title: "Linux System Fundamentals",
       description: "Master essential shell commands, file permissions, process management, and bash automation.",
       slug: "linux-fundamentals",
+      icon: "Terminal",
+      timeEstimate: "~60 mins",
+      category: "Linux",
+      tags: ["linux", "bash", "permissions", "systemd", "cli"],
       orgId: acmeOrg.id,
       modules: {
         create: [
@@ -390,11 +419,20 @@ async function main() {
 
   const dockerPath = await prisma.learningPath.upsert({
     where: { slug: "docker-containerization-mastery" },
-    update: {},
+    update: {
+      icon: "Box",
+      timeEstimate: "~45 mins",
+      category: "Docker",
+      tags: ["docker", "containers", "dockerfile", "compose", "optimization"],
+    },
     create: {
       title: "Docker Containerization Mastery",
       description: "Build lightweight multi-stage container images, handle networking, and orchestrate with Compose.",
       slug: "docker-containerization-mastery",
+      icon: "Box",
+      timeEstimate: "~45 mins",
+      category: "Docker",
+      tags: ["docker", "containers", "dockerfile", "compose", "optimization"],
       orgId: acmeOrg.id,
       modules: {
         create: [
@@ -411,11 +449,20 @@ async function main() {
 
   const k8sPath = await prisma.learningPath.upsert({
     where: { slug: "kubernetes-operations" },
-    update: {},
+    update: {
+      icon: "Network",
+      timeEstimate: "~90 mins",
+      category: "Kubernetes",
+      tags: ["k8s", "kubernetes", "pods", "networking", "ingress", "troubleshooting"],
+    },
     create: {
       title: "Kubernetes Operations & Troubleshooting",
       description: "Deploy, scale, auto-repair, and troubleshoot production workloads in Kubernetes clusters.",
       slug: "kubernetes-operations",
+      icon: "Network",
+      timeEstimate: "~90 mins",
+      category: "Kubernetes",
+      tags: ["k8s", "kubernetes", "pods", "networking", "ingress", "troubleshooting"],
       orgId: devSecOpsOrg.id,
       modules: {
         create: [
@@ -432,11 +479,20 @@ async function main() {
 
   const terraformPath = await prisma.learningPath.upsert({
     where: { slug: "terraform-infrastructure-as-code" },
-    update: {},
+    update: {
+      icon: "Database",
+      timeEstimate: "~60 mins",
+      category: "Terraform",
+      tags: ["terraform", "iac", "cloud", "aws", "modules", "state"],
+    },
     create: {
       title: "Infrastructure as Code with Terraform",
       description: "Declarative cloud provisioning, remote state locking, modules, and CI/CD integration.",
       slug: "terraform-infrastructure-as-code",
+      icon: "Database",
+      timeEstimate: "~60 mins",
+      category: "Terraform",
+      tags: ["terraform", "iac", "cloud", "aws", "modules", "state"],
       orgId: cloudScaleOrg.id,
       modules: {
         create: [
@@ -453,11 +509,20 @@ async function main() {
 
   const srePath = await prisma.learningPath.upsert({
     where: { slug: "site-reliability-engineering" },
-    update: {},
+    update: {
+      icon: "Activity",
+      timeEstimate: "~75 mins",
+      category: "SRE",
+      tags: ["sre", "observability", "prometheus", "grafana", "monitoring", "incident-response"],
+    },
     create: {
       title: "Site Reliability & Observability",
       description: "SLOs, SLIs, Prometheus metrics collection, Grafana dashboards, and incident response.",
       slug: "site-reliability-engineering",
+      icon: "Activity",
+      timeEstimate: "~75 mins",
+      category: "SRE",
+      tags: ["sre", "observability", "prometheus", "grafana", "monitoring", "incident-response"],
       orgId: finTechOrg.id,
       modules: {
         create: [
@@ -487,6 +552,7 @@ async function main() {
       xp: 100,
       dockerImage: "nginx-syntax-fix:latest",
       requiredProvider: "docker",
+      guestTrialEligible: true,
       moduleId: dockerPath.modules[0]!.id,
       editorial: `# Official Editorial: Fix the Broken Nginx Config
 
@@ -525,6 +591,7 @@ Always execute \`nginx -t\` in automated deployment scripts before executing \`n
       xp: 100,
       dockerImage: "kill-runaway-process:latest",
       requiredProvider: "gvisor",
+      guestTrialEligible: false,
       moduleId: k8sPath.modules[0]!.id,
       editorial: `# Official Editorial: Find and Kill the Runaway Process
 
@@ -546,6 +613,7 @@ A background daemon named \`runaway-cpu-hog\` was spawned during container initi
       xp: 100,
       dockerImage: "fix-file-permissions:latest",
       requiredProvider: "kata",
+      guestTrialEligible: true,
       moduleId: terraformPath.modules[0]!.id,
       editorial: `# Official Editorial: Fix File Permissions
 
@@ -624,15 +692,25 @@ Log analysis requires extracting column 1 (IP address) from Apache/Nginx combine
 
   const seededChallenges = [];
   for (const c of challengesData) {
-    const existing = await prisma.challenge.findFirst({ where: { title: c.title } });
-    if (existing) {
-      seededChallenges.push(existing);
-    } else {
-      const created = await prisma.challenge.create({
+    let challenge = await prisma.challenge.findFirst({ where: { title: c.title } });
+    if (!challenge) {
+      challenge = await prisma.challenge.create({
         data: { ...c, contributedByOrgId: null },
       });
-      seededChallenges.push(created);
     }
+    // Ensure corresponding Node exists for Completion FK
+    await prisma.node.upsert({
+      where: { id: challenge.id },
+      update: { title: challenge.title, description: challenge.description },
+      create: {
+        id: challenge.id,
+        title: challenge.title,
+        description: challenge.description,
+        type: NodeType.SCENARIO,
+        metadata: { challengeId: challenge.id, xp: challenge.xp },
+      },
+    });
+    seededChallenges.push(challenge);
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -1213,6 +1291,46 @@ When the Nginx configuration was reloaded, the master process failed to parse th
 
 ## Interactive Lab Scenario
 This exact scenario is modeled in our interactive sandbox: **"Fix the Broken Nginx Config"**. Learners practice diagnosing the broken config file, validating syntax with \`nginx -t\`, and restarting the service.`,
+    },
+    {
+      slug: "the-cascade-collapse",
+      title: "The Cascade Collapse: How a Missing Redis Circuit Breaker Took Down Payments",
+      summary: "An in-depth postmortem on thread-pool starvation and thundering herd effects when a centralized cache replica fell off the network.",
+      category: "Performance",
+      badge: "Distributed Systems",
+      authorName: "Liam O'Connor",
+      authorRole: "Principal Systems Architect",
+      readTime: "7 min read",
+      tags: ["redis", "distributed-systems", "microservices", "circuit-breaker"],
+      featured: false,
+      publishedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
+      content: `# Incident Postmortem: The Cascade Collapse
+
+## What Happened
+When a top-of-rack switch partitioned a primary Redis cache replica, all payment validation requests synchronously stalled awaiting socket timeouts. Within 90 seconds, all HTTP connection pools exhausted, cascading upstream across every API gateway.
+
+## Remediation
+Implemented client-side resilience with Hedged Requests, exponential backoff with jitter, and an aggressive 150ms circuit-breaker fallback.`,
+    },
+    {
+      slug: "the-orphan-cron",
+      title: "The Orphan Cron: How a 2-Line Bash Script Locked 40,000 DB Rows",
+      summary: "When an unmonitored analytics cron job missed an index lock and locked the customer balances table for 45 minutes straight.",
+      category: "Configuration",
+      badge: "Database Reliability",
+      authorName: "Maya Lin",
+      authorRole: "Database Administrator & SRE",
+      readTime: "4 min read",
+      tags: ["postgres", "cron", "linux", "locks", "database"],
+      featured: false,
+      publishedAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000),
+      content: `# Incident Postmortem: The Orphan Cron
+
+## What Happened
+A nocturnal batch script issued an unindexed \`UPDATE ... WHERE status = 'pending'\` without a transaction statement timeout, acquiring an exclusive row-level lock that blocked all live order processing.
+
+## Remediation
+Configured global Postgres \`lock_timeout = '2s'\` and migrated all batch data transformations to read-replicas with async CDC pipelines.`,
     },
   ];
 

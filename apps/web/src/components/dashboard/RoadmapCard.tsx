@@ -122,7 +122,9 @@ export function RoadmapCard({
               color: "var(--auth-muted-dim)",
             }}
           >
-            <span>{roadmap.nodeCount} challenges</span>
+            <span>
+              {roadmap.nodeCount} {roadmap.nodeCount === 1 ? "challenge" : "challenges"}
+            </span>
             <span>{roadmap.timeEstimate}</span>
           </div>
           <div

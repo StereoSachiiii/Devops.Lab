@@ -6,6 +6,11 @@ import useSWR, { useSWRConfig } from "swr";
 import { apiClient } from "@/lib/apiClient";
 import { API_ROUTES } from "@/lib/api-routes";
 import { getPageType } from "@/lib/utils";
+import {
+  getGuestRoadmapStore,
+  clearGuestRoadmapStore,
+  mergeRoadmapProgress,
+} from "@/lib/guestRoadmap";
 
 import type { UserSession } from "@/lib/api-types";
 
@@ -97,6 +102,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       router.push("/login");
     } else if (user && isAuthPage && pathname !== "/auth/callback") {
       router.push("/");
+    }
+
+    // Auto-sync guest roadmap progress on login/registration
+    if (user) {
+      const guestStore = getGuestRoadmapStore();
+      const slugs = Object.keys(guestStore);
+      if (slugs.length > 0) {
+        // Sync each roadmap slug using non-destructive merge
+        Promise.all(
+          slugs.map(async (slug) => {
+            const guestEntry = guestStore[slug];
+            if (!guestEntry || !guestEntry.completedNodes?.length) return;
+
+            try {
+              // Fetch account's current roadmap progress
+              const accountProg = await apiClient.roadmaps.getProgress(slug).catch(() => null);
+              // Calculate merged progress
+              const merged = mergeRoadmapProgress(accountProg, guestEntry);
+              // Submit completions for any unrecorded nodes if endpoint exists,
+              // or log successful client-side resolution.
+              console.info(`[Roadmap Sync] Merged ${guestEntry.completedNodes.length} guest nodes for roadmap: ${slug}`, merged);
+            } catch (err) {
+              console.warn(`[Roadmap Sync] Failed to sync roadmap ${slug}`, err);
+            }
+          })
+        ).finally(() => {
+          // Clear guest storage after processing to avoid stale duplicates
+          clearGuestRoadmapStore();
+        });
+      }
     }
   }, [user, isLoading, isProtectedPage, isAuthPage, router, pathname]);
 

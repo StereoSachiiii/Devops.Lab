@@ -41,6 +41,8 @@ export interface SessionInfo {
   validateUrl: string;
   ttlMins?: number;
   challengeTitle?: string;
+  isGuestTrial?: boolean;
+  token?: string;
 }
 
 export interface ValidationResult {
@@ -63,6 +65,7 @@ export interface TerminalMachineState {
   isolationDowngraded: boolean;
   // Actions
   startSession: (challengeId: string) => Promise<void>;
+  startTrial: (challengeId: string) => Promise<void>;
   terminateSession: () => Promise<void>;
   validateSolution: () => Promise<void>;
   retryAfterLoss: (challengeId: string) => Promise<void>;
@@ -127,7 +130,7 @@ export function useTerminalMachine(): TerminalMachineState {
 
   // ── Connect (or reconnect) to WebSocket ──────────────────────────────────
   const connectWs = useCallback(
-    (terminalUrl: string) => {
+    (terminalUrl: string, explicitToken?: string) => {
       if (wsRef.current) {
         intentionalCloseRef.current = true;
         wsRef.current.close();
@@ -136,7 +139,8 @@ export function useTerminalMachine(): TerminalMachineState {
 
       setState("CONNECTING");
       // Pass token via query and/or Sec-WebSocket-Protocol
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const storedToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const token = explicitToken || storedToken;
       const protocols = token ? ["terminal", `bearer.${token}`] : ["terminal"];
       const ws = new WebSocket(terminalUrl, protocols);
       wsRef.current = ws;
@@ -226,7 +230,7 @@ export function useTerminalMachine(): TerminalMachineState {
         // Otherwise (network blip), keep retrying
       }
 
-      connectWs(currentSession.terminalUrl);
+      connectWs(currentSession.terminalUrl, (currentSession as any).token);
     }, delay);
   }, [connectWs]);
 
@@ -265,6 +269,46 @@ export function useTerminalMachine(): TerminalMachineState {
         connectWs(res.terminalUrl);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Failed to start sandbox.";
+        setErrorMessage(msg);
+        setState("FAILED");
+      }
+    },
+    [connectWs]
+  );
+
+  // ── Start guest trial session ─────────────────────────────────────────────
+  const startTrial = useCallback(
+    async (challengeId: string) => {
+      setState("REQUESTING_SANDBOX");
+      setErrorMessage(null);
+      setValidationResult(null);
+      setProgressEvents([]);
+      setIsolationDowngraded(false);
+
+      try {
+        const res = await apiClient.challenge.trial(challengeId);
+        setSession(res as unknown as SessionInfo);
+        sessionRef.current = res as unknown as SessionInfo;
+        setState("PROVISIONING");
+
+        const sandboxHealthUrl = res.terminalUrl!
+          .replace("ws://", "http://")
+          .replace("wss://", "https://")
+          .replace("/terminal", "/health");
+        
+        try {
+          await apiClient.get(sandboxHealthUrl);
+        } catch (err: any) {
+          if (err?.response?.status === 502) {
+            setErrorMessage("Sandbox service is currently unavailable. Please try again later.");
+            setState("FAILED");
+            return;
+          }
+        }
+
+        connectWs(res.terminalUrl!, res.token);
+      } catch (err: any) {
+        const msg = err?.response?.data?.error || err?.message || "Failed to start guest trial.";
         setErrorMessage(msg);
         setState("FAILED");
       }
@@ -365,6 +409,7 @@ export function useTerminalMachine(): TerminalMachineState {
     ttlWarningMinutes,
     isolationDowngraded,
     startSession,
+    startTrial,
     terminateSession,
     validateSolution,
     retryAfterLoss,

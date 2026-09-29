@@ -12,8 +12,8 @@ export function TechStackSection() {
       <div className="absolute inset-0 z-0 pointer-events-none">
         <canvas ref={setTechParticlesCanvas} className="block w-full h-full" />
       </div>
-      <div className="max-w-[1180px] mx-auto px-8 relative z-10">
-        <div className="max-w-[600px] mx-auto mb-[44px] text-center">
+      <div className="max-w-[1440px] xl:max-w-[1600px] 2xl:max-w-[1720px] mx-auto px-6 md:px-8 xl:px-12 relative z-10">
+        <div className="max-w-[640px] mx-auto mb-[44px] text-center">
           <div className="font-mono text-[12px] tracking-[0.14em] uppercase text-teal flex items-center justify-center gap-[9px] mb-[14px]">
             <span className="w-[6px] h-[6px] rounded-full bg-teal shadow-[0_0_8px_var(--color-teal)] shrink-0" />
             the real stack

@@ -157,7 +157,7 @@ export function SaveToListModal({ isOpen, onClose, challengeId, challengeTitle }
                         )}
                       </div>
                       <span className="text-[10px] text-panel-muted font-mono">
-                        {list.itemCount} challenges
+                        {list.itemCount} {list.itemCount === 1 ? "challenge" : "challenges"}
                       </span>
                     </div>
                   </div>

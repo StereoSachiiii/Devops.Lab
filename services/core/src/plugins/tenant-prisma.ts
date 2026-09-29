@@ -26,7 +26,7 @@ export const tenantPrismaPlugin = fp(async (fastify: FastifyInstance) => {
     Object.defineProperty(request, "prisma", {
       get() {
         const orgId = request.user?.orgId;
-        const userId = request.user?.sub || request.user?.id; // depending on token payload
+        const userId = request.user?.sub || request.user?.id;
         
         // Re-create client if orgId or userId changed since last access
         if (_tenantClient && orgId === _cachedOrgId && userId === _cachedUserId) return _tenantClient;

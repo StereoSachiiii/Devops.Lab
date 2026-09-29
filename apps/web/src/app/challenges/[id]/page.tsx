@@ -53,9 +53,50 @@ function ChallengeWorkspacePage({ params }: PageProps) {
     ttlWarningMinutes,
     isolationDowngraded,
     startSession,
+    startTrial,
     terminateSession,
     validateSolution,
   } = useTerminalMachine();
+
+  // Guest trial status check
+  const { data: trialStatus, mutate: mutateTrialStatus } = useSWR<{ eligible: boolean; trialUsed: boolean }>(
+    id && !user ? API_ROUTES.challenges.trialStatus(id) : null,
+    () => apiClient.challenge.getTrialStatus(id)
+  );
+
+  const isGuest = !user;
+  const isTrialEligible = Boolean(challenge?.guestTrialEligible || trialStatus?.eligible);
+  const trialUsed = Boolean(trialStatus?.trialUsed);
+
+  // Guest trial countdown timer (10 mins = 600s)
+  const [trialSecondsLeft, setTrialSecondsLeft] = useState<number | null>(null);
+  const [trialExpired, setTrialExpired] = useState(false);
+
+  useEffect(() => {
+    if (session?.isGuestTrial || (isGuest && state === "CONNECTED")) {
+      const ttlSecs = (session?.ttlMins || 10) * 60;
+      setTrialSecondsLeft(ttlSecs);
+      setTrialExpired(false);
+
+      const interval = setInterval(() => {
+        setTrialSecondsLeft((prev) => {
+          if (prev === null || prev <= 1) {
+            clearInterval(interval);
+            setTrialExpired(true);
+            terminateSession();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(interval);
+    } else {
+      setTrialSecondsLeft(null);
+      setTrialExpired(false);
+      return undefined;
+    }
+  }, [session, isGuest, state, terminateSession]);
 
 
 
@@ -188,12 +229,18 @@ function ChallengeWorkspacePage({ params }: PageProps) {
 
   const handleStart = useCallback(async () => {
     if (!user) {
+      if (isTrialEligible && !trialUsed) {
+        setPersistedChecks([]);
+        await startTrial(challenge!.id);
+        mutateTrialStatus();
+        return;
+      }
       router.push("/login");
       return;
     }
     setPersistedChecks([]);
     await startSession(challenge!.id);
-  }, [user, router, startSession, challenge]);
+  }, [user, router, isTrialEligible, trialUsed, startTrial, startSession, challenge, mutateTrialStatus]);
 
   const handleTerminateActive = useCallback(async () => {
     try {
@@ -265,17 +312,21 @@ function ChallengeWorkspacePage({ params }: PageProps) {
         difficulty={challenge.difficulty}
         xp={challenge.xp}
         onTourClick={() => {}}
+        isGuestTrial={session?.isGuestTrial || isGuest}
+        trialSecondsLeft={trialSecondsLeft}
+        trialExpired={trialExpired}
       />
 
       {/* ── 3-column workspace ── */}
-      <div className="grid grid-cols-[320px_1fr_300px] gap-5 flex-1 min-h-0 py-5 max-xl:grid-cols-[280px_1fr_260px] max-lg:grid-cols-[280px_1fr] max-md:flex max-md:flex-col">
+      <div className="grid grid-cols-[380px_1fr_300px] gap-5 flex-1 min-h-0 py-5 max-xl:grid-cols-[340px_1fr_260px] max-lg:grid-cols-[340px_1fr] max-md:flex max-md:flex-col">
         {/* LEFT COLUMN: Challenge Brief & Tabs */}
-        <div className="flex flex-col gap-4 bg-panel/70 backdrop-blur-xl border border-panel-border/80 rounded-2xl p-4.5 shadow-[0_8px_32px_rgba(0,0,0,0.25)] overflow-y-auto max-h-[calc(100vh-140px)] max-md:order-2 max-md:max-h-[300px]">
+        <div className="flex flex-col gap-4 bg-[#0d1118]/80 backdrop-blur-xl border border-panel-border/80 rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.3)] overflow-y-auto dark-scrollbar max-h-[calc(100vh-140px)] max-md:order-2 max-md:max-h-[350px] relative">
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-teal/20 to-transparent" />
           <div className="pb-3 border-b border-panel-border/60">
-            <EyebrowHeader dotColor="teal" className="mb-2 tracking-wider">
+            <EyebrowHeader dotColor="teal" className="mb-2 tracking-wider text-[11px] font-mono">
               {challenge.category?.toUpperCase()} &middot; ~15 MIN
             </EyebrowHeader>
-            <h1 className="m-0 text-[20px] font-space font-extrabold text-panel-text tracking-[-0.02em] leading-tight bg-gradient-to-r from-panel-text to-panel-muted bg-clip-text">
+            <h1 className="m-0 text-[22px] font-space font-extrabold text-panel-text tracking-[-0.02em] leading-tight bg-gradient-to-r from-white via-panel-text to-panel-muted bg-clip-text">
               {challenge.title}
             </h1>
           </div>
@@ -325,42 +376,48 @@ function ChallengeWorkspacePage({ params }: PageProps) {
             onLaunchSandbox={handleStart}
             onTerminateActive={handleTerminateActive}
             onStopSandbox={terminateSession}
+            isGuest={isGuest}
+            isTrialEligible={isTrialEligible}
+            trialUsed={trialUsed}
+            trialExpired={trialExpired}
           />
 
           {/* Modern Bottom Action Bar */}
           <div
             id="validate-btn"
-            className="flex items-center justify-between bg-panel/80 backdrop-blur-xl border border-panel-border/80 rounded-xl px-4 py-3 shadow-[0_4px_24px_rgba(0,0,0,0.2)]"
+            className="flex flex-wrap items-center justify-between gap-3 bg-[#0d1118]/90 backdrop-blur-xl border border-panel-border/90 rounded-2xl px-5 py-3.5 shadow-[0_8px_32px_rgba(0,0,0,0.35)]"
           >
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3.5">
               <button
                 onClick={() => validateSolution()}
                 disabled={isValidating || state !== "CONNECTED"}
-                className={`flex items-center gap-2 py-2 px-5 rounded-lg font-mono text-[11px] font-bold tracking-wide transition-all duration-200 ${
+                className={`flex items-center gap-2.5 py-2.5 px-6 rounded-xl font-mono text-[11.5px] font-black tracking-wide transition-all duration-300 ${
                   isValidating || state !== "CONNECTED"
-                    ? "bg-panel-2/70 text-panel-muted-dim cursor-not-allowed border border-panel-border/40"
-                    : "bg-gradient-to-r from-teal to-emerald-400 text-bg font-black shadow-[0_0_20px_rgba(53,214,180,0.35)] hover:shadow-[0_0_28px_rgba(53,214,180,0.55)] hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                    ? "bg-panel-2/60 text-panel-muted-dim cursor-not-allowed border border-panel-border/40 opacity-70"
+                    : "bg-gradient-to-r from-teal via-[#44e5c4] to-emerald-400 text-[#071311] shadow-[0_0_24px_rgba(53,214,180,0.4)] hover:shadow-[0_0_36px_rgba(53,214,180,0.65)] hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
                 }`}
               >
                 {isValidating ? (
                   <>
-                    <span className="animate-spin text-xs">↻</span> Validating Solution…
+                    <span className="animate-spin text-sm">↻</span>
+                    <span>Validating Solution…</span>
                   </>
                 ) : (
                   <>
-                    <Play size={12} fill="currentColor" /> Validate Solution
+                    <Play size={13} fill="currentColor" />
+                    <span>Validate Solution</span>
                   </>
                 )}
               </button>
 
-              <div className="font-mono text-[12px] font-medium text-panel-muted flex items-center gap-2 px-3 py-1.5 rounded-lg bg-panel-2/50 border border-panel-border/50">
+              <div className="font-mono text-[11.5px] font-semibold text-panel-muted flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-panel-2/70 border border-panel-border/70 shadow-inner">
                 {totalChecks > 0 && passedCount === totalChecks ? (
-                  <CheckCircle size={14} className="text-teal animate-bounce" />
+                  <CheckCircle size={15} className="text-teal animate-bounce" />
                 ) : (
-                  <div className="w-2 h-2 rounded-full bg-panel-muted-dim/60" />
+                  <span className="w-2 h-2 rounded-full bg-panel-muted-dim/80" />
                 )}
                 <span>
-                  <strong className={passedCount === totalChecks && totalChecks > 0 ? "text-teal" : "text-panel-text"}>
+                  <strong className={passedCount === totalChecks && totalChecks > 0 ? "text-teal font-black" : "text-panel-text font-bold"}>
                     {passedCount}
                   </strong>{" "}
                   / {totalChecks} checks passed
@@ -368,41 +425,41 @@ function ChallengeWorkspacePage({ params }: PageProps) {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               {/* Challenge interaction buttons */}
               <button
                 id="challenge-like-btn"
                 onClick={handleLike}
                 disabled={iLiking}
                 title={currentLiked ? "Unlike" : "Like this challenge"}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border font-mono text-[11px] font-semibold transition-all duration-200 ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border font-mono text-[11px] font-semibold transition-all duration-200 cursor-pointer ${
                   currentLiked
-                    ? "bg-red/15 border-red/40 text-red"
-                    : "bg-panel-2/60 border-panel-border/60 text-panel-muted hover:border-red/30 hover:text-red"
+                    ? "bg-red/15 border-red/40 text-red shadow-[0_0_12px_rgba(244,63,94,0.2)]"
+                    : "bg-panel-2/60 border-panel-border/70 text-panel-muted hover:border-red/40 hover:text-red hover:bg-panel-2"
                 }`}
               >
-                <Heart size={12} className={currentLiked ? "fill-current" : ""} />
-                <span className="tabular-nums">{currentLikes}</span>
+                <Heart size={13} className={currentLiked ? "fill-current" : ""} />
+                <span className="tabular-nums font-bold">{currentLikes}</span>
               </button>
 
-              <div className="inline-flex items-center rounded-lg border border-panel-border/60 bg-panel-2/60 overflow-hidden">
+              <div className="inline-flex items-center rounded-xl border border-panel-border/70 bg-panel-2/60 overflow-hidden shadow-sm">
                 <button
                   id="challenge-save-btn"
                   onClick={handleSave}
                   disabled={iSaving}
                   title={currentSaved ? "Remove bookmark" : "Quick save challenge"}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 font-mono text-[11px] font-semibold transition-all duration-200 cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-2 font-mono text-[11px] font-semibold transition-all duration-200 cursor-pointer ${
                     currentSaved
                       ? "bg-amber/15 text-amber"
-                      : "text-panel-muted hover:text-amber"
+                      : "text-panel-muted hover:text-amber hover:bg-panel-2"
                   }`}
                 >
-                  <Bookmark size={12} className={currentSaved ? "fill-current" : ""} />
+                  <Bookmark size={13} className={currentSaved ? "fill-current" : ""} />
                 </button>
                 <button
                   onClick={() => setListModalOpen(true)}
                   title="Add to custom list track"
-                  className="px-2 py-1.5 font-mono text-[11px] font-semibold text-panel-muted hover:text-panel-text border-l border-panel-border/60 transition-colors cursor-pointer"
+                  className="px-2.5 py-2 font-mono text-[11px] font-bold text-panel-muted hover:text-panel-text border-l border-panel-border/70 hover:bg-panel-2 transition-colors cursor-pointer"
                 >
                   + List
                 </button>
@@ -412,18 +469,18 @@ function ChallengeWorkspacePage({ params }: PageProps) {
                 id="challenge-share-btn"
                 onClick={handleShare}
                 title="Copy link"
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border font-mono text-[11px] font-semibold transition-all duration-200 ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border font-mono text-[11px] font-semibold transition-all duration-200 cursor-pointer ${
                   shareCopied
-                    ? "bg-teal/15 border-teal/40 text-teal"
-                    : "bg-panel-2/60 border-panel-border/60 text-panel-muted hover:border-teal/30 hover:text-teal"
+                    ? "bg-teal/15 border-teal/40 text-teal shadow-[0_0_12px_rgba(53,214,180,0.2)]"
+                    : "bg-panel-2/60 border-panel-border/70 text-panel-muted hover:border-teal/40 hover:text-teal hover:bg-panel-2"
                 }`}
               >
-                {shareCopied ? <Check size={12} /> : <Share2 size={12} />}
+                {shareCopied ? <Check size={13} /> : <Share2 size={13} />}
               </button>
 
-              <div className="flex items-center gap-1.5 text-[11px] font-mono pl-2 border-l border-panel-border/40">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal animate-pulse" />
-                <span className="text-panel-muted text-[10.5px]">Auto-grading ready</span>
+              <div className="flex items-center gap-2 text-[11px] font-mono pl-3 border-l border-panel-border/60">
+                <span className="w-2 h-2 rounded-full bg-teal animate-pulse shadow-[0_0_8px_rgba(53,214,180,0.8)]" />
+                <span className="text-panel-muted font-medium">Auto-grading</span>
               </div>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { requireEnv } from "@devops/observability";
 
 let resendInstance: Resend | null = null;
 function getResend() {
@@ -29,7 +30,7 @@ export async function sendWelcomeEmail(to: string, name: string): Promise<void> 
 }
 
 export async function sendVerificationEmail(to: string, token: string) {
-  const baseUrl = process.env["WEB_APP_URL"] || process.env["APP_URL"] || "http://localhost:3000";
+  const baseUrl = requireEnv("WEB_APP_URL");
   const verificationLink = `${baseUrl.replace(/\/$/, "")}/verify?token=${token}`;
 
   const resend = getResend();

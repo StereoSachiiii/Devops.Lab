@@ -50,7 +50,6 @@ func TestConfig_LoadDefaultsAndValidation(t *testing.T) {
 		"MAX_MEMORY_MB":       os.Getenv("MAX_MEMORY_MB"),
 		"MAX_CPUS":            os.Getenv("MAX_CPUS"),
 		"DOCKER_NETWORK_MODE": os.Getenv("DOCKER_NETWORK_MODE"),
-		"SANDBOX_PROVIDER":    os.Getenv("SANDBOX_PROVIDER"),
 	}
 	defer func() {
 		for k, v := range origEnv {

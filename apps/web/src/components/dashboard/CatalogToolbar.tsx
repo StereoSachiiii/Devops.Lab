@@ -21,6 +21,9 @@ interface CatalogToolbarProps {
   onChange: (newState: Partial<CatalogState>) => void;
   options: FilterOptions;
   resultCount: number;
+  searchPlaceholder?: string;
+  entityName?: string;
+  difficultyLabel?: string;
 }
 
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () => void) {
@@ -129,7 +132,15 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-export function CatalogToolbar({ state, onChange, options, resultCount }: CatalogToolbarProps) {
+export function CatalogToolbar({
+  state,
+  onChange,
+  options,
+  resultCount,
+  searchPlaceholder = 'Search challenges (e.g. "nginx", "k8s")',
+  entityName = "challenge",
+  difficultyLabel = "Difficulty",
+}: CatalogToolbarProps) {
   const [localQ, setLocalQ] = useState(state.q);
   const debouncedQ = useDebounce(localQ, 300);
 
@@ -161,78 +172,119 @@ export function CatalogToolbar({ state, onChange, options, resultCount }: Catalo
   return (
     <div
       id="catalog-toolbar"
-      className={`sticky top-0 z-40 bg-bg py-5 ${
+      className={`sticky top-0 z-40 bg-bg py-4 ${
         hasFilters ? "border-none" : "border-b border-panel-border"
       }`}
     >
-      <div className="flex items-center gap-4 flex-wrap">
-        <div className="relative flex-1 min-w-[300px] group">
-          <Search
-            size={18}
-            className={`absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-300 ${isFocused ? "text-teal" : "text-panel-muted"}`}
-          />
-          <input
-            id="catalog-search"
-            type="text"
-            value={localQ}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            onChange={(e) => setLocalQ(e.target.value)}
-            placeholder='Search challenges (e.g. "nginx", "k8s")'
-            className="w-full bg-panel border border-panel-border rounded-[14px] py-[14px] pr-[50px] pl-12 text-panel-text font-sans text-[14.5px] outline-none transition-all duration-300 focus:border-teal focus:shadow-[0_0_0_4px_rgba(53,214,180,0.1)] hover:border-panel-muted-dim"
-          />
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-1">
-            <kbd className="hidden sm:inline-flex items-center justify-center h-6 px-2 text-[10px] font-mono font-medium text-panel-muted-dim bg-panel-2 border border-panel-border rounded uppercase">
-              Ctrl K
-            </kbd>
-          </div>
-        </div>
-
-        <div ref={sortRef} className="relative">
-          <button
-            onClick={() => setSortOpen(!sortOpen)}
-            className="bg-transparent border border-panel-border text-panel-text px-4 py-[11px] rounded-xl text-[13px] font-sans cursor-pointer flex items-center gap-2 hover:bg-panel-2 transition-colors"
-          >
-            <span className="text-panel-muted">Sort by:</span> {state.sort}
-            <ChevronDown size={14} className="opacity-70" />
-          </button>
-
-          {sortOpen && (
-            <div className="absolute top-full right-0 mt-2 bg-panel border border-panel-border rounded-xl shadow-[0_10px_30px_var(--theme-shadow)] min-w-[220px] z-50 p-1.5">
-              {sortOptions.map((opt) => (
-                <div
-                  key={opt}
-                  onClick={() => {
-                    onChange({ sort: opt });
-                    setSortOpen(false);
-                  }}
-                  className={`px-3.5 py-2.5 cursor-pointer rounded-lg font-sans text-[13px] transition-colors ${
-                    state.sort === opt
-                      ? "text-panel-text bg-panel-2"
-                      : "text-panel-muted bg-transparent hover:text-panel-text"
-                  }`}
-                >
-                  {opt}
-                </div>
-              ))}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        {/* Left Cluster: Search + Filters */}
+        <div className="flex items-center gap-2.5 flex-wrap flex-1 min-w-0">
+          <div className="relative w-full sm:w-auto sm:min-w-[280px] lg:min-w-[320px] group">
+            <Search
+              size={17}
+              className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-300 ${isFocused ? "text-teal" : "text-panel-muted"}`}
+            />
+            <input
+              id="catalog-search"
+              type="text"
+              value={localQ}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              onChange={(e) => setLocalQ(e.target.value)}
+              placeholder={searchPlaceholder}
+              className="w-full bg-panel border border-panel-border rounded-xl py-2.5 pr-12 pl-10 text-panel-text font-sans text-[13.5px] outline-none transition-all duration-300 focus:border-teal focus:shadow-[0_0_0_3px_rgba(53,214,180,0.1)] hover:border-panel-muted-dim"
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-1">
+              <kbd className="hidden sm:inline-flex items-center justify-center h-5 px-1.5 text-[9.5px] font-mono font-medium text-panel-muted-dim bg-panel-2 border border-panel-border rounded uppercase">
+                Ctrl K
+              </kbd>
             </div>
+          </div>
+
+          <div ref={sortRef} className="relative">
+            <button
+              onClick={() => setSortOpen(!sortOpen)}
+              className="bg-transparent border border-panel-border text-panel-text px-3 py-2 rounded-lg text-[13px] font-sans cursor-pointer flex items-center gap-2 hover:bg-panel-2 transition-colors"
+            >
+              <span className="text-panel-muted">Sort:</span> {state.sort.replace("Difficulty: ", "").replace("Time: ", "")}
+              <ChevronDown size={14} className="opacity-70" />
+            </button>
+
+            {sortOpen && (
+              <div className="absolute top-full left-0 mt-2 bg-panel border border-panel-border rounded-xl shadow-[0_10px_30px_var(--theme-shadow)] min-w-[220px] z-50 p-1.5">
+                {sortOptions.map((opt) => (
+                  <div
+                    key={opt}
+                    onClick={() => {
+                      onChange({ sort: opt });
+                      setSortOpen(false);
+                    }}
+                    className={`px-3 py-2 cursor-pointer rounded-lg font-sans text-[13px] transition-colors ${
+                      state.sort === opt
+                        ? "text-panel-text bg-panel-2"
+                        : "text-panel-muted bg-transparent hover:text-panel-text"
+                    }`}
+                  >
+                    {opt}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {Object.keys(options.difficulty).length > 0 && (
+            <FilterDropdown
+              label={difficultyLabel}
+              options={options.difficulty}
+              selected={state.difficulty}
+              onChange={(v) => onChange({ difficulty: v })}
+            />
+          )}
+          {Object.keys(options.time).length > 0 && (
+            <FilterDropdown
+              label="Time"
+              options={options.time}
+              selected={state.time}
+              onChange={(v) => onChange({ time: v })}
+            />
+          )}
+          {Object.keys(options.type).length > 0 && (
+            <FilterDropdown
+              label="Tags"
+              options={options.type}
+              selected={state.type}
+              onChange={(v) => onChange({ type: v })}
+            />
           )}
         </div>
 
-        <div className="w-[1px] h-6 bg-panel-border" />
-
-        <FilterDropdown
-          label="Difficulty"
-          options={options.difficulty}
-          selected={state.difficulty}
-          onChange={(v) => onChange({ difficulty: v })}
-        />
-        <FilterDropdown
-          label="Time"
-          options={options.time}
-          selected={state.time}
-          onChange={(v) => onChange({ time: v })}
-        />
+        {/* Right Controls: View Toggle */}
+        <div className="flex items-center gap-3 shrink-0 self-end md:self-auto">
+          <div className="flex bg-panel-2 border border-panel-border rounded-lg p-0.5">
+            <button
+              onClick={() => onChange({ view: "grid" })}
+              className={`border-none p-1.5 rounded-md cursor-pointer transition-all duration-200 ${
+                state.view === "grid"
+                  ? "bg-panel text-amber shadow-[0_2px_8px_var(--theme-shadow)]"
+                  : "bg-transparent text-panel-muted hover:text-panel-text"
+              }`}
+              title="Grid View"
+            >
+              <Grid size={15} />
+            </button>
+            <button
+              onClick={() => onChange({ view: "list" })}
+              className={`border-none p-1.5 rounded-md cursor-pointer transition-all duration-200 ${
+                state.view === "list"
+                  ? "bg-panel text-amber shadow-[0_2px_8px_var(--theme-shadow)]"
+                  : "bg-transparent text-panel-muted hover:text-panel-text"
+              }`}
+              title="List View"
+            >
+              <List size={15} />
+            </button>
+          </div>
+        </div>
       </div>
 
       {hasFilters && (
@@ -304,29 +356,9 @@ export function CatalogToolbar({ state, onChange, options, resultCount }: Catalo
         </div>
       )}
 
-      <div className={`flex justify-between items-center ${hasFilters ? "mt-4" : "mt-6"}`}>
-        <div className="font-mono text-[13px] text-panel-muted">{resultCount} challenges match</div>
-        <div className="flex bg-panel-2 border border-panel-border rounded-lg p-0.5">
-          <button
-            onClick={() => onChange({ view: "grid" })}
-            className={`border-none p-1.5 rounded-md cursor-pointer transition-all duration-200 ${
-              state.view === "grid"
-                ? "bg-panel text-amber shadow-[0_2px_8px_var(--theme-shadow)]"
-                : "bg-transparent text-panel-muted hover:text-panel-text"
-            }`}
-          >
-            <Grid size={16} />
-          </button>
-          <button
-            onClick={() => onChange({ view: "list" })}
-            className={`border-none p-1.5 rounded-md cursor-pointer transition-all duration-200 ${
-              state.view === "list"
-                ? "bg-panel text-amber shadow-[0_2px_8px_var(--theme-shadow)]"
-                : "bg-transparent text-panel-muted hover:text-panel-text"
-            }`}
-          >
-            <List size={16} />
-          </button>
+      <div className="flex items-center justify-between mt-3 text-panel-muted font-mono text-[12.5px]">
+        <div>
+          {resultCount} {resultCount === 1 ? `${entityName} matches` : `${entityName}s match`}
         </div>
       </div>
     </div>

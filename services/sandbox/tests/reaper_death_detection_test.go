@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devops-platform/sandbox/internal/sandbox"
 	"github.com/devops-platform/sandbox/internal/session"
 )
 
@@ -17,7 +18,8 @@ func TestReaper_ProactiveDeathDetection(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	mock := NewMockProvider()
 
-	mgr, err := session.NewManager(mock, r, 60, "worker-mock:8090", log)
+	providers := map[string]sandbox.SandboxProvider{"docker": mock}
+	mgr, err := session.NewManager(providers, r, 60, "worker-mock:8090", log)
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -26,7 +28,7 @@ func TestReaper_ProactiveDeathDetection(t *testing.T) {
 	sessionID := "test-session-reaper"
 
 	// 1. Create a session
-	_, err = mgr.Create(ctx, sessionID, "user-reaper", "chal-1", "alpine")
+	_, err = mgr.Create(ctx, sessionID, "user-reaper", "chal-1", "alpine", "docker")
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}

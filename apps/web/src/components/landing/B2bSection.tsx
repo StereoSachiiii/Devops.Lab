@@ -9,8 +9,8 @@ export function B2bSection() {
       {/* Background decorations */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-amber/5 blur-[120px] rounded-full pointer-events-none" />
 
-      <div className="max-w-[1180px] mx-auto px-8 relative z-10">
-        <div className="flex flex-col lg:flex-row items-center gap-[60px]">
+      <div className="max-w-[1440px] xl:max-w-[1600px] 2xl:max-w-[1720px] mx-auto px-6 md:px-8 xl:px-12 relative z-10">
+        <div className="flex flex-col lg:flex-row items-center gap-[60px] xl:gap-[80px]">
           
           {/* Left Side: Copy */}
           <div className="flex-1 text-center lg:text-left">
@@ -20,20 +20,18 @@ export function B2bSection() {
             </div>
 
             <h2 className="font-space text-[36px] md:text-[44px] font-bold tracking-[-0.015em] mb-6 text-panel-text leading-tight">
-              Train your trainees on <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal to-amber">systems tailored</span> for your company.
+              Stop onboarding on production. <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal to-amber">Break our staging</span> instead.
             </h2>
 
             <p className="text-panel-muted text-[16px] leading-[1.6] mb-8 max-w-[500px] mx-auto lg:mx-0">
-              Why practice on generic tutorials when you can train your team on your actual architecture? 
-              Create private, multi-tenant learning paths scoped exclusively to your organization.
+              Handing a new hire production access after a 10-slide onboarding doc is a recipe for an outage. Simulate your actual infrastructure failures in dedicated team sandboxes.
             </p>
 
             <Link
               href="/teams"
               className="inline-flex items-center gap-2 bg-panel-2 border border-panel-border text-panel-text hover:text-teal font-semibold text-[15px] px-[26px] py-[15px] rounded-xl cursor-pointer hover:bg-panel hover:border-teal/50 transition-colors shadow-lg no-underline"
             >
-              Visit our B2B service
-              <span className="ml-1 transition-transform group-hover:translate-x-1">&rarr;</span>
+              Set up team sandboxes &rarr;
             </Link>
           </div>
 
@@ -46,7 +44,7 @@ export function B2bSection() {
                 <Shield className="text-amber w-5 h-5" />
               </div>
               <h3 className="font-space font-bold text-[17px] text-panel-text mb-2">Private Sandboxes</h3>
-              <p className="text-panel-muted text-[13.5px] leading-[1.5]">Clone your actual production architecture into isolated environments that never leak data.</p>
+              <p className="text-panel-muted text-[13.5px] leading-[1.5]">Isolated cloud nodes provisioned per engineer. No shared state, no cross-contamination.</p>
             </div>
 
             {/* Custom Scenarios Card (span 3) */}
@@ -56,7 +54,7 @@ export function B2bSection() {
                 <Cpu className="text-teal w-5 h-5" />
               </div>
               <h3 className="font-space font-bold text-[17px] text-panel-text mb-2">Custom Scenarios</h3>
-              <p className="text-panel-muted text-[13.5px] leading-[1.5]">Turn your past incidents and unique infra quirks into repeatable training modules.</p>
+              <p className="text-panel-muted text-[13.5px] leading-[1.5]">Recreate your own past Sev-1 postmortems so new engineers never repeat the same outage.</p>
             </div>
 
             {/* Onboard Faster Card (span 6 or split) */}
@@ -66,7 +64,7 @@ export function B2bSection() {
                 <Users className="text-[#3b82f6] w-5 h-5" />
               </div>
               <h3 className="font-space font-bold text-[17px] text-panel-text mb-2">Onboard Faster</h3>
-              <p className="text-panel-muted text-[13.5px] leading-[1.5]">New hires break things in the sandbox instead of staging. Accelerate time-to-productivity.</p>
+              <p className="text-panel-muted text-[13.5px] leading-[1.5]">Cut time-to-first-on-call. Give engineers real terminal muscle memory before they touch prod.</p>
             </div>
 
             {/* Skill Analytics Card (span 3) */}
@@ -76,7 +74,7 @@ export function B2bSection() {
                 <TrendingUp className="text-[#8b5cf6] w-5 h-5" />
               </div>
               <h3 className="font-space font-bold text-[17px] text-panel-text mb-2">Skill Analytics</h3>
-              <p className="text-panel-muted text-[13.5px] leading-[1.5]">Track team competencies and identify knowledge gaps before they cause downtime.</p>
+              <p className="text-panel-muted text-[13.5px] leading-[1.5]">Measure how engineers actually triage issues—command efficiency, time to root-cause, and fix accuracy.</p>
             </div>
           </div>
           

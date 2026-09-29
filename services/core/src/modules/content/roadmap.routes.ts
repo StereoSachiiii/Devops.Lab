@@ -2,8 +2,36 @@ import type { FastifyInstance } from "fastify";
 
 export async function roadmapRoutes(fastify: FastifyInstance) {
   fastify.get("/roadmaps", async (request, reply) => {
+    const { category, tags, search, query } = request.query as {
+      category?: string;
+      tags?: string;
+      search?: string;
+      query?: string;
+    };
+
     try {
+      const where: any = {};
+
+      if (category && category.toLowerCase() !== "all") {
+        where.category = { equals: category, mode: "insensitive" };
+      }
+
+      const rawTags = tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
+      if (rawTags.length > 0) {
+        where.tags = { hasSome: rawTags };
+      }
+
+      const q = (search || query || "").trim();
+      if (q) {
+        where.OR = [
+          { title: { contains: q, mode: "insensitive" } },
+          { description: { contains: q, mode: "insensitive" } },
+          { category: { contains: q, mode: "insensitive" } },
+        ];
+      }
+
       const paths = await request.prisma.learningPath.findMany({
+        where,
         include: {
           modules: {
             include: {
@@ -20,7 +48,10 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
           title: p.title,
           description: p.description,
           slug: p.slug,
-          icon: "Terminal",
+          icon: p.icon || "Terminal",
+          timeEstimate: p.timeEstimate || "~60 mins",
+          category: p.category || null,
+          tags: p.tags || [],
           nodeCount: p.modules.reduce((acc, m) => acc + m.challenges.length, 0),
         }))
       );
@@ -69,9 +100,11 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
         slug: dbPath.slug,
         title: dbPath.title,
         description: dbPath.description,
-        icon: "Terminal",
+        icon: dbPath.icon || "Terminal",
+        category: dbPath.category || null,
+        tags: dbPath.tags || [],
         nodeCount: nodes.length,
-        timeEstimate: `~${Math.max(nodes.length * 20, 60)} mins`,
+        timeEstimate: dbPath.timeEstimate || `~${Math.max(nodes.length * 20, 60)} mins`,
         nodes,
       });
     } catch (err) {

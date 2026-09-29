@@ -1,18 +1,24 @@
 import { defineConfig } from "@prisma/config";
 import dotenv from "dotenv";
 import path from "path";
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+if (!process.env.DATABASE_URL) {
+  dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+}
+const dbUrl = process.env.DATABASE_URL;
+if (!dbUrl) {
+  throw new Error("Missing required environment variable: DATABASE_URL");
+}
 export default defineConfig({
   earlyAccess: true,
   datasource: {
-    url: process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/appdb?schema=public",
+    url: dbUrl,
   },
   studio: {
-    directUrl: process.env.DATABASE_DIRECT_URL || process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/appdb?schema=public",
+    directUrl: process.env.DATABASE_DIRECT_URL || dbUrl,
   },
   migrate: {
-    url: process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/appdb?schema=public",
-    directUrl: process.env.DATABASE_DIRECT_URL || process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/appdb?schema=public",
+    url: dbUrl,
+    directUrl: process.env.DATABASE_DIRECT_URL || dbUrl,
   },
   migrations: {
     seed: "ts-node ./prisma/seed.ts",

@@ -1,31 +1,31 @@
-﻿// import React from "react";
+// import React from "react";
 
 const testimonials = [
   {
     quote:
-      '"First platform where I actually broke a sweat. Fixing a real crash loop taught me more than three Kubernetes courses combined."',
-    name: "Priya N.",
+      '"No fluff. You get dropped into an SSH session with a 502 error and no clues. Exactly how real on-call feels."',
+    name: "Devon K.",
     role: "Platform Engineer",
   },
   {
     quote:
-      '"The grading is unforgiving in the best way. It checks the actual system state, not whether you clicked the right multiple-choice answer."',
-    name: "Marcus T.",
-    role: "SRE, mid-size SaaS",
+      '"Most dev courses feel like watching a cooking show where you never touch the pan. Here, the kitchen is on fire from step one, and you only pass once the smoke clears."',
+    name: "Sarah T.",
+    role: "Site Reliability Engineer",
   },
   {
     quote:
-      '"I use the roadmap with my junior hires now. By week three they\'ve debugged more real outages than most bootcamps cover in a year."',
-    name: "Dana K.",
-    role: "Eng Manager",
+      '"The automated grader doesn\'t care which flags you ran in bash—it checks if the daemon is actually bound to the port and serving traffic. That distinction changes everything."',
+    name: "Elena R.",
+    role: "Senior Systems Engineer",
   },
 ];
 
 export function Testimonials() {
   return (
     <section className="py-[90px] pb-[110px] relative z-10">
-      <div className="max-w-[1180px] mx-auto px-8">
-        <div className="max-w-[600px] mb-[44px]">
+      <div className="max-w-[1440px] xl:max-w-[1600px] 2xl:max-w-[1720px] mx-auto px-6 md:px-8 xl:px-12">
+        <div className="max-w-[640px] mb-[44px]">
           <div className="font-mono text-[12px] tracking-[0.14em] uppercase text-teal flex items-center gap-[9px] mb-[14px]">
             <span className="w-[6px] h-[6px] rounded-full bg-teal shadow-[0_0_8px_var(--color-teal)] shrink-0" />
             from the sandbox

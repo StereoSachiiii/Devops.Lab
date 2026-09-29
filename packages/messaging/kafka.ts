@@ -128,7 +128,7 @@ export class MessagingService {
   ): Promise<Consumer> {
     const consumer = this.kafka.consumer({ groupId });
     await consumer.connect();
-    await consumer.subscribe({ topic, fromBeginning: false });
+    await consumer.subscribe({ topic, fromBeginning: true });
 
     await consumer.run({
       eachMessage: async ({ message }) => {

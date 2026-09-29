@@ -102,7 +102,7 @@ services:
       - .env.prod
     networks:
       - app-internal
-    command: ["npx", "prisma", "migrate", "deploy", "--schema=packages/db/prisma/schema.prisma"]
+    command: ["npx", "prisma", "migrate", "deploy", "--config=packages/db/prisma.config.ts", "--schema=packages/db/prisma/schema.prisma"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -280,7 +280,7 @@ services:
     networks:
       - app-internal
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/health || exit 1"]
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:8080/health"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -313,7 +313,6 @@ services:
       MAX_CPUS: ${MAX_CPUS:-1.0}
       DOCKER_NETWORK_MODE: ${DOCKER_NETWORK_MODE:-none}
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://rabbitmq:5672}
-      SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-docker}
       WORKER_ADDR: "sandbox-worker:8090"
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
     volumes:
@@ -321,7 +320,7 @@ services:
     networks:
       - app-internal
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8090/health || exit 1"]
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:8090/health"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -396,6 +395,8 @@ services:
       - .env.prod
     environment:
       NODE_ENV: production
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
       NEXT_PUBLIC_API_URL: https://api.${DOMAIN:-devops.localhost}
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8005
     labels:

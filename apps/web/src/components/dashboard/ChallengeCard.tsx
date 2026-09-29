@@ -70,7 +70,11 @@ export function ChallengeCard({
     <Link
       id={`challenge-${id}`}
       href={`/challenges/${id}`}
-      className={`press-feedback block relative overflow-hidden no-underline rounded-[14px] border ${bgClass} ${baseBorderClass} ${hoverBorderClass} ${topBorderClass} transition-all duration-150 ease-out hover:-translate-y-[3px] hover:shadow-[0_20px_40px_-20px_var(--theme-shadow)] ${viewMode === "list" ? "flex flex-row items-center p-5 px-[26px] gap-6" : "flex flex-col items-stretch p-[26px] gap-5"}`}
+      className={`press-feedback block relative overflow-hidden no-underline rounded-[14px] border ${bgClass} ${baseBorderClass} ${hoverBorderClass} ${topBorderClass} transition-all duration-150 ease-out hover:-translate-y-[3px] hover:shadow-[0_20px_40px_-20px_var(--theme-shadow)] ${
+        viewMode === "list"
+          ? "flex flex-row items-center p-4 px-6 gap-6"
+          : "flex flex-col items-stretch p-5 h-full min-h-[220px] gap-3.5"
+      }`}
       style={{
         animation: "pageFadeIn 500ms cubic-bezier(0.16, 1, 0.3, 1) backwards",
         animationDelay: `${Math.min(index * 70, 350)}ms`,
@@ -89,14 +93,14 @@ export function ChallengeCard({
       <div
         className={`relative z-10 flex justify-between items-start ${viewMode === "list" ? "w-auto" : "w-full"}`}
       >
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-panel-2 border border-panel-border text-panel-muted">
-            <CategoryIcon category={category} className="opacity-80 w-4 h-4" />
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-panel-2 border border-panel-border text-panel-muted">
+            <CategoryIcon category={category} className="opacity-80 w-3.5 h-3.5" />
           </div>
 
           {viewMode === "grid" && (
             <div
-              className={`font-mono text-[11px] font-semibold px-2 py-1 rounded border ${diffTextColor} ${diffBgColor} ${diffBorderColor}`}
+              className={`font-mono text-[10.5px] font-semibold px-2 py-0.5 rounded border ${diffTextColor} ${diffBgColor} ${diffBorderColor}`}
             >
               {difficulty}
             </div>
@@ -104,34 +108,36 @@ export function ChallengeCard({
         </div>
 
         {viewMode === "grid" && isRecommended && (
-          <div className="font-mono text-[10px] font-semibold tracking-wider text-teal border border-teal bg-teal/10 px-2 py-1 rounded uppercase">
+          <div className="font-mono text-[9.5px] font-semibold tracking-wider text-teal border border-teal bg-teal/10 px-2 py-0.5 rounded uppercase">
             Good first challenge
           </div>
         )}
       </div>
 
       <div className="relative z-10 flex-1 flex flex-col min-w-0">
-        <div className="flex items-center gap-2 mb-2">
-          <h3 className="font-space text-[19px] font-semibold text-panel-text leading-snug m-0 line-clamp-2">
+        <div className="flex items-center gap-2 mb-1.5">
+          <h3 className="font-heading text-[17px] font-semibold text-panel-text leading-snug m-0 line-clamp-1">
             {title}
           </h3>
-          {isCompleted && <CheckCircle2 size={16} className="text-teal shrink-0" />}
+          {isCompleted && <CheckCircle2 size={15} className="text-teal shrink-0" />}
           {isInProgress && (
             <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-amber shrink-0" />
+              <div className="w-1.5 h-1.5 rounded-full bg-amber shrink-0" />
               <span className="font-mono text-[10px] text-amber whitespace-nowrap">
                 In progress
               </span>
             </div>
           )}
         </div>
-        <p className="text-panel-muted text-[13.5px] leading-relaxed m-0 line-clamp-1">
+        <p className="text-panel-muted text-[13px] leading-[1.5] m-0 line-clamp-2 flex-grow">
           {description}
         </p>
       </div>
 
       <div
-        className={`relative z-10 flex justify-between items-center flex-wrap gap-4 ${viewMode === "list" ? "mt-0 pt-0 border-none" : "mt-auto pt-5 border-t border-panel-border"}`}
+        className={`relative z-10 flex justify-between items-center flex-wrap gap-3 ${
+          viewMode === "list" ? "mt-0 pt-0 border-none" : "mt-auto pt-3.5 border-t border-panel-border/60"
+        }`}
       >
         <div className="flex gap-1.5 flex-wrap z-20">
           {tags.slice(0, 3).map((t) => (
@@ -142,28 +148,28 @@ export function ChallengeCard({
                 e.stopPropagation();
                 router.push(`/challenges?type=${t}`);
               }}
-              className="font-mono text-[10.5px] px-2 py-1 rounded bg-panel-2 border border-panel-border text-panel-muted cursor-pointer transition-colors hover:text-panel-text"
+              className="font-mono text-[10px] px-2 py-0.5 rounded bg-panel-2 border border-panel-border text-panel-muted cursor-pointer transition-colors hover:text-panel-text"
             >
               {t}
             </span>
           ))}
           {tags.length > 3 && (
-            <span className="font-mono text-[10.5px] px-2 py-1 rounded bg-transparent text-panel-muted-dim">
+            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-transparent text-panel-muted-dim">
               +{tags.length - 3}
             </span>
           )}
         </div>
 
-        <div className="flex gap-3.5 font-mono text-[11.5px] text-panel-muted-dim items-center">
+        <div className="flex gap-3 font-mono text-[11px] text-panel-muted-dim items-center">
           {viewMode === "list" && (
             <div
-              className={`text-[11px] font-semibold px-2 py-1 rounded border mr-2 ${diffTextColor} ${diffBgColor} ${diffBorderColor}`}
+              className={`text-[10.5px] font-semibold px-2 py-0.5 rounded border mr-2 ${diffTextColor} ${diffBgColor} ${diffBorderColor}`}
             >
               {difficulty}
             </div>
           )}
-          <div className="flex items-center gap-1.5">
-            <span className="text-teal">~{timeEstimate}</span>
+          <div className="flex items-center gap-1">
+            <span className="text-teal font-medium">~{timeEstimate}</span>
           </div>
         </div>
       </div>

@@ -15,6 +15,7 @@ const (
 	StageTmuxAttached        ProgressStage = "TMUX_ATTACHED"
 	StageReady               ProgressStage = "READY"
 	StageIsolationDowngraded ProgressStage = "ISOLATION_DOWNGRADED"
+	StageFailed              ProgressStage = "FAILED"
 )
 
 // ProgressEvent is the JSON message format emitted over the WebSocket control channel.

@@ -13,6 +13,12 @@ WORKDIR /app
 COPY --from=builder /app/out/json/ .
 RUN npm install
 COPY --from=builder /app/out/full/ .
+
+# NEXT_PUBLIC_* vars are baked into the JS bundle at build time.
+# Pass this via: docker build --build-arg NEXT_PUBLIC_API_BASE_URL=https://your-domain
+ARG NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+
 RUN npm run build --workspace=apps/web
 
 FROM base AS runner

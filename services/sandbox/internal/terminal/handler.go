@@ -66,7 +66,7 @@ func VerifyJWT(tokenString string, pubKey *rsa.PublicKey) (*Claims, error) {
 // Auth:  JWT in Authorization header (validated before upgrade)
 //
 // allowedOrigins is a comma-separated list of permitted WebSocket origins (e.g. "https://app.example.com").
-func Handler(mgr *session.Manager, mux *Multiplexer, provider sandbox.SandboxProvider, pubKey *rsa.PublicKey, allowedOrigins string, log *slog.Logger) http.HandlerFunc {
+func Handler(mgr *session.Manager, mux *Multiplexer, fallbackProvider sandbox.SandboxProvider, pubKey *rsa.PublicKey, allowedOrigins string, log *slog.Logger) http.HandlerFunc {
 	allowed := strings.Split(allowedOrigins, ",")
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  4096,
@@ -88,6 +88,7 @@ func Handler(mgr *session.Manager, mux *Multiplexer, provider sandbox.SandboxPro
 			}
 			return false
 		},
+		Subprotocols: []string{"terminal"},
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		// ── Route dispatch ────────────────────────────────────────────────────
@@ -96,7 +97,7 @@ func Handler(mgr *session.Manager, mux *Multiplexer, provider sandbox.SandboxPro
 		path := r.URL.Path
 
 		if strings.HasSuffix(path, "/health") {
-			handleHealth(w, r, mgr, provider, pubKey, log)
+			handleHealth(w, r, mgr, fallbackProvider, pubKey, log)
 			return
 		}
 
@@ -110,7 +111,7 @@ func Handler(mgr *session.Manager, mux *Multiplexer, provider sandbox.SandboxPro
 // is still reachable, {"alive": false} otherwise. This is the single endpoint the
 // client polls during RECONNECTING state to distinguish Failure Mode A (WebSocket
 // dropped, sandbox still alive) from Failure Mode B (sandbox actually dead).
-func handleHealth(w http.ResponseWriter, r *http.Request, mgr *session.Manager, provider sandbox.SandboxProvider, pubKey *rsa.PublicKey, log *slog.Logger) {
+func handleHealth(w http.ResponseWriter, r *http.Request, mgr *session.Manager, fallbackProvider sandbox.SandboxProvider, pubKey *rsa.PublicKey, log *slog.Logger) {
 	sessionID := extractSessionIDFromHealth(r.URL.Path)
 	if sessionID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"alive": false, "error": "missing session ID"})
@@ -144,9 +145,27 @@ func handleHealth(w http.ResponseWriter, r *http.Request, mgr *session.Manager, 
 		return
 	}
 
+	// Dynamically resolve provider
+	prov, _ := mgr.GetProvider(sessionID)
+	if prov == nil {
+		prov = mgr.GetProviderByName(sessionData.Provider)
+	}
+	if prov == nil {
+		prov = fallbackProvider
+	}
+	if prov == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"alive": false})
+		return
+	}
+
 	// Probe the container — a lightweight Exec that does nothing is the most
 	// accurate liveness check we have without adding a separate ping mechanism.
-	result, err := provider.Exec(ctx, sessionData.ContainerID, []string{"/bin/true"})
+	// Use a tight deadline: Docker exec is sub-100ms; for non-Docker providers
+	// (e.g. Flintlock/SSH) the exec may dial a network connection and we don't
+	// want a slow/unresponsive guest to block health polls for 10s.
+	probeCtx, probeCancel := context.WithTimeout(ctx, 3*time.Second)
+	defer probeCancel()
+	result, err := prov.Exec(probeCtx, sessionData.RuntimeID, []string{"/bin/true"})
 	alive := err == nil && result.ExitCode == 0
 
 	log.Debug("Health probe", "sessionId", sessionID, "alive", alive)
@@ -220,8 +239,8 @@ func handleTerminal(w http.ResponseWriter, r *http.Request, mgr *session.Manager
 	}
 
 	// If session is still provisioning, wait for it to complete while streaming live events
-	// (sessionData might be nil if not in Redis yet, or ContainerID == "provisioning" if it is)
-	if sessionData == nil || sessionData.ContainerID == "provisioning" {
+	// (sessionData might be nil if not in Redis yet, or RuntimeID == "provisioning" if it is)
+	if sessionData == nil || sessionData.RuntimeID == "provisioning" {
 		histEvents, liveChan, unsub := mgr.Progress.Subscribe(sessionID)
 		defer unsub()
 
@@ -246,7 +265,7 @@ func handleTerminal(w http.ResponseWriter, r *http.Request, mgr *session.Manager
 				}
 			case <-ticker.C:
 				sessionData, err = mgr.Get(ctx, sessionID)
-				if sessionData != nil && sessionData.ContainerID != "provisioning" {
+				if sessionData != nil && sessionData.RuntimeID != "provisioning" {
 					break WaitLoop
 				}
 			case <-timeout:
@@ -273,7 +292,7 @@ func handleTerminal(w http.ResponseWriter, r *http.Request, mgr *session.Manager
 
 	// ── Open or Attach to Shared PTY ────────────────────────────
 	subID := r.RemoteAddr
-	pty, subscriber, err := multiplexer.GetOrStart(ctx, sessionID, sessionData.ContainerID, cols, rows, subID)
+	pty, subscriber, err := multiplexer.GetOrStart(ctx, sessionID, sessionData.RuntimeID, cols, rows, subID)
 	if err != nil {
 		log.Error("Failed to open PTY via multiplexer", "sessionId", sessionID, "error", err)
 		_ = ws.WriteJSON(map[string]any{"type": "error", "message": "could not open terminal"})
@@ -290,7 +309,7 @@ func handleTerminal(w http.ResponseWriter, r *http.Request, mgr *session.Manager
 
 	log.Info("🖥️  Terminal connected",
 		"sessionId", sessionID,
-		"containerID", sessionData.ContainerID[:12],
+		"runtimeId", sessionData.RuntimeID[:12],
 		"cols", cols,
 		"rows", rows,
 		"subID", subID,
@@ -353,6 +372,7 @@ func handleTerminal(w http.ResponseWriter, r *http.Request, mgr *session.Manager
 		for {
 			msgType, data, err := ws.ReadMessage()
 			if err != nil {
+				log.Info("ws.ReadMessage returned error", "sessionId", sessionID, "subID", subID, "error", err)
 				break
 			}
 

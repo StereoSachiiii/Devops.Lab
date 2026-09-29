@@ -3,7 +3,9 @@ import { PrismaClient } from "@devops/db";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-const connectionString = process.env['DATABASE_URL'];
+import { requireEnv } from "@devops/observability";
+
+const connectionString = requireEnv("DATABASE_URL");
 const pool = new Pool({ 
   connectionString,
   max: 20,

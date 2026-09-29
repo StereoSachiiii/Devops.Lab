@@ -14,6 +14,8 @@ export const API_ROUTES = {
     base: "/api/challenges",
     byId: (id: string) => `/api/challenges/${id}`,
     start: (id: string) => `/api/challenges/${id}/start`,
+    trial: (id: string) => `/api/challenges/${id}/trial`,
+    trialStatus: (id: string) => `/api/challenges/${id}/trial/status`,
     history: (id: string) => `/api/me/challenges/${id}/history`,
   },
   sessions: {

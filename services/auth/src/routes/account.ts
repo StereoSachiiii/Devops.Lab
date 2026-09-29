@@ -95,10 +95,11 @@ async function handleLoginFail(
 }
 
 export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
-  // PreHandler hook: verify access token JTI is not denylisted in Redis
+  // PreHandler hook: verify access token JTI is not denylisted in Redis or user sessions revoked
   fastify.addHook("preHandler", async (req, reply) => {
-    if (req.user?.jti) {
-      if (await isTokenDenylisted(fastify, req.user.jti)) {
+    if (req.user) {
+      const iat = (req.user as unknown as { iat?: number })?.iat;
+      if (await isTokenDenylisted(fastify, req.user.jti, req.user.sub, iat)) {
         return errorReply(reply, 401, "UNAUTHORIZED", "Token has been revoked");
       }
     }
@@ -107,6 +108,30 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get("/public-key", async () => ({
     publicKey: fastify.jwtPublicKey,
   }));
+
+  // Guest Token Endpoint for Guest Sandbox Trials
+  const GuestTokenSchema = Type.Object({
+    guestId: Type.String({ minLength: 8 }),
+  });
+
+  fastify.post(
+    "/guest-token",
+    { schema: { body: GuestTokenSchema } },
+    async (req: FastifyRequest<{ Body: Static<typeof GuestTokenSchema> }>, reply) => {
+      const { guestId } = req.body;
+      const guestUserId = `guest_${guestId}`;
+      const jti = crypto.randomUUID();
+      const token = fastify.jwt.sign({
+        sub: guestUserId,
+        email: `${guestUserId}@trial.devopslab.internal`,
+        role: "GUEST",
+        iss: config.jwtIssuer,
+        jti,
+      }, { expiresIn: "15m" });
+
+      return reply.send({ token, guestUserId });
+    }
+  );
 
   fastify.post(
     "/register",
@@ -664,6 +689,9 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
         });
 
         await invalidateAllSessions(fastify, sub);
+        if (req.user?.jti) {
+          await denylistAccessToken(fastify, req.user.jti);
+        }
         span.setAttribute("auth.outcome", "success");
 
         return clearSessionCookies(reply).send({ success: true });

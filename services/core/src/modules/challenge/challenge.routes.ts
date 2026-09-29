@@ -6,6 +6,7 @@ import {
   SessionEndReason,
   QUEUES,
 } from "@devops/messaging";
+import { requireEnv } from "@devops/observability";
 
 // Circuit Breaker state for sandbox-router health probes
 let probeCircuitOpenUntil = 0;
@@ -15,7 +16,7 @@ const CIRCUIT_COOLDOWN_MS = 15_000;
 
 export async function challengeRoutes(fastify: FastifyInstance) {
   const getGatewayUrls = (sessionId: string) => {
-    const gatewayUrl = process.env["PUBLIC_GATEWAY_URL"] || "http://localhost:8000";
+    const gatewayUrl = requireEnv("PUBLIC_GATEWAY_URL");
     const cleanUrl = gatewayUrl.endsWith("/") ? gatewayUrl.slice(0, -1) : gatewayUrl;
     const wsProto = cleanUrl.startsWith("https://") ? "wss://" : "ws://";
     const hostPart = cleanUrl.replace(/^https?:\/\//, "");
@@ -51,6 +52,7 @@ export async function challengeRoutes(fastify: FastifyInstance) {
         category: true,
         tags: true,
         xp: true,
+        guestTrialEligible: true,
         module: { select: { title: true } },
       },
       orderBy: { createdAt: "asc" },
@@ -154,6 +156,224 @@ export async function challengeRoutes(fastify: FastifyInstance) {
       });
     }
   );
+
+  // GET /challenges/:id/trial/status — checks if visitor has used their trial
+  fastify.get("/challenges/:id/trial/status", async (req: FastifyRequest, reply) => {
+    const { id } = req.params as { id: string };
+    const guestId = req.cookies["devopslab_guest_id"];
+
+    const challenge = await req.prisma.challenge.findUnique({
+      where: { id },
+      select: { id: true, title: true, guestTrialEligible: true },
+    });
+
+    if (!challenge) {
+      return reply.code(404).send({ error: "Challenge not found", code: "NOT_FOUND" });
+    }
+
+    let trialUsed = false;
+    if (guestId) {
+      const used = await fastify.redis.get(`guest:trial:used:${guestId}`);
+      if (used) {
+        trialUsed = true;
+      }
+    }
+
+    return reply.send({
+      eligible: Boolean(challenge.guestTrialEligible),
+      trialUsed,
+    });
+  });
+
+  // POST /challenges/:id/trial — starts an ephemeral 10-minute sandbox trial for guests
+  fastify.post("/challenges/:id/trial", async (req: FastifyRequest, reply) => {
+    const { id } = req.params as { id: string };
+
+    // 1. Validate Challenge eligibility
+    const challenge = await req.prisma.challenge.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        dockerImage: true,
+        title: true,
+        guestTrialEligible: true,
+        requiredProvider: true,
+      },
+    });
+
+    if (!challenge) {
+      return reply.code(404).send({ error: "Challenge not found", code: "NOT_FOUND" });
+    }
+
+    if (!challenge.guestTrialEligible) {
+      return reply.code(403).send({
+        error: "This challenge is not eligible for a guest trial. Please sign up to access all challenges.",
+        code: "TRIAL_NOT_ELIGIBLE",
+      });
+    }
+
+    // 2. Cookie extraction / generation for guest identification
+    let guestId = req.cookies["devopslab_guest_id"];
+    if (!guestId) {
+      guestId = randomUUID();
+      reply.setCookie("devopslab_guest_id", guestId, {
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env["NODE_ENV"] === "production",
+        maxAge: 60 * 60 * 24 * 365, // 1 year
+      });
+    }
+
+    // 3. Check if guest has already used their trial (Redis key: guest:trial:used:<guestId>)
+    const alreadyUsed = await fastify.redis.get(`guest:trial:used:${guestId}`);
+    if (alreadyUsed) {
+      return reply.code(403).send({
+        error: "Trial quota exceeded. You have already completed your guest trial session. Please sign up for a free account to continue learning.",
+        code: "TRIAL_ALREADY_USED",
+      });
+    }
+
+    // 4. Redis-based IP rate limit: max 2 trial launches per IP per hour
+    const clientIp = req.ip || "unknown";
+    const ipRateLimitKey = `ratelimit:guest_trial:ip:${clientIp}`;
+    const ipAttempts = await fastify.redis.incr(ipRateLimitKey);
+    if (ipAttempts === 1) {
+      await fastify.redis.expire(ipRateLimitKey, 3600); // 1 hour window
+    }
+
+    if (ipAttempts > 2) {
+      return reply.code(429).send({
+        error: "Trial quota exceeded. Too many trial attempts from your network. Please sign up for a free account to continue.",
+        code: "RATE_LIMIT_EXCEEDED",
+      });
+    }
+
+    // 5. Ephemeral guest user ID & session initialization
+    const guestUserId = `guest_${guestId}`;
+    const guestTTLMins = fastify.guestTrialTTLMins || 10;
+    const sessionId = randomUUID();
+
+    // Ensure ephemeral guest user exists in the DB so LabSession foreign key constraints are satisfied
+    await req.prisma.user.upsert({
+      where: { id: guestUserId },
+      update: {},
+      create: {
+        id: guestUserId,
+        email: `${guestUserId}@trial.devopslab.internal`,
+        name: "Guest Explorer",
+        role: "GUEST",
+        isPublic: false,
+      },
+    });
+
+    // 6. Acquire lock for provisioning
+    const lockKey = `core:session:${guestUserId}:${challenge.id}`;
+    const acquired = await fastify.redis.set(lockKey, sessionId, "EX", 10, "NX");
+    if (!acquired) {
+      const cachedSessionId = await fastify.redis.get(lockKey);
+      if (cachedSessionId) {
+        return reply.code(200).send({
+          sessionId: cachedSessionId,
+          challengeId: challenge.id,
+          challengeTitle: challenge.title,
+          ...getGatewayUrls(cachedSessionId),
+          ttlMins: guestTTLMins,
+          isGuestTrial: true,
+        });
+      }
+    }
+
+    // 7. Generate short-lived Guest JWT token from auth service for WebSocket terminal & validator
+    let guestToken = "";
+    try {
+      const authRes = await fetch("http://auth-service:8001/guest-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ guestId }),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (authRes.ok) {
+        const data = (await authRes.json()) as { token: string };
+        guestToken = data.token;
+      }
+    } catch (e) {
+      fastify.log.warn({ err: (e as Error).message }, "Failed to fetch guest token from auth service");
+    }
+
+    // 8. Outbox pattern: Write LabSession + OutboxEvent in single transaction
+    const outboxPayload = {
+      type: "session.started" as const,
+      sessionId,
+      userId: guestUserId,
+      challengeId: challenge.id,
+      image: challenge.dockerImage,
+      ttlMins: guestTTLMins,
+      requiredProvider: challenge.requiredProvider || "docker",
+    };
+
+    try {
+      await req.prisma.$transaction([
+        req.prisma.labSession.create({
+          data: {
+            id: sessionId,
+            userId: guestUserId,
+            challengeId: challenge.id,
+            status: "ACTIVE",
+          },
+        }),
+        req.prisma.coreOutboxEvent.create({
+          data: {
+            eventType: "SessionStartedEvent",
+            payload: outboxPayload as object,
+          },
+        }),
+      ]);
+    } catch (err) {
+      fastify.log.error(
+        { err: (err as Error)?.message ?? err },
+        "Guest trial DB transaction failed — rolling back lock"
+      );
+      await fastify.redis.del(lockKey);
+      return reply.code(500).send({ error: "Failed to create guest trial session. Please try again later." });
+    }
+
+    // 9. Mark trial as used in Redis (30-day retention)
+    await fastify.redis.set(`guest:trial:used:${guestId}`, sessionId, "EX", 30 * 24 * 60 * 60);
+
+    // 10. Emit event to message brokers
+    try {
+      await fastify.kafka.emit(new SessionStartedEvent(outboxPayload));
+      const queueName = `${QUEUES.PROVISION_SANDBOX}.${challenge.requiredProvider || "docker"}`;
+      await fastify.rabbitmq.publish(queueName, outboxPayload);
+
+      await req.prisma.coreOutboxEvent.updateMany({
+        where: {
+          eventType: "SessionStartedEvent",
+          payload: { equals: outboxPayload as object },
+          processed: false,
+        },
+        data: { processed: true },
+      });
+    } catch (err) {
+      fastify.log.warn(
+        { err: (err as Error)?.message ?? err },
+        "Guest trial broker emit failed — outbox poller will retry"
+      );
+    }
+
+    fastify.metrics.sessionStartCounter.inc({ challengeId: challenge.id });
+
+    return reply.code(201).send({
+      sessionId,
+      challengeId: challenge.id,
+      challengeTitle: challenge.title,
+      ...getGatewayUrls(sessionId),
+      ttlMins: guestTTLMins,
+      isGuestTrial: true,
+      token: guestToken,
+    });
+  });
 
   fastify.post(
     "/challenges/:id/start",
@@ -275,9 +495,7 @@ export async function challengeRoutes(fastify: FastifyInstance) {
           });
       }
 
-      // 1. ATOMIC IDEMPOTENCY CHECK via Redis SET NX
-      // SET NX is atomic — eliminates the race window between GET and SET.
-      // If the key already exists, SET returns null (another request won the race).
+  
       const lockKey = `core:session:${user.sub}:${challenge.id}`;
       const sessionId = randomUUID();
       const acquired = await fastify.redis.set(lockKey, sessionId, "EX", 10, "NX");
@@ -474,7 +692,7 @@ export async function challengeRoutes(fastify: FastifyInstance) {
     return reply.code(200).send({ success: true });
   });
 
-  fastify.get("/session/:id", { preHandler: [fastify.authenticate] }, async (req, reply) => {
+  fastify.get("/session/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
     const session = await req.prisma.labSession.findUnique({
       where: { id },
@@ -491,7 +709,7 @@ export async function challengeRoutes(fastify: FastifyInstance) {
     });
   });
 
-  fastify.get("/session/:id/health", { preHandler: [fastify.authenticate] }, async (req, reply) => {
+  fastify.get("/session/:id/health", async (req, reply) => {
     const { id } = req.params as { id: string };
     const session = await req.prisma.labSession.findUnique({
       where: { id },
@@ -505,6 +723,41 @@ export async function challengeRoutes(fastify: FastifyInstance) {
 
     // Otherwise assume it's alive or provisioning
     return reply.send({ alive: true });
+  });
+
+  fastify.get("/session/:id/check-results", async (req, reply) => {
+    const { id: sessionId } = req.params as { id: string };
+    const session = await req.prisma.labSession.findUnique({
+      where: { id: sessionId },
+      select: { userId: true, challengeId: true },
+    });
+
+    if (!session) {
+      return reply.code(404).send({ error: "Session not found", code: "NOT_FOUND" });
+    }
+
+    const checkResults = await req.prisma.challengeCheckResult.findMany({
+      where: {
+        userId: session.userId,
+        challengeId: session.challengeId,
+      },
+      select: {
+        checkId: true,
+        status: true,
+        message: true,
+        lastRunAt: true,
+      },
+    });
+
+    return reply.send({
+      sessionId,
+      results: checkResults.map((cr) => ({
+        checkId: cr.checkId,
+        status: cr.status.toLowerCase(),
+        message: cr.message,
+        lastRunAt: cr.lastRunAt,
+      })),
+    });
   });
 
   fastify.get("/challenges/onboarding-status", { preHandler: [fastify.authenticate] }, async (req: FastifyRequest, reply) => {

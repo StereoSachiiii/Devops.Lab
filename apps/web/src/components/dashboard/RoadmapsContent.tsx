@@ -7,18 +7,60 @@ import type { Roadmap, RoadmapProgress } from "@/lib/api-types";
 import Link from "next/link";
 import { AlertCircle, RefreshCw } from "lucide-react";
 
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useMemo } from "react";
+import { CatalogToolbar, type CatalogState, type FilterOptions } from "@/components/dashboard/CatalogToolbar";
+
 export function RoadmapsContent() {
-  const [roadmaps, setRoadmaps] = useState<Roadmap[]>([]);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const [rawRoadmaps, setRawRoadmaps] = useState<Roadmap[]>([]);
   const [progressData, setProgressData] = useState<Record<string, RoadmapProgress>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // State parsed from URL parameters
+  const state: CatalogState = {
+    q: searchParams.get("q") || "",
+    sort: searchParams.get("sort") || "Recommended",
+    difficulty: searchParams.getAll("difficulty"),
+    time: searchParams.getAll("time"),
+    type: searchParams.getAll("type"),
+    view: (searchParams.get("view") as "grid" | "list") || "grid",
+  };
+
+  const updateState = (newState: Partial<CatalogState>) => {
+    const params = new URLSearchParams(searchParams);
+
+    const setArray = (key: string, arr?: string[]) => {
+      if (!arr) return;
+      params.delete(key);
+      arr.forEach((v) => params.append(key, v));
+    };
+
+    if (newState.q !== undefined) {
+      if (newState.q) params.set("q", newState.q);
+      else params.delete("q");
+    }
+
+    if (newState.sort) params.set("sort", newState.sort);
+    if (newState.view) params.set("view", newState.view);
+
+    setArray("difficulty", newState.difficulty);
+    setArray("time", newState.time);
+    setArray("type", newState.type);
+
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const list = await apiClient.roadmaps.getAll();
-      setRoadmaps(list || []);
+      setRawRoadmaps(list || []);
 
       // Fetch progress for each roadmap
       const pMap: Record<string, RoadmapProgress> = {};
@@ -44,6 +86,82 @@ export function RoadmapsContent() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Compute available filters based on distinct categories, timeEstimates, and tags
+  const filterOptions = useMemo(() => {
+    const opts: FilterOptions = {
+      difficulty: {},
+      time: {},
+      type: {},
+    };
+    rawRoadmaps.forEach((r) => {
+      if (r.category) {
+        opts.difficulty[r.category] = (opts.difficulty[r.category] || 0) + 1;
+      }
+      if (r.timeEstimate) {
+        opts.time[r.timeEstimate] = (opts.time[r.timeEstimate] || 0) + 1;
+      }
+      if (r.tags && Array.isArray(r.tags)) {
+        r.tags.forEach((t) => {
+          opts.type[t] = (opts.type[t] || 0) + 1;
+        });
+      }
+    });
+    return opts;
+  }, [rawRoadmaps]);
+
+  // Filter and sort roadmaps
+  const filteredRoadmaps = useMemo(() => {
+    let result = rawRoadmaps;
+
+    // Search query
+    if (state.q) {
+      const q = state.q.toLowerCase();
+      result = result.filter(
+        (r) =>
+          r.title.toLowerCase().includes(q) ||
+          r.description.toLowerCase().includes(q) ||
+          (r.category && r.category.toLowerCase().includes(q)) ||
+          (r.tags && r.tags.some((t) => t.toLowerCase().includes(q)))
+      );
+    }
+
+    // Category / Difficulty dropdown
+    if (state.difficulty.length > 0) {
+      result = result.filter((r) => r.category && state.difficulty.includes(r.category));
+    }
+
+    // Time estimate filter
+    if (state.time.length > 0) {
+      result = result.filter((r) => r.timeEstimate && state.time.includes(r.timeEstimate));
+    }
+
+    // Tags / Type filter
+    if (state.type.length > 0) {
+      result = result.filter((r) => r.tags && r.tags.some((t) => state.type.includes(t)));
+    }
+
+    // Sorting
+    const sorted = [...result];
+    if (state.sort === "Newest") {
+      sorted.reverse();
+    } else if (state.sort === "Time: Shortest → Longest") {
+      sorted.sort((a, b) => {
+        const parseMinutes = (str?: string) => {
+          if (!str) return 0;
+          const match = str.match(/\d+/);
+          return match ? parseInt(match[0], 10) : 0;
+        };
+        return parseMinutes(a.timeEstimate) - parseMinutes(b.timeEstimate);
+      });
+    } else if (state.sort === "Difficulty: Beginner → Advanced") {
+      sorted.sort((a, b) => a.nodeCount - b.nodeCount);
+    } else if (state.sort === "Most attempted") {
+      sorted.sort((a, b) => b.nodeCount - a.nodeCount);
+    }
+
+    return sorted;
+  }, [rawRoadmaps, state.q, state.difficulty, state.time, state.type, state.sort]);
 
   const handleScrollToGrid = () => {
     document.getElementById("roadmap-grid")?.scrollIntoView({ behavior: "smooth" });
@@ -119,8 +237,10 @@ export function RoadmapsContent() {
           Pick a path. Follow the graph.
         </h1>
         <p className="text-panel-muted text-base leading-[1.6] m-0">
-          {roadmaps.length} roadmaps, {roadmaps.reduce((acc, r) => acc + r.nodeCount, 0)} challenges
-          total - each one a real dependency chain, not a bullet list.
+          {(() => {
+            const totalNodes = rawRoadmaps.reduce((acc, r) => acc + r.nodeCount, 0);
+            return `${rawRoadmaps.length} ${rawRoadmaps.length === 1 ? "roadmap" : "roadmaps"}, ${totalNodes} ${totalNodes === 1 ? "challenge" : "challenges"} total - each one a real dependency chain, not a bullet list.`;
+          })()}
         </p>
       </section>
 
@@ -158,7 +278,7 @@ export function RoadmapsContent() {
       </section>
 
       {/* Structured Onboarding Explainer */}
-      <section className="bg-[linear-gradient(135deg,rgba(53,214,180,0.05),rgba(255,157,92,0.05))] border border-panel-border rounded-[14px] p-8 mb-5">
+      <section className="bg-[linear-gradient(135deg,rgba(53,214,180,0.05),rgba(255,157,92,0.05))] border border-panel-border rounded-[14px] p-8">
         <h2 className="font-space text-xl font-semibold text-panel-text mb-3 flex items-center gap-2">
           Built for structured onboarding
         </h2>
@@ -169,18 +289,54 @@ export function RoadmapsContent() {
         </p>
       </section>
 
-      {/* 3. Roadmap Card Grid */}
-      <section id="roadmap-grid" className="relative z-10">
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-6">
-          {roadmaps.map((r) => (
-            <RoadmapCard
-              key={r.id}
-              roadmap={r}
-              status={getStatus(r)}
-              completedCount={getCompletedCount(r)}
-            />
-          ))}
-        </div>
+      {/* 3. Toolbar and Roadmap Card Grid */}
+      <section id="roadmap-grid" className="relative z-10 flex flex-col gap-6">
+        <CatalogToolbar
+          state={state}
+          onChange={updateState}
+          options={filterOptions}
+          resultCount={filteredRoadmaps.length}
+          searchPlaceholder='Search roadmaps (e.g. "linux", "kubernetes", "sre")'
+          entityName="roadmap"
+          difficultyLabel="Category"
+        />
+
+        {filteredRoadmaps.length === 0 ? (
+          <div className="p-10 md:p-[60px_40px] rounded-xl text-center border border-dashed border-panel-border">
+            <div className="font-mono text-sm text-panel-muted mb-4">
+              $ grep -r "{state.q || "matches"}" ./roadmaps → (no output)
+            </div>
+            <div className="text-panel-text mb-5 text-[15px]">
+              Try removing a filter, or{" "}
+              <button
+                onClick={() => updateState({ q: "", difficulty: [], time: [], type: [] })}
+                className="bg-transparent border-none text-teal underline cursor-pointer text-[15px] p-0"
+              >
+                Clear all filters
+              </button>
+            </div>
+            <Link href="/challenges" className="text-panel-muted-dim text-[13px] no-underline hover:text-teal transition-colors">
+              Explore individual challenges instead &rarr;
+            </Link>
+          </div>
+        ) : (
+          <div
+            className={`gap-6 ${
+              state.view === "grid"
+                ? "grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))]"
+                : "flex flex-col"
+            }`}
+          >
+            {filteredRoadmaps.map((r) => (
+              <RoadmapCard
+                key={r.id}
+                roadmap={r}
+                status={getStatus(r)}
+                completedCount={getCompletedCount(r)}
+              />
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

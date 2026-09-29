@@ -49,50 +49,52 @@ func main() {
 	}
 	defer redisStore.Close()
 
-	var provider sandbox.SandboxProvider
+	providers := make(map[string]sandbox.SandboxProvider)
 	var isolationDowngraded bool
-	switch cfg.SandboxProvider {
-	case "flintlock":
-		if os.Getenv("FLINTLOCK_NETWORK_ISOLATION_CONFIRMED") != "true" {
-			log.Error("Flintlock provider selected but FLINTLOCK_NETWORK_ISOLATION_CONFIRMED is not true. Refusing to boot due to network isolation risks.")
-			os.Exit(1)
-		}
-		provider, err = sandbox.NewFlintlockProvider(cfg.FlintlockAddress, log)
+
+	// 1. Standard Docker Provider (Always initialized as baseline / fallback)
+	dockerProv, err := sandbox.NewDockerProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
+	if err != nil {
+		log.Error("Docker provider init failed", "error", err)
+		os.Exit(1)
+	}
+	providers["docker"] = dockerProv
+
+	// 2. gVisor Provider
+	gvisorProv, err := sandbox.NewGVisorProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
+	if err != nil {
+		log.Warn("gVisor provider init unavailable on this host, aliasing 'gvisor' to Docker with downgraded isolation", "error", err)
+		providers["gvisor"] = dockerProv
+		isolationDowngraded = true
+	} else {
+		providers["gvisor"] = gvisorProv
+	}
+
+	// 3. Kata Containers Provider
+	kataProv, err := sandbox.NewKataProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
+	if err != nil {
+		log.Warn("Kata provider init unavailable on this host, aliasing 'kata' to Docker fallback", "error", err)
+		providers["kata"] = dockerProv
+	} else {
+		providers["kata"] = kataProv
+	}
+
+	// 4. Flintlock MicroVM Provider (Optional / when enabled)
+	if os.Getenv("FLINTLOCK_NETWORK_ISOLATION_CONFIRMED") == "true" {
+		flintlockProv, err := sandbox.NewFlintlockProvider(cfg.FlintlockAddress, log)
 		if err != nil {
-			log.Error("Flintlock provider init failed", "error", err)
-			os.Exit(1)
+			log.Warn("Flintlock provider init failed", "error", err)
+		} else {
+			providers["flintlock"] = flintlockProv
 		}
-	case "kata":
-		provider, err = sandbox.NewKataProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
-		if err != nil {
-			log.Error("Kata provider init failed", "error", err)
-			os.Exit(1)
-		}
-	case "gvisor":
-		provider, err = sandbox.NewGVisorProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
-		if err != nil {
-			log.Warn("gVisor provider init failed, falling back to standard Docker provider for dev compatibility", "error", err)
-			provider, err = sandbox.NewDockerProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
-			if err != nil {
-				log.Error("Docker provider fallback failed", "error", err)
-				os.Exit(1)
-			}
-			isolationDowngraded = true
-		}
-	case "docker":
-		fallthrough
-	default:
-		provider, err = sandbox.NewDockerProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
-		if err != nil {
-			log.Error("Docker provider init failed", "error", err)
-			os.Exit(1)
-		}
+	} else {
+		log.Info("Flintlock microVM isolation confirmation not set; skipping Flintlock provider registration")
 	}
 
 	kafkaProducer := messaging.NewKafkaProducer(cfg.KafkaBrokers, cfg.KafkaClientID, log)
 	defer kafkaProducer.Close()
 
-	sessionMgr, err := session.NewManager(provider, redisStore, cfg.SessionTTLMins, cfg.WorkerAddr, log)
+	sessionMgr, err := session.NewManager(providers, redisStore, cfg.SessionTTLMins, cfg.WorkerAddr, log)
 	if err != nil {
 		log.Error("Session manager init failed", "error", err)
 		os.Exit(1)
@@ -100,17 +102,17 @@ func main() {
 	sessionMgr.IsolationDowngraded = isolationDowngraded
 	sessionMgr.StartDiskMonitor(ctx)
 
-	val := validator.NewValidator(provider, log)
+	val := validator.NewValidator(sessionMgr, log)
 
 	reaper := session.NewReaper(sessionMgr, time.Duration(cfg.SessionTTLMins)*time.Minute, log)
 	go reaper.Start(ctx)
 
 	// ── 5. Terminal Multiplexer ──────────────────────────────────────────
-	multiplexer := terminal.NewMultiplexer(provider, log)
+	multiplexer := terminal.NewMultiplexerWithResolver(sessionMgr, dockerProv, log)
 
 	// ── 6. HTTP Server ──────────────────────────────────────────────────
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sessions/", terminal.Handler(sessionMgr, multiplexer, provider, cfg.JWTPublicKey, cfg.AllowedOrigins, log))
+	mux.HandleFunc("/sessions/", terminal.Handler(sessionMgr, multiplexer, dockerProv, cfg.JWTPublicKey, cfg.AllowedOrigins, log))
 
 	mux.HandleFunc("/validate/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -130,7 +132,7 @@ func main() {
 		}
 
 		startVal := time.Now()
-		result, err := val.Check(r.Context(), data.ContainerID, sessionID)
+		result, err := val.Check(r.Context(), data.RuntimeID, sessionID)
 		valDuration := time.Since(startVal).Seconds()
 		if err != nil {
 			metrics.ValidationDuration.WithLabelValues("error").Observe(valDuration)
@@ -153,6 +155,12 @@ func main() {
 			})
 		}
 
+		// Use an independent context for Kafka publish — deliberately NOT r.Context().
+		// r.Context() is cancelled when the HTTP client disconnects (tab close, network drop),
+		// which would silently swallow the solve event before Kafka acknowledges it.
+		kafkaCtx, kafkaCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer kafkaCancel()
+
 		if result.Passed {
 			event := messaging.ChallengeResultEvent{
 				SubmissionID: sessionID,
@@ -163,7 +171,7 @@ func main() {
 				DurationMs:   0,
 				Checks:       checks,
 			}
-			if err := kafkaProducer.EmitResult(r.Context(), messaging.TopicChallengeSolved, event); err != nil {
+			if err := kafkaProducer.EmitResult(kafkaCtx, messaging.TopicChallengeSolved, event); err != nil {
 				log.Error("Failed to emit challenge.solved", "error", err)
 			}
 		} else {
@@ -176,7 +184,7 @@ func main() {
 				DurationMs:   0,
 				Checks:       checks,
 			}
-			if err := kafkaProducer.EmitResult(r.Context(), messaging.TopicChallengeFailed, event); err != nil {
+			if err := kafkaProducer.EmitResult(kafkaCtx, messaging.TopicChallengeFailed, event); err != nil {
 				log.Error("Failed to emit challenge.failed", "error", err)
 			}
 		}
@@ -221,9 +229,16 @@ func main() {
 		}
 	}()
 
-	// RabbitMQ session consumer (Replaces Kafka for Sandbox Orchestration)
-	provisionQueue := "provision.sandbox." + cfg.SandboxProvider
-	queues := []string{provisionQueue, "terminate.sandbox"}
+	// RabbitMQ session consumer (Dynamic Multi-Runtime Sandbox Orchestration)
+	// Workers listen on generic and runtime-specific queues, dynamically dispatching to the required provider
+	queues := []string{
+		"provision.sandbox.docker",
+		"provision.sandbox.gvisor",
+		"provision.sandbox.kata",
+		"provision.sandbox.flintlock",
+		"provision.sandbox",
+		"terminate.sandbox",
+	}
 	consumer := messaging.NewSessionConsumer(cfg.RabbitMQURL, queues, log)
 	
 	// Start consumer in a resilient reconnect loop
@@ -258,7 +273,19 @@ func main() {
 
 			err := consumer.Consume(ctx, messaging.Handlers{
 				OnSessionStarted: func(ctx context.Context, job messaging.SessionStartedJob) error {
-					_, err := sessionMgr.Create(ctx, job.SessionID, job.UserID, job.ChallengeID, job.Image)
+					_, err := sessionMgr.Create(ctx, job.SessionID, job.UserID, job.ChallengeID, job.Image, job.RequiredProvider)
+					if err != nil {
+						// Emit failure event to Kafka so core-service is notified
+						failCtx, failCancel := context.WithTimeout(context.Background(), 5*time.Second)
+						_ = kafkaProducer.EmitSessionFailed(failCtx, messaging.SessionFailedJob{
+							Type:        "session.failed",
+							SessionID:   job.SessionID,
+							UserID:      job.UserID,
+							ChallengeID: job.ChallengeID,
+							Error:       err.Error(),
+						})
+						failCancel()
+					}
 					return err
 				},
 				OnSessionEnded: func(ctx context.Context, job messaging.SessionEndedJob) error {

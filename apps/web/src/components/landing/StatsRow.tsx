@@ -64,7 +64,7 @@ export function CountUp({
 export function StatsRow() {
   return (
     <section className="py-12 border-y border-panel-border relative z-10">
-      <div className="stats-grid max-w-[1180px] mx-auto px-8 grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+      <div className="stats-grid max-w-[1440px] xl:max-w-[1600px] 2xl:max-w-[1720px] mx-auto px-6 md:px-8 xl:px-12 grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
         {stats.map(({ value, label, num, prefix, suffix, decimals }) => (
           <div key={label}>
             <div className="font-space font-bold text-[34px] text-amber">

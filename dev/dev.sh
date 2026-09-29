@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -eo pipefail
 
 # =============================================================================
@@ -19,23 +19,23 @@ set -eo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-echo "🚀 Starting lightweight development databases (Postgres + Redis: ~105MB RAM)..."
+echo "ðŸš€ Starting lightweight development databases (Postgres + Redis: ~105MB RAM)..."
 docker compose -p devops-dev -f "$SCRIPT_DIR/docker-compose.dev.yml" up -d
 
-echo "⏳ Waiting for Postgres & Redis to report healthy..."
+echo "â³ Waiting for Postgres & Redis to report healthy..."
 until [ "$(docker inspect --format='{{json .State.Health.Status}}' devops-postgres-dev 2>/dev/null)" == '"healthy"' ]; do
   sleep 1
 done
 until [ "$(docker inspect --format='{{json .State.Health.Status}}' devops-redis-dev 2>/dev/null)" == '"healthy"' ]; do
   sleep 1
 done
-echo "✅ Core dev databases healthy."
+echo "âœ… Core dev databases healthy."
 
-echo "📦 Ensuring internal packages are compiled..."
+echo "ðŸ“¦ Ensuring internal packages are compiled..."
 cd "$ROOT_DIR"
 npm run build:packages
 
-echo "⚡ Launching host-native microservices (Hot Reloading with tsx watch & Next.js Turbopack)..."
+echo "âš¡ Launching host-native microservices (Hot Reloading with tsx watch & Next.js Turbopack)..."
 npx concurrently -n "web,auth,core,notification" -c "blue,green,yellow,magenta" \
   "npm run dev --workspace=apps/web" \
   "npm run dev --workspace=services/auth" \

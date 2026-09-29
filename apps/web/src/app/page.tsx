@@ -16,7 +16,6 @@ import { B2bSection } from "@/components/landing/B2bSection";
 import { FlashcardSection } from "@/components/landing/FlashcardSection";
 import { QuizSection } from "@/components/landing/QuizSection";
 import { TechStackSection } from "@/components/landing/TechStackSection";
-import { ChallengesSection } from "@/components/landing/ChallengesSection";
 
 
 
@@ -34,8 +33,6 @@ export default function LandingPage() {
       />
 
       <Hero />
-
-      <ChallengesSection />
 
       <StatsRow />
 

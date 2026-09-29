@@ -158,29 +158,30 @@ export function CatalogContent() {
     <div className="text-panel-text font-sans relative">
       <CatalogTour show={showTour} onDone={() => setShowTour(false)} />
 
-      {/* Hero Section */}
-      <div className="pt-[60px] pb-6 max-w-[800px] mx-auto text-center relative">
+      {/* Hero Section (Compact for utility/browse view) */}
+      <div className="pt-6 pb-4 max-w-[800px] mx-auto text-center relative">
         <button
           onClick={() => setShowTour(true)}
-          className="absolute top-5 right-5 bg-panel-2 border border-panel-border rounded-full w-8 h-8 flex items-center justify-center cursor-pointer text-panel-muted transition-all duration-200 hover:text-amber hover:border-[var(--color-amber)]"
+          className="absolute top-1 right-0 sm:right-5 bg-panel-2 border border-panel-border rounded-full w-8 h-8 flex items-center justify-center cursor-pointer text-panel-muted transition-all duration-200 hover:text-amber hover:border-[var(--color-amber)]"
           title="Replay Onboarding Tour"
         >
           <HelpCircle size={16} />
         </button>
-        <div className="font-mono text-xs tracking-[0.14em] uppercase text-teal mb-4 font-semibold">
+        <div className="font-mono text-[11px] tracking-[0.14em] uppercase text-teal mb-2 font-semibold">
           BROWSE CHALLENGES
         </div>
-        <h1 className="font-space text-[42px] font-bold tracking-[-0.015em] mb-4 text-panel-text">
+        <h1 className="font-heading text-[28px] md:text-[34px] font-bold tracking-[-0.015em] mb-2 text-panel-text">
           Every broken environment, searchable.
         </h1>
-        <p className="text-panel-muted text-base leading-[1.6] m-0">
+        <p className="text-panel-muted text-[14px] md:text-[15px] leading-[1.5] m-0">
           {challenges.length} challenges across {Object.keys(filterOptions.type).length} categories
-          - from a five-minute permissions fix to a full incident response.
+          — spin up a real container or VM with root access and fix it.
         </p>
       </div>
 
-      <div className="max-w-[1180px] mx-auto flex flex-col lg:flex-row gap-8">
-        <div className="flex flex-col gap-6 lg:w-[240px] shrink-0">
+      <div className="w-full mx-auto flex flex-col lg:flex-row gap-8 items-start mt-4">
+        {/* Sticky Desktop Sidebar with Independent Height Context */}
+        <aside className="flex flex-col gap-6 lg:w-[240px] shrink-0 w-full lg:sticky lg:top-[84px] z-20">
           <CategorySidebar
             categories={filterOptions.type}
             totalChallenges={challenges.length}
@@ -206,9 +207,9 @@ export function CatalogContent() {
               </p>
             </div>
           </div>
-        </div>
+        </aside>
 
-        <div className="flex-1 min-w-0">
+        <main className="flex-1 min-w-0 w-full">
           <CatalogToolbar
             state={state}
             onChange={updateState}
@@ -225,12 +226,18 @@ export function CatalogContent() {
 
             {isFirstLoad && (
               <div
-                className={`gap-5 ${state.view === "grid" ? `grid ${challenges.length >= 9 ? "grid-cols-[repeat(auto-fill,minmax(340px,1fr))]" : "grid-cols-1 md:grid-cols-2"}` : "flex flex-col"}`}
+                className={`gap-5 ${
+                  state.view === "grid"
+                    ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+                    : "flex flex-col"
+                }`}
               >
                 {[1, 2, 3, 4, 5, 6].map((i) => (
                   <div
                     key={i}
-                    className={`bg-panel border border-panel-border rounded-[14px] relative overflow-hidden ${state.view === "list" ? "p-5 px-[26px] h-[100px]" : "p-[26px] h-[220px]"}`}
+                    className={`bg-panel border border-panel-border rounded-[14px] relative overflow-hidden ${
+                      state.view === "list" ? "p-5 px-[26px] h-[100px]" : "p-[26px] h-[220px]"
+                    }`}
                   >
                     <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.02),transparent)] -translate-x-full animate-[shimmer_1.5s_infinite]" />
                   </div>
@@ -260,7 +267,11 @@ export function CatalogContent() {
 
             {!isFirstLoad && !error && filtered.length > 0 && (
               <div
-                className={`gap-5 ${state.view === "grid" ? `grid ${challenges.length >= 9 ? "grid-cols-[repeat(auto-fill,minmax(340px,1fr))]" : "grid-cols-1 md:grid-cols-2"}` : "flex flex-col"}`}
+                className={`gap-5 ${
+                  state.view === "grid"
+                    ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+                    : "flex flex-col"
+                }`}
               >
                 {filtered.map((challenge, i) => (
                   <ChallengeCard
@@ -282,7 +293,7 @@ export function CatalogContent() {
               </div>
             )}
           </div>
-        </div>
+        </main>
       </div>
     </div>
   );

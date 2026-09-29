@@ -414,3 +414,8 @@ func (f *FlintlockProvider) ExecInteractiveCmd(ctx context.Context, containerID 
 func (f *FlintlockProvider) EnforceDiskQuotas(ctx context.Context, maxBytes int64) ([]string, error) {
 	return nil, nil
 }
+
+// ReapOrphans is a no-op for FlintlockProvider in this environment.
+func (f *FlintlockProvider) ReapOrphans(ctx context.Context, activeSessionIDs map[string]struct{}, minAge time.Duration) ([]string, error) {
+	return nil, nil
+}

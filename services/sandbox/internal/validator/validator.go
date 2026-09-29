@@ -39,15 +39,26 @@ type Result struct {
 	CheckResults []CheckResult `json:"check_results"`
 }
 
-// Validator runs challenge validator scripts inside containers.
-type Validator struct {
-	docker sandbox.SandboxProvider
-	log    *slog.Logger
+// ProviderResolver allows resolving a SandboxProvider dynamically by session ID.
+type ProviderResolver interface {
+	GetProvider(sessionID string) (sandbox.SandboxProvider, error)
 }
 
-// NewValidator creates a Validator.
-func NewValidator(docker sandbox.SandboxProvider, log *slog.Logger) *Validator {
-	return &Validator{docker: docker, log: log}
+// Validator runs challenge validator scripts inside containers.
+type Validator struct {
+	resolver ProviderResolver
+	fallback sandbox.SandboxProvider
+	log      *slog.Logger
+}
+
+// NewValidator creates a Validator using dynamic provider resolution from session manager.
+func NewValidator(resolver ProviderResolver, log *slog.Logger) *Validator {
+	return &Validator{resolver: resolver, log: log}
+}
+
+// NewValidatorWithProvider creates a Validator with a static provider (useful for standalone unit tests).
+func NewValidatorWithProvider(provider sandbox.SandboxProvider, log *slog.Logger) *Validator {
+	return &Validator{fallback: provider, log: log}
 }
 
 // Check runs /validator.sh inside the container and returns the result.
@@ -61,10 +72,24 @@ func NewValidator(docker sandbox.SandboxProvider, log *slog.Logger) *Validator {
 func (v *Validator) Check(ctx context.Context, containerID, sessionID string) (Result, error) {
 	v.log.Info("🔍 Running validator", "sessionId", sessionID, "containerID", containerID[:12])
 
+	var provider sandbox.SandboxProvider
+	if v.resolver != nil {
+		p, err := v.resolver.GetProvider(sessionID)
+		if err == nil && p != nil {
+			provider = p
+		}
+	}
+	if provider == nil {
+		provider = v.fallback
+	}
+	if provider == nil {
+		return Result{}, fmt.Errorf("validator: failed to resolve sandbox provider for session %s", sessionID)
+	}
+
 	execCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	result, err := v.docker.Exec(execCtx, containerID, []string{"sh", "-c", "if [ ! -f /validator.sh ]; then echo 'validator script /validator.sh not found in container'; exit 127; fi; exec /bin/bash /validator.sh"})
+	result, err := provider.Exec(execCtx, containerID, []string{"sh", "-c", "if [ ! -f /validator.sh ]; then echo 'validator script /validator.sh not found in container'; exit 127; fi; exec /bin/bash /validator.sh"})
 	if err != nil {
 		if execCtx.Err() == context.DeadlineExceeded {
 			v.log.Error("Validator script timed out", "sessionId", sessionID, "timeout", "30s")

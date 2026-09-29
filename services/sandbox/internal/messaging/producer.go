@@ -150,6 +150,47 @@ func (k *KafkaProducer) EmitDLQ(ctx context.Context, originalTopic string, key, 
 	return nil
 }
 
+// EmitSessionFailed publishes a SessionFailedJob event wrapped in the standard envelope.
+func (k *KafkaProducer) EmitSessionFailed(ctx context.Context, job SessionFailedJob) error {
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	version := "1.0.0"
+	envelope := struct {
+		Topic         string           `json:"topic"`
+		Version       string           `json:"version"`
+		Timestamp     string           `json:"timestamp"`
+		CorrelationID string           `json:"correlationId"`
+		Payload       SessionFailedJob `json:"payload"`
+	}{
+		Topic:         TopicSessionFailed,
+		Version:       version,
+		Timestamp:     timestamp,
+		CorrelationID: job.SessionID,
+		Payload:       job,
+	}
+
+	payload, err := json.Marshal(envelope)
+	if err != nil {
+		return fmt.Errorf("kafka: marshal failed: %w", err)
+	}
+
+	msg := kafka.Message{
+		Topic: TopicSessionFailed,
+		Key:   []byte(job.SessionID),
+		Value: payload,
+	}
+
+	if err := k.writer.WriteMessages(ctx, msg); err != nil {
+		return fmt.Errorf("kafka: write to %s failed: %w", TopicSessionFailed, err)
+	}
+
+	k.log.Info("Session failed event published to Kafka",
+		"topic", TopicSessionFailed,
+		"sessionId", job.SessionID,
+		"error", job.Error,
+	)
+	return nil
+}
+
 // Close shuts down the Kafka writer.
 func (k *KafkaProducer) Close() error {
 	return k.writer.Close()

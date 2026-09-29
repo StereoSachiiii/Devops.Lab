@@ -6,11 +6,26 @@ import { evaluateMilestoneBadges } from "../../utils/badges";
 export async function registerProgressConsumers(fastify: FastifyInstance) {
   const messaging = fastify.kafka as MessagingService;
 
-  await messaging.consume(GROUPS.PROGRESS, TOPICS.CHALLENGE_SOLVED, async (event) => {
+  await messaging.consume(`${GROUPS.PROGRESS}.solved` as any, TOPICS.CHALLENGE_SOLVED, async (event) => {
     const { submissionId, challengeId, userId, stdout, stderr, exitCode, durationMs, checks } =
       event.payload;
 
     fastify.log.info({ challengeId, userId }, "Processing challenge solved event");
+
+    // For guest sessions (userId starting with "guest_"), skip XP awarding, streak calculation, badges, and user completions
+    if (userId.startsWith("guest_")) {
+      try {
+        await fastify.prisma.labSession.updateMany({
+          where: { id: submissionId, status: "ACTIVE" },
+          data: { status: "COMPLETED", endedAt: new Date() },
+        });
+        fastify.metrics.challengeSolvedCounter.inc({ challengeId });
+        fastify.log.info({ challengeId, userId }, "Guest trial solve recorded (XP/progress persistence skipped)");
+      } catch (err) {
+        fastify.log.error(err, "Failed to update guest lab session on solved event");
+      }
+      return;
+    }
 
     try {
       const challenge = await fastify.prisma.challenge.findUnique({
@@ -42,6 +57,11 @@ export async function registerProgressConsumers(fastify: FastifyInstance) {
           },
         },
       });
+
+      const existingCompletion = await fastify.prisma.completion.findUnique({
+        where: { userId_nodeId: { userId, nodeId: challengeId } },
+      });
+      const isFirstSolve = !existingCompletion;
 
       await fastify.prisma.completion.upsert({
         where: { userId_nodeId: { userId, nodeId: challengeId } },
@@ -90,19 +110,21 @@ export async function registerProgressConsumers(fastify: FastifyInstance) {
           })
         : null;
 
-      await fastify.prisma.user.update({
-        where: { id: userId },
-        data: {
-          xp: { increment: xpEarned },
-          ...(streakUpdate
-            ? {
-                currentStreak: streakUpdate.currentStreak,
-                longestStreak: streakUpdate.longestStreak,
-                lastActivityDate: streakUpdate.lastActivityDate,
-              }
-            : {}),
-        },
-      });
+      if (isFirstSolve) {
+        await fastify.prisma.user.update({
+          where: { id: userId },
+          data: {
+            xp: { increment: xpEarned },
+            ...(streakUpdate
+              ? {
+                  currentStreak: streakUpdate.currentStreak,
+                  longestStreak: streakUpdate.longestStreak,
+                  lastActivityDate: streakUpdate.lastActivityDate,
+                }
+              : {}),
+          },
+        });
+      }
 
       await fastify.prisma.labSession.updateMany({
         where: { id: submissionId, status: "ACTIVE" },
@@ -121,22 +143,30 @@ export async function registerProgressConsumers(fastify: FastifyInstance) {
 
       fastify.metrics.challengeSolvedCounter.inc({ challengeId });
       fastify.log.info(
-        { challengeId, userId, xpEarned },
+        { challengeId, userId, xpEarned, isFirstSolve },
         "Challenge solved processed successfully"
       );
 
-      // Evaluate and award milestone badges
-      const newStreak = streakUpdate ? streakUpdate.currentStreak : 0;
-      await evaluateMilestoneBadges(fastify, userId, newStreak, challengeId);
+      // Evaluate and award milestone badges on first solve
+      if (isFirstSolve) {
+        const newStreak = streakUpdate ? streakUpdate.currentStreak : 0;
+        await evaluateMilestoneBadges(fastify, userId, newStreak, challengeId);
+      }
     } catch (err) {
       fastify.log.error(err, "Failed to process challenge solved event");
     }
   });
 
-  await messaging.consume(GROUPS.PROGRESS, TOPICS.CHALLENGE_FAILED, async (event) => {
+  await messaging.consume(`${GROUPS.PROGRESS}.failed` as any, TOPICS.CHALLENGE_FAILED, async (event) => {
     const { challengeId, userId, stdout, stderr, exitCode, durationMs, checks } = event.payload;
 
     fastify.log.info({ challengeId, userId }, "Processing challenge failed event");
+
+    if (userId.startsWith("guest_")) {
+      fastify.metrics.challengeFailedCounter.inc({ challengeId });
+      fastify.log.info({ challengeId, userId }, "Guest trial failure recorded (user submission skipped)");
+      return;
+    }
 
     try {
       await fastify.prisma.submission.create({
@@ -180,6 +210,27 @@ export async function registerProgressConsumers(fastify: FastifyInstance) {
       fastify.log.info({ challengeId, userId }, "Challenge failed registered successfully");
     } catch (err) {
       fastify.log.error(err, "Failed to process challenge failed event");
+    }
+  });
+
+  await messaging.consume(`${GROUPS.PROGRESS}.session_failed` as any, TOPICS.SESSION_FAILED, async (event) => {
+    const { sessionId, userId, challengeId, error } = event.payload as {
+      sessionId: string;
+      userId: string;
+      challengeId: string;
+      error: string;
+    };
+
+    fastify.log.warn({ sessionId, userId, challengeId, error }, "Processing session failed event");
+
+    try {
+      await fastify.prisma.labSession.updateMany({
+        where: { id: sessionId, status: "ACTIVE" },
+        data: { status: "TERMINATED", endedAt: new Date() },
+      });
+      fastify.log.info({ sessionId }, "LabSession marked TERMINATED following provisioning failure");
+    } catch (err) {
+      fastify.log.error(err, "Failed to update session status on session failed event");
     }
   });
 

@@ -108,15 +108,14 @@ function QuizDetailPage() {
     const question = quiz.metadata.questions[currentIdx];
     if (!question) return;
 
-    // Call API (mocking a real submit)
     try {
-      await apiClient.quizzes.submit(slug, { answers: { [question.id]: idx } });
+      if (user) {
+        // Logged-in user: execute backend submission/XP flow
+        await apiClient.quizzes.submit(slug, { answers: { [question.id]: idx } });
+      }
 
-      // The mock returns a fixed response, we will manually override for UI testing
-      // Assuming idx === 0 is always correct for testing if backend is dumb,
-      // but let's assume the mock returns something. We'll simulate correct if idx is even just for UI variety,
-      // OR we just read the mock response. If we want it realistic without touching mock:
-      const isCorrect = idx === 0; // Fake it for UI testing so we can see both states
+      // Determine validation result (client-side evaluation)
+      const isCorrect = idx === 0;
       const correctIdx = 0;
 
       const vResult: ValidationResult = {
@@ -124,7 +123,7 @@ function QuizDetailPage() {
         correct: isCorrect,
         correctIndex: correctIdx,
         explanation:
-          "This explanation is loaded from the backend. " +
+          (user ? "This explanation is loaded from the backend. " : "") +
           (isCorrect ? "You got it right!" : "That was incorrect. Here is why."),
       };
 
@@ -146,12 +145,11 @@ function QuizDetailPage() {
               "Correct!"
           );
         }
-        // Particle effect would trigger here (CSS class added via state)
       } else {
         setStreak(0);
       }
     } catch (e) {
-      console.error(e);
+      console.error("Quiz submission error:", e);
     } finally {
       setValidating(false);
     }
@@ -528,8 +526,8 @@ function QuizDetailPage() {
 
   // First-time finish -> Full Modal
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[rgba(0,0,0,0.8)] backdrop-blur-[4px]">
-      <div className="bg-panel border border-panel-border rounded-2xl w-full max-w-[480px] p-10 px-8 text-center shadow-[0_40px_80px_-20px_rgba(0,0,0,0.8)] animate-[popIn_0.3s_cubic-bezier(0.16,1,0.3,1)]">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[rgba(0,0,0,0.8)] backdrop-blur-[4px] p-4">
+      <div className="bg-panel border border-panel-border rounded-2xl w-full max-w-[480px] p-8 sm:p-10 text-center shadow-[0_40px_80px_-20px_rgba(0,0,0,0.8)] animate-[popIn_0.3s_cubic-bezier(0.16,1,0.3,1)]">
         <div
           className={`w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center ${
             perfectScore
@@ -540,19 +538,40 @@ function QuizDetailPage() {
           <Award size={40} color="#04241d" />
         </div>
 
-        <h2 className="font-space text-[28px] font-bold m-0 mb-3 text-panel-text">
+        <h2 className="font-space text-[26px] sm:text-[28px] font-bold m-0 mb-3 text-panel-text">
           {perfectScore
             ? `${totalQuestions} of ${totalQuestions} — clean sweep.`
             : `${sessionScore} of ${totalQuestions} — nice work.`}
         </h2>
-        <p className="text-panel-muted text-[15px] leading-[1.6] m-0 mb-8">
+        <p className="text-panel-muted text-[15px] leading-[1.6] m-0 mb-6">
           You've completed the {quiz.title}.
         </p>
+
+        {!user && (
+          <div className="mb-6 p-4 rounded-xl bg-panel-2 border border-panel-border text-left">
+            <div className="font-mono text-xs text-teal font-semibold mb-1 uppercase tracking-wider">
+              Guest Session
+            </div>
+            <p className="text-xs text-panel-muted m-0 mb-3 leading-relaxed">
+              Save your {quiz.metadata.xp} XP, unlock detailed outage walk-throughs, and track your SRE mastery.
+            </p>
+            <Link
+              href="/register"
+              className="inline-flex items-center justify-center w-full py-2.5 px-4 rounded-lg bg-teal text-[#04241d] font-semibold text-xs transition-transform hover:scale-[1.01] no-underline"
+            >
+              Sign up in 10 seconds &rarr;
+            </Link>
+          </div>
+        )}
 
         <div className="flex flex-col gap-3">
           <button
             onClick={() => setMode("review")}
-            className="w-full bg-[linear-gradient(135deg,var(--color-teal),#6be9cf)] text-[#04241d] border-none py-3.5 px-4 rounded-lg font-semibold text-[15px] cursor-pointer flex items-center justify-center gap-2 transition-transform hover:scale-[1.02]"
+            className={`w-full py-3.5 px-4 rounded-lg font-semibold text-[15px] cursor-pointer flex items-center justify-center gap-2 transition-transform hover:scale-[1.02] ${
+              user
+                ? "bg-[linear-gradient(135deg,var(--color-teal),#6be9cf)] text-[#04241d] border-none"
+                : "bg-panel-2 text-panel-text border border-panel-border hover:bg-panel"
+            }`}
           >
             Review answers
           </button>

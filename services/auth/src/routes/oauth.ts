@@ -192,70 +192,76 @@ interface OAuthProfile {
 /** Look up an existing user by provider ID or email; create one if not found. */
 async function findOrCreateOAuthUser(profile: OAuthProfile) {
   // Try to find by provider-specific ID first.
-  // Use transactional consistency for all OAuth user query and link operations
-  return await prisma.$transaction(async (tx) => {
-    let user =
-      profile.provider === "github"
-        ? await tx.user.findUnique({ where: { githubId: profile.providerId } })
-        : profile.provider === "google"
-          ? await tx.user.findUnique({ where: { googleId: profile.providerId } })
-          : await tx.user.findUnique({ where: { ssoId: profile.providerId } });
+  // Use transactional consistency with explicit timeout and maxWait configs for pg-adapter pool safety
+  return await prisma.$transaction(
+    async (tx) => {
+      let user =
+        profile.provider === "github"
+          ? await tx.user.findUnique({ where: { githubId: profile.providerId } })
+          : profile.provider === "google"
+            ? await tx.user.findUnique({ where: { googleId: profile.providerId } })
+            : await tx.user.findUnique({ where: { ssoId: profile.providerId } });
 
-    if (user) {
-      if (profile.emailVerified && !user.emailVerified) {
-        user = await tx.user.update({
-          where: { id: user.id },
-          data: { emailVerified: new Date() },
-        });
+      if (user) {
+        if (profile.emailVerified && !user.emailVerified) {
+          user = await tx.user.update({
+            where: { id: user.id },
+            data: { emailVerified: new Date() },
+          });
+        }
+        return user;
       }
-      return user;
-    }
 
-    // Check if user exists by email (link scenario).
-    const existingByEmail = await tx.user.findUnique({ where: { email: profile.email } });
+      // Check if user exists by email (link scenario).
+      const existingByEmail = await tx.user.findUnique({ where: { email: profile.email } });
 
-    const providerData =
-      profile.provider === "github"
-        ? { githubId: profile.providerId }
-        : profile.provider === "google"
-          ? { googleId: profile.providerId }
-          : { ssoId: profile.providerId };
+      const providerData =
+        profile.provider === "github"
+          ? { githubId: profile.providerId }
+          : profile.provider === "google"
+            ? { googleId: profile.providerId }
+            : { ssoId: profile.providerId };
 
-    if (existingByEmail) {
-      // Link the provider ID to the existing account.
-      user = await tx.user.update({
-        where: { email: profile.email },
+      if (existingByEmail) {
+        // Link the provider ID to the existing account.
+        user = await tx.user.update({
+          where: { email: profile.email },
+          data: {
+            ...providerData,
+            avatarUrl: profile.avatarUrl,
+            ...(profile.orgId ? { orgId: profile.orgId } : {}),
+            ...(profile.emailVerified && !existingByEmail.emailVerified
+              ? { emailVerified: new Date() }
+              : {}),
+          },
+        });
+        return user;
+      }
+
+      // Create new OAuth user and registration outbox event atomically
+      const newUser = await tx.user.create({
         data: {
+          email: profile.email,
+          name: profile.name ?? null,
+          avatarUrl: profile.avatarUrl ?? null,
           ...providerData,
-          avatarUrl: profile.avatarUrl,
-          ...(profile.orgId ? { orgId: profile.orgId } : {}),
-          ...(profile.emailVerified && !existingByEmail.emailVerified
-            ? { emailVerified: new Date() }
-            : {}),
+          orgId: profile.orgId ?? null,
+          emailVerified: profile.emailVerified ? new Date() : null,
         },
       });
-      return user;
+
+      await tx.authOutboxEvent.create({
+        data: {
+          eventType: "UserRegisteredEvent",
+          payload: { userId: newUser.id, email: newUser.email, name: newUser.name },
+        },
+      });
+
+      return newUser;
+    },
+    {
+      maxWait: 15000,
+      timeout: 20000,
     }
-
-    // Create new OAuth user and registration outbox event atomically
-    const newUser = await tx.user.create({
-      data: {
-        email: profile.email,
-        name: profile.name ?? null,
-        avatarUrl: profile.avatarUrl ?? null,
-        ...providerData,
-        orgId: profile.orgId ?? null,
-        emailVerified: profile.emailVerified ? new Date() : null,
-      },
-    });
-
-    await tx.authOutboxEvent.create({
-      data: {
-        eventType: "UserRegisteredEvent",
-        payload: { userId: newUser.id, email: newUser.email, name: newUser.name },
-      },
-    });
-
-    return newUser;
-  });
+  );
 }

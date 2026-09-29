@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,35 +14,53 @@ import (
 )
 
 // Manager is the control plane for all active sessions.
-// It owns the mapping of sessionID → containerID and delegates to the SandboxProvider.
+// It owns the mapping of sessionID → containerID and delegates to the appropriate SandboxProvider.
 type Manager struct {
-	provider sandbox.SandboxProvider
-	redis    *store.RedisStore
-	ttl      time.Duration
-	log      *slog.Logger
-	Progress *ProgressTracker
+	providers           map[string]sandbox.SandboxProvider
+	defaultProvider     string
+	redis               *store.RedisStore
+	ttl                 time.Duration
+	log                 *slog.Logger
+	Progress            *ProgressTracker
 
 	// In-memory index for fast lookup without a Redis round-trip on every terminal message.
 	// Redis is the source of truth; this is a cache.
-	mu       sync.RWMutex
-	sessions map[string]store.SessionData
-	inFlight map[string]*sync.Mutex
-	workerAddr string
+	mu                  sync.RWMutex
+	sessions            map[string]store.SessionData
+	inFlight            map[string]*sync.Mutex
+	workerAddr          string
 	IsolationDowngraded bool
 }
 
 // NewManager creates a Manager and re-adopts any sessions already in Redis
 // (handles Go service restart without orphaning running containers).
-func NewManager(provider sandbox.SandboxProvider, redis *store.RedisStore, ttlMins int, workerAddr string, log *slog.Logger) (*Manager, error) {
+// Accepts a map of providers (e.g. "docker", "gvisor", "kata", "flintlock").
+func NewManager(providers map[string]sandbox.SandboxProvider, redis *store.RedisStore, ttlMins int, workerAddr string, log *slog.Logger) (*Manager, error) {
+	provMap := make(map[string]sandbox.SandboxProvider)
+	for k, v := range providers {
+		if v != nil {
+			provMap[strings.ToLower(strings.TrimSpace(k))] = v
+		}
+	}
+	defaultProv := "docker"
+	if _, ok := provMap[defaultProv]; !ok {
+		// Pick first available provider if docker not configured
+		for k := range provMap {
+			defaultProv = k
+			break
+		}
+	}
+
 	m := &Manager{
-		provider: provider,
-		redis:    redis,
-		ttl:      time.Duration(ttlMins) * time.Minute,
-		log:      log,
-		Progress: NewProgressTracker(),
-		sessions: make(map[string]store.SessionData),
-		inFlight: make(map[string]*sync.Mutex),
-		workerAddr: workerAddr,
+		providers:       provMap,
+		defaultProvider: defaultProv,
+		redis:           redis,
+		ttl:             time.Duration(ttlMins) * time.Minute,
+		log:             log,
+		Progress:        NewProgressTracker(),
+		sessions:        make(map[string]store.SessionData),
+		inFlight:        make(map[string]*sync.Mutex),
+		workerAddr:      workerAddr,
 	}
 
 	// Re-sync from Redis on startup
@@ -53,11 +72,69 @@ func NewManager(provider sandbox.SandboxProvider, redis *store.RedisStore, ttlMi
 
 	for _, s := range existing {
 		m.sessions[s.SessionID] = s
-		m.log.Info("Re-adopted session from Redis", "sessionId", s.SessionID, "containerID", truncateID(s.ContainerID, 12))
+		m.log.Info("Re-adopted session from Redis", "sessionId", s.SessionID, "runtimeId", truncateID(s.RuntimeID, 12), "provider", s.Provider)
 	}
 	metrics.ActiveContainers.Set(float64(len(m.sessions)))
 
 	return m, nil
+}
+
+// GetProvider resolves the SandboxProvider for a specific session by looking up its recorded Provider.
+// Defaults to the configured default provider ("docker") if unspecified or unavailable.
+func (m *Manager) GetProvider(sessionID string) (sandbox.SandboxProvider, error) {
+	m.mu.RLock()
+	s, ok := m.sessions[sessionID]
+	m.mu.RUnlock()
+
+	var providerName string
+	if ok {
+		providerName = s.Provider
+	} else if m.redis != nil {
+		data, err := m.redis.Get(context.Background(), sessionID)
+		if err == nil && data != nil {
+			providerName = data.Provider
+		}
+	}
+
+	return m.GetProviderByName(providerName), nil
+}
+
+// GetProviderByName resolves a SandboxProvider by name, falling back to defaultProvider.
+func (m *Manager) GetProviderByName(name string) sandbox.SandboxProvider {
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	if p, ok := m.providers[normalized]; ok && p != nil {
+		return p
+	}
+	if p, ok := m.providers[m.defaultProvider]; ok && p != nil {
+		return p
+	}
+	if p, ok := m.providers["docker"]; ok && p != nil {
+		return p
+	}
+	// Return any provider available in the map
+	for _, p := range m.providers {
+		if p != nil {
+			return p
+		}
+	}
+	return nil
+}
+
+// AllProviders returns all distinct configured providers.
+func (m *Manager) AllProviders() []sandbox.SandboxProvider {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	unique := make(map[sandbox.SandboxProvider]struct{})
+	for _, p := range m.providers {
+		if p != nil {
+			unique[p] = struct{}{}
+		}
+	}
+	res := make([]sandbox.SandboxProvider, 0, len(unique))
+	for p := range unique {
+		res = append(res, p)
+	}
+	return res
 }
 
 // TTL returns the configured session TTL.
@@ -65,7 +142,7 @@ func (m *Manager) TTL() time.Duration {
 	return m.ttl
 }
 
-// StartDiskMonitor runs a background loop to scan and enforce disk quotas.
+// StartDiskMonitor runs a background loop to scan and enforce disk quotas across all active providers.
 func (m *Manager) StartDiskMonitor(ctx context.Context) {
 	ticker := time.NewTicker(10 * time.Second)
 	go func() {
@@ -75,13 +152,22 @@ func (m *Manager) StartDiskMonitor(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				// 1 GB limit
-				killed, err := m.provider.EnforceDiskQuotas(ctx, 1024*1024*1024)
-				if err != nil {
-					m.log.Error("Failed to enforce disk quotas", "error", err)
-				} else if len(killed) > 0 {
-					metrics.DiskQuotaKillsTotal.Add(float64(len(killed)))
-					m.log.Warn("Enforced disk quota on containers", "count", len(killed), "containers", killed)
+				// Collect unique providers
+				unique := make(map[sandbox.SandboxProvider]bool)
+				for _, p := range m.providers {
+					if p != nil {
+						unique[p] = true
+					}
+				}
+				for p := range unique {
+					// 1 GB limit
+					killed, err := p.EnforceDiskQuotas(ctx, 1024*1024*1024)
+					if err != nil {
+						m.log.Error("Failed to enforce disk quotas", "error", err)
+					} else if len(killed) > 0 {
+						metrics.DiskQuotaKillsTotal.Add(float64(len(killed)))
+						m.log.Warn("Enforced disk quota on containers", "count", len(killed), "containers", killed)
+					}
 				}
 			}
 		}
@@ -89,7 +175,8 @@ func (m *Manager) StartDiskMonitor(ctx context.Context) {
 }
 
 // Create provisions a new container and registers the session in Redis + memory.
-func (m *Manager) Create(ctx context.Context, sessionID, userID, challengeID, image string) (*store.SessionData, error) {
+// It dynamically selects the SandboxProvider matching requestedProvider (or defaults to "docker").
+func (m *Manager) Create(ctx context.Context, sessionID, userID, challengeID, image, requestedProvider string) (*store.SessionData, error) {
 	// 1. Get or create a per-session mutex
 	m.mu.Lock()
 	sessionMu, ok := m.inFlight[sessionID]
@@ -112,26 +199,37 @@ func (m *Manager) Create(ctx context.Context, sessionID, userID, challengeID, im
 	}
 	m.mu.RUnlock()
 
-	m.log.Info("Provisioning container for session",
+	normProvider := strings.ToLower(strings.TrimSpace(requestedProvider))
+	if normProvider == "" {
+		normProvider = m.defaultProvider
+	}
+	provider := m.GetProviderByName(normProvider)
+	if provider == nil {
+		return nil, fmt.Errorf("session create: no sandbox provider available for %q", requestedProvider)
+	}
+
+	m.log.Info("Provisioning sandbox for session",
 		"sessionId", sessionID,
 		"image", image,
 		"userId", userID,
+		"provider", normProvider,
 	)
 
 	// Save initial state to Redis so sandbox-router can route WebSocket
 	// connections to this worker to stream live progress events.
 	initialData := store.SessionData{
 		SessionID:   sessionID,
-		ContainerID: "provisioning",
+		RuntimeID: "provisioning",
 		UserID:      userID,
 		ChallengeID: challengeID,
 		Image:       image,
+		Provider:    normProvider,
 		CreatedAt:   time.Now().UTC(),
 		WorkerAddr:  m.workerAddr,
 	}
 	_ = m.redis.Save(ctx, initialData)
 
-	if m.IsolationDowngraded {
+	if m.IsolationDowngraded && normProvider == "docker" {
 		m.log.Warn("Downgraded isolation level enforced for session", "sessionId", sessionID, "provider", "docker")
 		m.Progress.Publish(sessionID, StageIsolationDowngraded, "Running with standard isolation — enhanced sandboxing unavailable on this host")
 	}
@@ -139,11 +237,15 @@ func (m *Manager) Create(ctx context.Context, sessionID, userID, challengeID, im
 	m.Progress.Publish(sessionID, StageImagePullStart, "Pulling container image "+image)
 
 	startProvision := time.Now()
-	containerID, err := m.provider.Provision(ctx, image)
+	containerID, err := provider.Provision(ctx, image)
 	if err != nil {
+		m.Progress.Publish(sessionID, StageFailed, "Failed to provision sandbox container: "+err.Error())
+		if m.redis != nil {
+			_ = m.redis.Delete(ctx, sessionID)
+		}
 		return nil, fmt.Errorf("session create: provision failed: %w", err)
 	}
-	metrics.ProvisionDuration.WithLabelValues("docker", image).Observe(time.Since(startProvision).Seconds())
+	metrics.ProvisionDuration.WithLabelValues(normProvider, image).Observe(time.Since(startProvision).Seconds())
 
 	m.Progress.Publish(sessionID, StageImagePullComplete, "Container image ready")
 	m.Progress.Publish(sessionID, StageContainerCreated, "Created sandbox layer")
@@ -151,10 +253,11 @@ func (m *Manager) Create(ctx context.Context, sessionID, userID, challengeID, im
 
 	data := store.SessionData{
 		SessionID:   sessionID,
-		ContainerID: containerID,
+		RuntimeID: containerID,
 		UserID:      userID,
 		ChallengeID: challengeID,
 		Image:       image,
+		Provider:    normProvider,
 		CreatedAt:   time.Now().UTC(),
 		WorkerAddr:  m.workerAddr,
 	}
@@ -162,7 +265,7 @@ func (m *Manager) Create(ctx context.Context, sessionID, userID, challengeID, im
 	if err := m.redis.Save(ctx, data); err != nil {
 		// Best-effort: container is running, but we couldn't save to Redis.
 		// Clean up the container to avoid an orphan.
-		_ = m.provider.Remove(ctx, containerID)
+		_ = provider.Remove(ctx, containerID)
 		return nil, fmt.Errorf("session create: redis save failed: %w", err)
 	}
 
@@ -173,7 +276,7 @@ func (m *Manager) Create(ctx context.Context, sessionID, userID, challengeID, im
 	m.mu.Unlock()
 	metrics.ActiveContainers.Set(activeCount)
 	
-	m.log.Info("✅ Session created", "sessionId", sessionID, "containerID", truncateID(containerID, 12))
+	m.log.Info("✅ Session created", "sessionId", sessionID, "containerID", truncateID(containerID, 12), "provider", normProvider)
 	return &data, nil
 }
 
@@ -212,16 +315,26 @@ func (m *Manager) Destroy(ctx context.Context, sessionID string) error {
 		return nil
 	}
 
-	m.log.Info("Destroying session", "sessionId", sessionID, "containerID", truncateID(data.ContainerID, 12))
+	m.log.Info("Destroying session", "sessionId", sessionID, "runtimeId", truncateID(data.RuntimeID, 12), "provider", data.Provider)
+
+	// Dynamically resolve the provider used for this session
+	provider, _ := m.GetProvider(sessionID)
+	if provider == nil {
+		provider = m.GetProviderByName(data.Provider)
+	}
 
 	// Remove container (best-effort — don't fail if already gone)
-	if err := m.provider.Remove(ctx, data.ContainerID); err != nil {
-		m.log.Warn("Container remove failed during destroy", "error", err)
+	if provider != nil {
+		if err := provider.Remove(ctx, data.RuntimeID); err != nil {
+			m.log.Warn("Container remove failed during destroy", "error", err)
+		}
 	}
 
 	// Clean up Redis
-	if err := m.redis.Delete(ctx, sessionID); err != nil {
-		m.log.Warn("Redis delete failed during destroy", "error", err)
+	if m.redis != nil {
+		if err := m.redis.Delete(ctx, sessionID); err != nil {
+			m.log.Warn("Redis delete failed during destroy", "error", err)
+		}
 	}
 
 	// Clean up memory

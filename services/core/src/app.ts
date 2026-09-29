@@ -34,6 +34,7 @@ import { startSessionReaper } from "./plugins/session-reaper";
 export interface AppOptions extends ObservabilityConfig {
   jwtPublicKey: string;
   sessionTTLMins: number;
+  guestTrialTTLMins: number;
 }
 
 export async function buildApp(opts: AppOptions) {
@@ -77,7 +78,7 @@ export async function buildApp(opts: AppOptions) {
     cookie: { cookieName: "token", signed: false },
   });
 
-  const connectionString = process.env['DATABASE_URL'];
+  const connectionString = requireEnv("DATABASE_URL");
   const pool = new pg.Pool({ connectionString });
   const adapter = new PrismaPg(pool);
   const prisma = new PrismaClient({ adapter });
@@ -92,6 +93,7 @@ export async function buildApp(opts: AppOptions) {
   app.decorate("rabbitmq", rabbitmq);
 
   app.decorate("sessionTTLMins", opts.sessionTTLMins);
+  app.decorate("guestTrialTTLMins", opts.guestTrialTTLMins);
 
   await app.register(metricsPlugin);
 

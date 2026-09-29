@@ -1,11 +1,11 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 
 export function FlashcardPreview() {
   const [flipped, setFlipped] = useState(false);
 
   return (
     <div
-      className="max-w-[520px] mx-auto relative perspective-[1000px] h-[260px] cursor-pointer group"
+      className="max-w-[600px] w-full mx-auto relative perspective-[1000px] h-[260px] cursor-pointer group"
       onClick={() => setFlipped(!flipped)}
     >
       <div
@@ -57,7 +57,7 @@ export function FlashcardSection() {
       id="flashcards"
       className="py-[100px] relative z-10 bg-[linear-gradient(180deg,var(--auth-bg),var(--auth-panel-2))] border-y border-panel-border/50"
     >
-      <div className="max-w-[1180px] mx-auto px-8">
+      <div className="max-w-[1440px] xl:max-w-[1600px] 2xl:max-w-[1720px] mx-auto px-6 md:px-8 xl:px-12">
         <div className="max-w-[600px] mx-auto mb-[44px] text-center">
           <div className="font-mono text-[12px] tracking-[0.14em] uppercase text-amber flex items-center justify-center gap-[9px] mb-[14px]">
             <span className="w-[6px] h-[6px] rounded-full bg-amber shadow-[0_0_8px_var(--color-amber)] shrink-0" />

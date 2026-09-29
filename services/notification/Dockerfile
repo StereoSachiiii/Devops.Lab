@@ -13,6 +13,7 @@ WORKDIR /app
 COPY --from=builder /app/out/json/ .
 RUN npm install
 COPY --from=builder /app/out/full/ .
+RUN npm run build --workspace=@devops/observability --workspace=@devops/types --workspace=@devops/messaging --if-present
 RUN npm run build --workspace=services/notification
 
 FROM base AS runner

@@ -15,10 +15,10 @@ type Subscriber struct {
 	Chan chan []byte
 }
 
-// SharedPTY wraps a single Docker Exec/tmux attach process and fans out output to subscribers.
+// SharedPTY wraps a single PTY process (via provider.ExecInteractiveCmd / tmux attach) and fans out output to subscribers.
 type SharedPTY struct {
 	SessionID   string
-	ContainerID string
+	RuntimeID   string
 	Provider    sandbox.SandboxProvider
 	Log         *slog.Logger
 
@@ -32,19 +32,35 @@ type SharedPTY struct {
 	subscribers map[string]*Subscriber
 }
 
+// ProviderResolver allows resolving a SandboxProvider dynamically by session ID.
+type ProviderResolver interface {
+	GetProvider(sessionID string) (sandbox.SandboxProvider, error)
+}
+
 // Multiplexer is the global registry of SharedPTYs.
 type Multiplexer struct {
 	mu       sync.Mutex
 	sessions map[string]*SharedPTY
 
-	provider sandbox.SandboxProvider
+	resolver ProviderResolver
+	fallback sandbox.SandboxProvider
 	log      *slog.Logger
 }
 
 func NewMultiplexer(provider sandbox.SandboxProvider, log *slog.Logger) *Multiplexer {
 	return &Multiplexer{
 		sessions: make(map[string]*SharedPTY),
-		provider: provider,
+		fallback: provider,
+		log:      log,
+	}
+}
+
+// NewMultiplexerWithResolver creates a Multiplexer that dynamically resolves the provider per session.
+func NewMultiplexerWithResolver(resolver ProviderResolver, fallback sandbox.SandboxProvider, log *slog.Logger) *Multiplexer {
+	return &Multiplexer{
+		sessions: make(map[string]*SharedPTY),
+		resolver: resolver,
+		fallback: fallback,
 		log:      log,
 	}
 }
@@ -65,10 +81,21 @@ func (m *Multiplexer) GetOrStart(ctx context.Context, sessionID, containerID str
 		return pty, sub, nil
 	}
 
+	var provider sandbox.SandboxProvider
+	if m.resolver != nil {
+		p, err := m.resolver.GetProvider(sessionID)
+		if err == nil && p != nil {
+			provider = p
+		}
+	}
+	if provider == nil {
+		provider = m.fallback
+	}
+
 	// Create new
 	ptyCtx, cancel := context.WithCancel(context.Background())
 	
-	ptyStream, resizeFn, err := StartOrAttach(ptyCtx, m.provider, containerID, sessionID, cols, rows, m.log)
+	ptyStream, resizeFn, err := StartOrAttach(ptyCtx, provider, containerID, sessionID, cols, rows, m.log)
 	if err != nil {
 		cancel()
 		return nil, nil, err
@@ -76,8 +103,8 @@ func (m *Multiplexer) GetOrStart(ctx context.Context, sessionID, containerID str
 
 	shared := &SharedPTY{
 		SessionID:   sessionID,
-		ContainerID: containerID,
-		Provider:    m.provider,
+		RuntimeID:   containerID,
+		Provider:    provider,
 		Log:         m.log,
 		pty:         ptyStream,
 		resizeFn:    resizeFn,

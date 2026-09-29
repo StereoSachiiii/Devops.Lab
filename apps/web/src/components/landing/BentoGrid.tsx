@@ -18,13 +18,13 @@ export function BentoGrid() {
 
   return (
     <section className="py-[100px] relative z-10">
-      <div className="max-w-[1180px] mx-auto px-8">
-        <div className="max-w-[600px] mb-[44px]">
+      <div className="max-w-[1440px] xl:max-w-[1600px] 2xl:max-w-[1720px] mx-auto px-6 md:px-8 xl:px-12">
+        <div className="max-w-[640px] mb-[44px]">
           <div className="font-mono text-[12px] tracking-[0.14em] uppercase text-teal flex items-center gap-[9px] mb-[14px]">
             <span className="w-[6px] h-[6px] rounded-full bg-teal shadow-[0_0_8px_var(--color-teal)] shrink-0" />
             how you&apos;ll learn
           </div>
-          <h2 className="font-space text-[32px] font-bold tracking-[-0.015em] mb-3">
+          <h2 className="font-space text-[32px] md:text-[36px] font-bold tracking-[-0.015em] mb-3">
             Everything you need, nothing you don&apos;t.
           </h2>
           <p className="text-panel-muted text-[15.5px] leading-[1.6]">
@@ -33,7 +33,7 @@ export function BentoGrid() {
           </p>
         </div>
 
-        <div className="bento-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr] auto-rows-[minmax(210px,auto)] lg:auto-rows-auto lg:grid-rows-[repeat(2,210px)] gap-[18px]">
+        <div className="bento-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.35fr_1fr_1fr] auto-rows-[minmax(210px,auto)] lg:auto-rows-auto lg:grid-rows-[repeat(2,minmax(220px,1fr))] gap-5">
           {/* Bento 1 - full height */}
           <div className="bg-panel border border-panel-border rounded-2xl p-[26px] relative overflow-hidden transition-colors md:col-span-2 lg:col-[1/2] lg:row-[1/3] flex flex-col group hover:border-amber/60">
             <div

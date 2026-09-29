@@ -335,7 +335,7 @@ func TestTTLWarningEmission(t *testing.T) {
 	mgr.AddTestSession(store.SessionData{
 		SessionID:   sessionID,
 		UserID:      userID,
-		ContainerID: "container-id-1234567890",
+		RuntimeID:   "container-id-1234567890",
 		CreatedAt:   createdAt,
 	})
 

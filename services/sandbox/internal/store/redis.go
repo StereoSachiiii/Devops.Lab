@@ -16,15 +16,17 @@ import (
 const keyPrefix = "session:"
 
 // SessionData is everything the sandbox needs to know about an active session.
-// Stored in Redis; containerID is the link between the session and Docker & later the firecracker vm.
+// Stored in Redis; RuntimeID is the link between the session and the execution backend:
+// a Docker container ID for Docker/gVisor/Kata providers, or a microVM UID for Flintlock.
 type SessionData struct {
 	SessionID   string    `json:"sessionId"`
-	ContainerID string    `json:"containerId"`
+	RuntimeID   string    `json:"containerId"` // json tag preserved for Redis backward compatibility
 	UserID      string    `json:"userId"`
 	ChallengeID string    `json:"challengeId"`
 	Image       string    `json:"image"`
 	CreatedAt   time.Time `json:"createdAt"`
 	WorkerAddr  string    `json:"workerAddr"`
+	Provider    string    `json:"provider,omitempty"`
 }
 
 // RedisStore manages session persistence in Redis.

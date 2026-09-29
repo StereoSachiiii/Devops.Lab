@@ -43,7 +43,8 @@ func main() {
 
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
-		redisURL = "redis://localhost:6379"
+		log.Error("REDIS_URL is required")
+		os.Exit(1)
 	}
 	encKey := os.Getenv("ENCRYPTION_KEY")
 	if encKey == "" {

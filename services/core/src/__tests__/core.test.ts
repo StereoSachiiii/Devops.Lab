@@ -145,6 +145,11 @@ vi.mock("@devops/messaging", () => ({
       Object.assign(this, { topic: "sandbox.session.ended", payload });
     }
   },
+  SessionFailedEvent: class {
+    constructor(payload: unknown) {
+      Object.assign(this, { topic: "sandbox.session.failed", payload });
+    }
+  },
   SessionEndReason: { TERMINATED: "TERMINATED", COMPLETED: "COMPLETED" },
   QUEUES: { PROVISION_SANDBOX: "provision.sandbox", TERMINATE_SANDBOX: "terminate.sandbox" },
 }));

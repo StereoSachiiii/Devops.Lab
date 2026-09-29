@@ -1,39 +1,52 @@
-// import React from "react";
-import Link from "next/link";
+"use client";
+
+import { Button } from "@/components/ui/Button";
+import { ChallengeSlider } from "@/utils/landing";
 
 export function Hero() {
   return (
-    <section className="pt-[100px] pb-[70px] text-center relative z-10">
-      <div className="max-w-[1180px] mx-auto px-8">
-        <h1 className="font-space font-bold text-[clamp(36px,5.5vw,56px)] leading-[1.08] tracking-[-0.015em] mb-5 max-w-[820px] mx-auto">
-          Stop watching tutorials.
-          <br />
-          Start breaking <em className="not-italic text-amber">servers</em>.
-        </h1>
-        <p className="text-panel-muted text-[17px] max-w-[560px] mx-auto mb-8 leading-[1.6]">
-          DevOps.lab drops you into a real, broken infrastructure - misconfigured nginx, locked-down
-          permissions, a cron job that silently died - and grades you on the fix, not a quiz.
-        </p>
-        <div className="flex gap-[14px] justify-center mb-4">
-          <Link
-            href="/register"
-            className="bg-gradient-to-br from-amber to-[#ffb877] text-[#241505] font-bold text-[15px] px-[26px] py-[13px] rounded-lg shadow-[0_10px_24px_-10px_rgba(var(--color-particle),0.45)] transition-transform hover:scale-[0.98] active:scale-95 no-underline inline-block"
-          >
-            Start your first sandbox &rarr;
-          </Link>
-          <button
-            className="bg-panel-2 border border-panel-border text-panel-text font-semibold text-[15px] px-[26px] py-[13px] rounded-lg cursor-pointer hover:bg-panel transition-colors"
-            onClick={() =>
-              document.getElementById("challenges")?.scrollIntoView({ behavior: "smooth" })
-            }
-          >
-            See a challenge
-          </button>
-        </div>
-        <div className="font-mono text-[12px] text-panel-muted-dim">
-          no video lectures &middot; no slides &middot; just a terminal and a problem to solve
+    <section className="pt-12 md:pt-20 pb-16 relative z-10">
+      <div className="max-w-[1440px] xl:max-w-[1600px] 2xl:max-w-[1720px] mx-auto px-6 md:px-8 xl:px-12">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 xl:gap-16 items-center">
+          {/* LEFT COLUMN: Headline, subtext, CTAs, caption */}
+          <div className="lg:col-span-6 xl:col-span-5 flex flex-col text-left">
+            <h1 className="font-heading font-bold text-[clamp(32px,4vw,50px)] leading-[1.1] tracking-[-0.015em] mb-5">
+              Stop watching tutorials.
+              <br />
+              Start breaking <em className="not-italic text-amber">servers</em>.
+            </h1>
+            <p className="text-panel-muted text-[16px] md:text-[17px] mb-8 leading-[1.6]">
+              DevOps.lab drops you into a real, broken infrastructure (misconfigured nginx, locked-down
+              permissions, a cron job that silently died) and grades you on the fix, not a quiz.
+            </p>
+            <div className="flex flex-wrap gap-3.5 items-center mb-5">
+              <Button href="/register" variant="primary" size="lg">
+                Start your first sandbox &rarr;
+              </Button>
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={() =>
+                  document.getElementById("challenges")?.scrollIntoView({ behavior: "smooth" })
+                }
+              >
+                See a challenge
+              </Button>
+            </div>
+            <div className="font-mono text-[12px] text-panel-muted-dim leading-relaxed">
+              no video lectures &middot; no slides &middot; just a terminal and a problem to solve
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN: Terminal Mockup Card */}
+          <div className="lg:col-span-6 xl:col-span-7 w-full">
+            <div id="challenges" className="w-full scroll-mt-24">
+              <ChallengeSlider />
+            </div>
+          </div>
         </div>
       </div>
     </section>
   );
 }
+

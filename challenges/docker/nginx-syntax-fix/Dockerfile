@@ -22,7 +22,7 @@ COPY nginx-broken.conf /etc/nginx/nginx.conf
 
 # Validator script
 COPY validator.sh /validator.sh
-RUN chmod +x /validator.sh
+RUN sed -i 's/\r$//' /validator.sh && chmod +x /validator.sh
 
 # Hint file for the user
 RUN echo "Welcome to the Nginx Syntax & Port Fix challenge!\n\

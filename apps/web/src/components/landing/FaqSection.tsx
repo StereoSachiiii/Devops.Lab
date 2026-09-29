@@ -4,20 +4,20 @@ import { useState } from "react";
 
 const faqs = [
   {
-    q: "Do I need to install anything?",
-    a: "No. Everything runs directly in your browser via a secure, isolated container. No messy local environment setups.",
+    q: "Do I need Docker or local VMs running?",
+    a: "Zero local setup. You get an isolated browser-based terminal connected to an ephemeral Linux instance in seconds.",
   },
   {
-    q: "Is it safe to run destructive commands?",
-    a: "Yes. Sandboxes are completely isolated using gVisor. You can rm -rf / or drop databases without any risk to your own machine or our infrastructure.",
+    q: "Can I run `rm -rf /` or trash the kernel?",
+    a: "Go ahead. Every session is an isolated sandbox that gets destroyed on exit. You can't break anything except your own score.",
   },
   {
-    q: "Can I use this for team hiring?",
-    a: "Yes. We offer custom team roadmaps and skill tracking for engineering managers looking to evaluate candidates with real-world scenarios.",
+    q: "Can we use this to screen candidates?",
+    a: "Yes. Stop giving trivia quizzes on leetcode—hand candidates a broken cluster and see if they can actually debug it.",
   },
   {
-    q: "What skill level is required?",
-    a: "We offer paths starting from absolute Linux basics up to advanced multi-cluster Kubernetes debugging. You choose where to start.",
+    q: "Do I need to be a senior SRE to use this?",
+    a: "If you know basic Linux navigation, you're ready. Scenarios range from simple config blunders to brutal multi-service race conditions.",
   },
 ];
 
@@ -26,7 +26,7 @@ export function FaqSection() {
 
   return (
     <section className="py-[100px] relative z-10">
-      <div className="max-w-[800px] mx-auto px-8">
+      <div className="max-w-[880px] xl:max-w-[960px] mx-auto px-6 md:px-8">
         <div className="text-center mb-[50px]">
           <h2 className="font-space text-[32px] font-bold tracking-[-0.015em] mb-3">
             Frequently Asked Questions

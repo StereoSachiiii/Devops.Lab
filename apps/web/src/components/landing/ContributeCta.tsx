@@ -1,9 +1,9 @@
-// import React from "react";
+import { Button } from "@/components/ui/Button";
 
 export function ContributeCta() {
   return (
     <section className="py-[100px] relative z-10 border-t border-panel-border">
-      <div className="max-w-[1180px] mx-auto px-8">
+      <div className="max-w-[1440px] xl:max-w-[1600px] 2xl:max-w-[1720px] mx-auto px-6 md:px-8 xl:px-12">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-10">
           
           {/* Left Sub-container: Text */}
@@ -13,7 +13,7 @@ export function ContributeCta() {
               open source
             </div>
 
-            <h2 className="font-space text-[32px] md:text-[40px] font-bold tracking-[-0.015em] mb-4 text-panel-text leading-tight">
+            <h2 className="font-heading text-[32px] md:text-[40px] font-bold tracking-[-0.015em] mb-4 text-panel-text leading-tight">
               Fixed a disaster at work today?{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber to-teal">
                 Share it.
@@ -29,14 +29,15 @@ export function ContributeCta() {
 
           {/* Right Sub-container: Button */}
           <div className="shrink-0 flex justify-start md:justify-end">
-            <a
+            <Button
               href="https://github.com/your-org/devops-lab-blueprints"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 bg-gradient-to-br from-amber to-[#ffb877] text-[#241505] font-bold text-[15px] px-[26px] py-[15px] rounded-xl cursor-pointer shadow-[0_10px_24px_-10px_rgba(234,88,12,0.45)] transition-all hover:scale-105 hover:-rotate-1 hover:shadow-[0_15px_30px_-10px_rgba(234,88,12,0.6)] no-underline group/btn"
+              asExternal
+              variant="primary"
+              size="lg"
+              className="rounded-xl group/btn"
             >
               <svg
-                className="w-5 h-5 text-[#241505]"
+                className="w-5 h-5 text-current"
                 fill="currentColor"
                 viewBox="0 0 24 24"
                 aria-hidden="true"
@@ -49,7 +50,7 @@ export function ContributeCta() {
               </svg>
               Submit a blueprint
               <span className="group-hover/btn:translate-x-1 transition-transform ml-1">→</span>
-            </a>
+            </Button>
           </div>
 
         </div>
@@ -57,3 +58,4 @@ export function ContributeCta() {
     </section>
   );
 }
+

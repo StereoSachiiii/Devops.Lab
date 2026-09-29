@@ -14,6 +14,7 @@ COPY --from=builder /app/out/json/ .
 RUN npm install
 COPY --from=builder /app/out/full/ .
 RUN npx prisma generate --schema=packages/db/prisma/schema.prisma
+RUN npm run build --workspace=@devops/observability --workspace=@devops/types --workspace=@devops/messaging --if-present
 RUN npm run build --workspace=services/core
 
 FROM base AS runner

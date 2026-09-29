@@ -4,7 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import { useEffect, useState } from "react";
-import { LogOut, User, Menu, X, Sun, Moon } from "lucide-react";
+import { LogOut, Menu, X, Sun, Moon } from "lucide-react";
+import { NavLink } from "@/components/ui/NavLink";
+import { ProfilePill } from "@/components/ui/ProfilePill";
+import { Button } from "@/components/ui/Button";
 
 export function NavThemeToggle() {
   const [isLight, setIsLight] = useState(false);
@@ -34,7 +37,7 @@ export function NavThemeToggle() {
       className="relative flex-shrink-0 w-[50px] h-[26px] bg-panel-2 border border-panel-border rounded-full p-[3px] cursor-pointer transition-colors"
     >
       <div
-        className={`absolute top-[2px] left-[2px] w-[20px] h-[20px] rounded-full bg-gradient-to-br from-amber to-amber-dim flex items-center justify-center text-[10px] text-[#241505] transition-transform duration-250 ease-out ${
+        className={`absolute top-[2px] left-[2px] w-[20px] h-[20px] rounded-full bg-gradient-to-br from-amber to-amber-gradient-end flex items-center justify-center text-[10px] text-btn-dark-text transition-transform duration-250 ease-out ${
           isLight ? "translate-x-[24px]" : "translate-x-0"
         }`}
       >
@@ -51,101 +54,55 @@ export function Navbar() {
 
   const isActive = (path: string) => (path === "/" ? pathname === "/" : pathname?.startsWith(path));
 
-  const desktopLinkClass = (path: string) =>
-    `text-[14px] no-underline transition-colors ${isActive(path) ? "text-amber font-semibold" : "text-panel-muted hover:text-panel-text"}`;
-
   const mobileLinkClass = (path: string) =>
     `text-[15px] no-underline transition-colors ${isActive(path) ? "text-amber font-semibold" : "text-panel-text font-medium"}`;
 
   return (
     <nav className="sticky top-0 z-40 backdrop-blur-md bg-bg/80 border-b border-panel-border w-full">
-      <div className="w-full px-6 md:px-8 flex items-center justify-between h-[68px]">
+      <div className="relative max-w-[1440px] xl:max-w-[1600px] 2xl:max-w-[1720px] mx-auto px-6 md:px-8 xl:px-12 flex items-center justify-between h-[68px]">
         {/* Brand / Logo (Left) */}
-        <div className="flex items-center gap-8 shrink-0">
+        <div className="flex items-center gap-8 shrink-0 z-10">
           <Link href="/" className="flex items-center gap-2.5 no-underline text-current">
-            <div className="w-[30px] h-[30px] rounded-[7px] bg-gradient-to-br from-amber to-amber-dim flex items-center justify-center font-mono font-semibold text-[13px] text-[#241505]">
+            <div className="w-[30px] h-[30px] rounded-[7px] bg-gradient-to-br from-amber to-amber-gradient-end flex items-center justify-center font-mono font-semibold text-[13px] text-btn-dark-text shadow-sm">
               D/L
             </div>
-            <span className="font-space font-semibold text-[16.5px] text-panel-text">DevOps.lab</span>
+            <span className="font-heading font-semibold text-[16.5px] text-panel-text">DevOps.lab</span>
           </Link>
         </div>
 
-        {/* Navigation Links (Center / Left-aligned after logo) */}
-        <div className="hidden lg:flex items-center gap-6 xl:gap-7 ml-8 mr-auto">
-          <Link href="/" className={desktopLinkClass("/")}>
-            Home
-          </Link>
+        {/* Navigation Links (Dead-Centered on Large Screens) */}
+        <div className="hidden lg:flex items-center justify-center gap-6 xl:gap-8 absolute left-1/2 -translate-x-1/2 pointer-events-auto">
+          <NavLink href="/">Home</NavLink>
           {user && (
             <>
-              <Link href="/dashboard" className={desktopLinkClass("/dashboard")}>
-                Dashboard
-              </Link>
-              <Link href="/teams" className={desktopLinkClass("/teams")}>
-                Teams
-              </Link>
+              <NavLink href="/dashboard">Dashboard</NavLink>
+              <NavLink href="/teams">Teams</NavLink>
             </>
           )}
-          <Link href="/challenges" className={desktopLinkClass("/challenges")}>
-            Challenges
-          </Link>
-          <Link href="/roadmaps" className={desktopLinkClass("/roadmaps")}>
-            Roadmaps
-          </Link>
-          <Link href="/quizzes" className={desktopLinkClass("/quizzes")}>
-            Quizzes
-          </Link>
-          <Link href="/leaderboard" className={desktopLinkClass("/leaderboard")}>
-            Leaderboard
-          </Link>
-          <Link href="/community" className={desktopLinkClass("/community")}>
-            Community
-          </Link>
-          <Link
-            href="/#stack"
-            className="text-[14px] text-panel-muted no-underline hover:text-panel-text transition-colors"
-          >
-            Stack
-          </Link>
+          <NavLink href="/challenges">Challenges</NavLink>
+          <NavLink href="/roadmaps">Roadmaps</NavLink>
+          <NavLink href="/quizzes">Quizzes</NavLink>
+          <NavLink href="/leaderboard">Leaderboard</NavLink>
+          <NavLink href="/community">Community</NavLink>
+          <NavLink href="/#stack">Stack</NavLink>
         </div>
 
-        {/* Controls / Theme / Profile / CTA (Far Right) */}
-        <div className="flex items-center gap-3.5 ml-auto shrink-0">
+        {/* Controls / Theme / Profile / CTA (Right) */}
+        <div className="flex items-center gap-3.5 shrink-0 z-10">
           <NavThemeToggle />
 
           {user ? (
-            <div className="hidden lg:flex items-center gap-3 bg-panel border border-panel-border rounded-xl px-2.5 py-1.5">
-              <Link
-                href="/profile"
-                className="flex items-center gap-2 font-mono text-[12px] font-semibold text-panel-text no-underline hover:text-amber transition-colors"
-              >
-                <div className="bg-panel-2 p-1.5 rounded-lg flex">
-                  <User size={14} className="text-panel-muted" />
-                </div>
-                <span>{user.name || user.email.split("@")[0]}</span>
-              </Link>
-              <div className="w-[1px] h-4 bg-panel-border" />
-              <button
-                onClick={() => logout()}
-                className="bg-transparent border-none cursor-pointer flex items-center justify-center text-panel-muted p-1 transition-colors hover:text-amber"
-                title="Log Out"
-              >
-                <LogOut size={16} />
-              </button>
+            <div className="hidden lg:flex items-center">
+              <ProfilePill user={user} onLogout={logout} />
             </div>
           ) : (
-            <div className="hidden lg:flex items-center gap-4">
-              <Link
-                href="/login"
-                className="text-[14px] text-panel-text no-underline hover:text-amber transition-colors"
-              >
+            <div className="hidden lg:flex items-center gap-3">
+              <Button href="/login" variant="ghost" size="sm">
                 Sign in
-              </Link>
-              <Link
-                href="/register"
-                className="bg-gradient-to-br from-amber to-[#ffb877] text-[#241505] font-bold text-[13.5px] rounded-lg border-none cursor-pointer shadow-[0_10px_24px_-10px_rgba(var(--theme-particle),0.45)] transition-transform hover:scale-95 no-underline inline-block px-[18px] py-[9px]"
-              >
+              </Button>
+              <Button href="/register" variant="primary" size="sm">
                 Get started
-              </Link>
+              </Button>
             </div>
           )}
 
@@ -159,8 +116,9 @@ export function Navbar() {
         </div>
       </div>
 
+      {/* Mobile drawer */}
       {isMobileMenuOpen && (
-        <div className="lg:hidden bg-panel border-t border-panel-border px-8 py-4 flex flex-col gap-4">
+        <div className="lg:hidden bg-panel border-t border-panel-border px-8 py-4 flex flex-col gap-4 animate-[popIn_150ms_ease-out]">
           <Link
             href="/"
             onClick={() => setIsMobileMenuOpen(false)}
@@ -238,8 +196,8 @@ export function Navbar() {
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="flex items-center gap-2.5 text-panel-text no-underline hover:text-amber transition-colors"
               >
-                <div className="bg-panel-2 p-2 rounded-lg">
-                  <User size={16} className="text-panel-muted" />
+                <div className="w-[28px] h-[28px] rounded-full bg-gradient-to-br from-amber to-amber-gradient-end text-btn-dark-text font-bold text-[12px] flex items-center justify-center font-mono">
+                  {(user.name ? user.name[0] : user.email[0])?.toUpperCase() || "U"}
                 </div>
                 <span className="text-[15px] font-semibold">
                   {user.name || user.email.split("@")[0]}
@@ -250,27 +208,31 @@ export function Navbar() {
                   logout();
                   setIsMobileMenuOpen(false);
                 }}
-                className="bg-transparent border-none cursor-pointer text-panel-muted p-2 flex items-center gap-1.5 text-[14px]"
+                className="bg-transparent border-none cursor-pointer text-panel-muted p-2 flex items-center gap-1.5 text-[14px] hover:text-amber"
               >
                 <LogOut size={16} />
               </button>
             </div>
           ) : (
             <div className="flex flex-col gap-3 pt-2">
-              <Link
+              <Button
                 href="/login"
+                variant="outline"
+                size="md"
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="text-[15px] text-panel-text no-underline text-center p-2.5 rounded-lg border border-panel-border"
+                className="w-full text-center"
               >
                 Sign in
-              </Link>
-              <Link
+              </Button>
+              <Button
                 href="/register"
+                variant="primary"
+                size="md"
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="bg-gradient-to-br from-amber to-[#ffb877] text-[#241505] font-bold text-[15px] rounded-lg border-none cursor-pointer shadow-[0_10px_24px_-10px_rgba(var(--theme-particle),0.45)] transition-transform hover:scale-95 no-underline text-center p-2.5"
+                className="w-full text-center"
               >
                 Get started
-              </Link>
+              </Button>
             </div>
           )}
         </div>
@@ -278,3 +240,4 @@ export function Navbar() {
     </nav>
   );
 }
+

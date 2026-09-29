@@ -17,16 +17,20 @@ export function requireEnv(name: string): string {
   return val;
 }
 
-function resolveLogPath(serviceName: string): string {
-  const envDir = process.env["LOG_DIR"] || "./logs";
+function resolveLogPath(serviceName: string): string | null {
+  const envDir = process.env["LOG_DIR"] || "/tmp";
   try {
     if (!fs.existsSync(envDir)) fs.mkdirSync(envDir, { recursive: true });
     fs.accessSync(envDir, fs.constants.W_OK);
     return `${envDir}/${serviceName}.log`;
   } catch {
-    const localDir = "./logs";
-    if (!fs.existsSync(localDir)) fs.mkdirSync(localDir, { recursive: true });
-    return `${localDir}/${serviceName}.log`;
+    try {
+      const fallbackDir = "/tmp";
+      if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+      return `${fallbackDir}/${serviceName}.log`;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -40,16 +44,21 @@ export interface ObservabilityConfig {
 }
 
 export function initObservability(serviceName: string): ObservabilityConfig {
-  const streams: Array<{ stream: any }> = [
-    { stream: process.stdout },
-    {
-      stream: pino.destination({
-        dest: resolveLogPath(serviceName),
-        sync: true,
-        mkdir: true,
-      }),
-    },
-  ];
+  const streams: Array<{ stream: any }> = [{ stream: process.stdout }];
+  const logPath = resolveLogPath(serviceName);
+  if (logPath) {
+    try {
+      streams.push({
+        stream: pino.destination({
+          dest: logPath,
+          sync: true,
+          mkdir: true,
+        }),
+      });
+    } catch {
+      // stdout only fallback
+    }
+  }
 
   const loggerOptions: pino.LoggerOptions = {
     level: requireEnv("LOG_LEVEL"),

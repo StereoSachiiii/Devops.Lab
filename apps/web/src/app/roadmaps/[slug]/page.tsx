@@ -3,16 +3,21 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ChevronRight, Lock, CheckCircle2, X } from "lucide-react";
+import { ChevronRight, Lock, CheckCircle2, X, CheckSquare, Square } from "lucide-react";
 import { CategoryIcon } from "@/components/dashboard/CategoryIcon";
 import { RoadmapCard } from "@/components/dashboard/RoadmapCard";
 import { apiClient } from "@/lib/apiClient";
 import type { Roadmap, RoadmapNode, RoadmapProgress } from "@/lib/api-types";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
+import { useAuth } from "@/providers/AuthProvider";
+import {
+  getGuestRoadmapProgress,
+  saveGuestRoadmapProgress,
+} from "@/lib/guestRoadmap";
 
 // Helper to determine node status
 function getNodeState(nodeId: string, progress: RoadmapProgress | null, roadmap: Roadmap) {
-  if (!progress) return "locked"; // Default if not logged in
+  if (!progress) return "locked"; // Default if no progress exists
   if (progress.completedNodes.includes(nodeId)) return "complete";
   if (progress.inProgressNodes.includes(nodeId)) return "in_progress";
 
@@ -28,6 +33,7 @@ function RoadmapDetailPage() {
   const params = useParams();
   const router = useRouter();
   const slug = typeof params["slug"] === "string" ? params["slug"] : params["slug"]?.[0] || "";
+  const { user } = useAuth();
 
   const [roadmap, setRoadmap] = useState<Roadmap | null>(null);
   const [progress, setProgress] = useState<RoadmapProgress | null>(null);
@@ -41,12 +47,23 @@ function RoadmapDetailPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [rm, prog, all] = await Promise.all([
+        const [rm, all] = await Promise.all([
           apiClient.roadmaps.getBySlug(slug),
-          apiClient.roadmaps.getProgress(slug).catch(() => null),
           apiClient.roadmaps.getAll(),
         ]);
         setRoadmap(rm);
+
+        let prog: RoadmapProgress | null = null;
+        if (user) {
+          prog = await apiClient.roadmaps.getProgress(slug).catch(() => null);
+        } else {
+          prog = getGuestRoadmapProgress(slug);
+        }
+
+        // Initialize progress if none exists
+        if (!prog) {
+          prog = { roadmapId: slug, completedNodes: [], inProgressNodes: [] };
+        }
         setProgress(prog);
 
         // Simple related logic: just pick 2 others
@@ -69,7 +86,37 @@ function RoadmapDetailPage() {
       }
     }
     load();
-  }, [slug]);
+  }, [slug, user]);
+
+  const toggleGuestNode = (nodeId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (user || !roadmap) return;
+
+    const currentCompleted = progress?.completedNodes || [];
+    const isCompleted = currentCompleted.includes(nodeId);
+
+    const nextCompleted = isCompleted
+      ? currentCompleted.filter((id) => id !== nodeId)
+      : [...currentCompleted, nodeId];
+
+    const nextProgress: RoadmapProgress = {
+      roadmapId: slug,
+      completedNodes: nextCompleted,
+      inProgressNodes: (progress?.inProgressNodes || []).filter((id) => !nextCompleted.includes(id)),
+    };
+
+    saveGuestRoadmapProgress(slug, nextCompleted, nextProgress.inProgressNodes);
+    setProgress(nextProgress);
+
+    if (
+      roadmap.nodes &&
+      nextCompleted.length === roadmap.nodes.length &&
+      roadmap.nodes.length > 0 &&
+      !isCompleted
+    ) {
+      setShowCompletionModal(true);
+    }
+  };
 
   const nodes = roadmap?.nodes || [];
   const completedCount = progress?.completedNodes.length || 0;
@@ -353,7 +400,21 @@ function RoadmapDetailPage() {
                           {node.title}
                         </h3>
                       </div>
-                      <div className="flex gap-2 font-mono text-[10px] font-semibold">
+                      <div className="flex items-center gap-2 font-mono text-[10px] font-semibold">
+                        {!user && (
+                          <button
+                            onClick={(e) => toggleGuestNode(node.id, e)}
+                            title={isComplete ? "Mark as uncompleted" : "Mark as completed (Guest)"}
+                            className={`px-2.5 py-1 rounded border flex items-center gap-1.5 cursor-pointer transition-colors ${
+                              isComplete
+                                ? "bg-teal/10 border-teal text-teal hover:bg-teal/20"
+                                : "bg-panel-2 border-panel-border text-panel-muted hover:border-teal hover:text-teal"
+                            }`}
+                          >
+                            {isComplete ? <CheckSquare size={12} /> : <Square size={12} />}
+                            <span>{isComplete ? "Completed" : "Mark Done"}</span>
+                          </button>
+                        )}
                         <span className="px-2 py-1 rounded bg-panel-2 text-teal uppercase border border-[rgba(53,214,180,0.2)]">
                           {node.difficulty}
                         </span>
@@ -425,6 +486,39 @@ function RoadmapDetailPage() {
               </span>
             </div>
 
+            {!user && (
+              <div className="mb-6 p-4 rounded-xl bg-panel border border-panel-border">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-mono text-xs font-semibold text-panel-text">
+                      Guest Progress
+                    </div>
+                    <div className="text-xs text-panel-muted">
+                      Saved in browser localStorage
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => toggleGuestNode(selectedNode.id, e)}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                      progress?.completedNodes.includes(selectedNode.id)
+                        ? "bg-teal text-[#04241d] border-teal hover:bg-[#5ce2c6]"
+                        : "bg-panel-2 text-panel-text border-panel-border hover:border-teal hover:text-teal"
+                    }`}
+                  >
+                    {progress?.completedNodes.includes(selectedNode.id) ? (
+                      <>
+                        <CheckSquare size={14} /> Completed
+                      </>
+                    ) : (
+                      <>
+                        <Square size={14} /> Mark as Completed
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Prerequisites Note */}
             {getNodeState(selectedNode.id, progress, roadmap) === "locked" && (
               <div className="bg-[rgba(255,107,107,0.05)] border border-[rgba(255,107,107,0.2)] rounded-lg p-4 mb-6">
@@ -462,8 +556,8 @@ function RoadmapDetailPage() {
 
       {/* Completion Modal */}
       {showCompletionModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[rgba(0,0,0,0.8)] backdrop-blur-[4px]">
-          <div className="bg-panel border border-panel-border rounded-2xl w-full max-w-[480px] p-10 px-8 text-center shadow-[0_40px_80px_-20px_rgba(0,0,0,0.8)] animate-[popIn_0.3s_cubic-bezier(0.16,1,0.3,1)]">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[rgba(0,0,0,0.8)] backdrop-blur-[4px] p-4">
+          <div className="bg-panel border border-panel-border rounded-2xl w-full max-w-[480px] p-8 sm:p-10 text-center shadow-[0_40px_80px_-20px_rgba(0,0,0,0.8)] animate-[popIn_0.3s_cubic-bezier(0.16,1,0.3,1)]">
             {/* Celebration Badge */}
             <div className="w-[100px] h-[100px] rounded-full bg-[linear-gradient(135deg,var(--color-teal),#6be9cf)] mx-auto mb-6 flex items-center justify-center shadow-[0_0_40px_rgba(53,214,180,0.3)]">
               <CheckCircle2 size={48} color="#04241d" />
@@ -472,9 +566,26 @@ function RoadmapDetailPage() {
             <h2 className="font-space text-[28px] font-bold m-0 mb-3 text-panel-text">
               That's the whole roadmap.
             </h2>
-            <p className="text-panel-muted text-[15px] leading-[1.6] m-0 mb-8">
+            <p className="text-panel-muted text-[15px] leading-[1.6] m-0 mb-6">
               You've completed every challenge in <strong>{roadmap.title}</strong>.
             </p>
+
+            {!user && (
+              <div className="mb-6 p-4 rounded-xl bg-panel-2 border border-panel-border text-left">
+                <div className="font-mono text-xs text-teal font-semibold mb-1 uppercase tracking-wider">
+                  Guest Session
+                </div>
+                <p className="text-xs text-panel-muted m-0 mb-3 leading-relaxed">
+                  Save your completed path, claim your verified mastery badges, and build your engineering profile.
+                </p>
+                <Link
+                  href="/register"
+                  className="inline-flex items-center justify-center w-full py-2.5 px-4 rounded-lg bg-teal text-[#04241d] font-semibold text-xs transition-transform hover:scale-[1.01] no-underline"
+                >
+                  Sign up in 10 seconds &rarr;
+                </Link>
+              </div>
+            )}
 
             <div className="flex flex-col gap-3">
               <button

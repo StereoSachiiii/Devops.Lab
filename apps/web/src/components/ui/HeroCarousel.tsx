@@ -43,7 +43,7 @@ export function HeroCarousel() {
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.2, duration: 0.8 }}
-            className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight font-outfit mb-6"
+            className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight font-heading mb-6"
           >
             {slides[current]?.title}
           </motion.h1>

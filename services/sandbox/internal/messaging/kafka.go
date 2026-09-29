@@ -15,21 +15,32 @@ import (
 const (
 	TopicSessionStarted = "sandbox.session.started"
 	TopicSessionEnded   = "sandbox.session.ended"
+	TopicSessionFailed  = "sandbox.session.failed"
 )
 
 // SessionStartedJob is published when a user opens a lab.
 type SessionStartedJob struct {
-	SessionID   string `json:"sessionId"`
-	UserID      string `json:"userId"`
-	ChallengeID string `json:"challengeId"`
-	Image       string `json:"image"`
-	TTLMins     int    `json:"ttlMins"`
+	SessionID        string `json:"sessionId"`
+	UserID           string `json:"userId"`
+	ChallengeID      string `json:"challengeId"`
+	Image            string `json:"image"`
+	TTLMins          int    `json:"ttlMins"`
+	RequiredProvider string `json:"requiredProvider,omitempty"`
 }
 
 // SessionEndedJob is published when a user leaves or times out.
 type SessionEndedJob struct {
 	SessionID string `json:"sessionId"`
 	Reason    string `json:"reason"`
+}
+
+// SessionFailedJob is published when a session fails to provision.
+type SessionFailedJob struct {
+	Type        string `json:"type"`
+	SessionID   string `json:"sessionId"`
+	UserID      string `json:"userId"`
+	ChallengeID string `json:"challengeId"`
+	Error       string `json:"error"`
 }
 
 // kafkaSessionEvent wraps the standard envelope.

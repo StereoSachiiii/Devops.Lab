@@ -90,3 +90,7 @@ func (m *MockProvider) GetProvisionCount() int {
 func (m *MockProvider) EnforceDiskQuotas(ctx context.Context, maxBytes int64) ([]string, error) {
 	return nil, nil
 }
+
+func (m *MockProvider) ReapOrphans(ctx context.Context, activeSessionIDs map[string]struct{}, minAge time.Duration) ([]string, error) {
+	return nil, nil
+}

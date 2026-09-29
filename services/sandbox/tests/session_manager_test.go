@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devops-platform/sandbox/internal/sandbox"
 	"github.com/devops-platform/sandbox/internal/session"
 	"github.com/devops-platform/sandbox/internal/store"
 )
@@ -37,7 +38,8 @@ func TestManager_Idempotency(t *testing.T) {
 	mock := NewMockProvider()
 	mock.ProvisionDelay = 10 * time.Millisecond // simulate slight network delay
 
-	mgr, err := session.NewManager(mock, r, 60, "worker-mock:8090", log)
+	providers := map[string]sandbox.SandboxProvider{"docker": mock}
+	mgr, err := session.NewManager(providers, r, 60, "worker-mock:8090", log)
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -49,12 +51,12 @@ func TestManager_Idempotency(t *testing.T) {
 	_ = mgr.Destroy(ctx, sessionID)
 
 	// Call create twice sequentially
-	_, err = mgr.Create(ctx, sessionID, "user-1", "chal-1", "alpine")
+	_, err = mgr.Create(ctx, sessionID, "user-1", "chal-1", "alpine", "docker")
 	if err != nil {
 		t.Fatalf("Create 1 failed: %v", err)
 	}
 
-	_, err = mgr.Create(ctx, sessionID, "user-1", "chal-1", "alpine")
+	_, err = mgr.Create(ctx, sessionID, "user-1", "chal-1", "alpine", "docker")
 	if err != nil {
 		t.Fatalf("Create 2 failed: %v", err)
 	}
@@ -75,7 +77,8 @@ func TestManager_ConcurrentProvisioningSafety(t *testing.T) {
 	// simulate a slow provision to ensure we hit the concurrency lock
 	mock.ProvisionDelay = 50 * time.Millisecond
 
-	mgr, err := session.NewManager(mock, r, 60, "worker-mock:8090", log)
+	providers := map[string]sandbox.SandboxProvider{"docker": mock}
+	mgr, err := session.NewManager(providers, r, 60, "worker-mock:8090", log)
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -94,7 +97,7 @@ func TestManager_ConcurrentProvisioningSafety(t *testing.T) {
 	for i := 0; i < workers; i++ {
 		go func() {
 			defer wg.Done()
-			_, err := mgr.Create(ctx, sessionID, "user-1", "chal-1", "alpine")
+			_, err := mgr.Create(ctx, sessionID, "user-1", "chal-1", "alpine", "docker")
 			if err != nil {
 				t.Errorf("Concurrent Create failed: %v", err)
 			}
@@ -116,7 +119,8 @@ func TestManager_RedisStateRecovery(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	mock1 := NewMockProvider()
 
-	mgr1, err := session.NewManager(mock1, r1, 60, "worker-mock:8090", log)
+	providers1 := map[string]sandbox.SandboxProvider{"docker": mock1}
+	mgr1, err := session.NewManager(providers1, r1, 60, "worker-mock:8090", log)
 	if err != nil {
 		t.Fatalf("Failed to create manager 1: %v", err)
 	}
@@ -127,7 +131,7 @@ func TestManager_RedisStateRecovery(t *testing.T) {
 	// Clean up any old state first
 	_ = mgr1.Destroy(ctx, sessionID)
 
-	data1, err := mgr1.Create(ctx, sessionID, "user-1", "chal-1", "alpine")
+	data1, err := mgr1.Create(ctx, sessionID, "user-1", "chal-1", "alpine", "docker")
 	if err != nil {
 		t.Fatalf("Manager 1 create failed: %v", err)
 	}
@@ -143,7 +147,8 @@ func TestManager_RedisStateRecovery(t *testing.T) {
 	defer r2.Close()
 	
 	mock2 := NewMockProvider()
-	mgr2, err := session.NewManager(mock2, r2, 60, "worker-mock:8090", log)
+	providers2 := map[string]sandbox.SandboxProvider{"docker": mock2}
+	mgr2, err := session.NewManager(providers2, r2, 60, "worker-mock:8090", log)
 	if err != nil {
 		t.Fatalf("Failed to create manager 2: %v", err)
 	}
@@ -156,9 +161,73 @@ func TestManager_RedisStateRecovery(t *testing.T) {
 		t.Fatalf("Manager 2 did not recover the session from Redis")
 	}
 
-	if data1.ContainerID != data2.ContainerID {
-		t.Errorf("Recovered container ID mismatch. Expected %s, got %s", data1.ContainerID, data2.ContainerID)
+	if data1.RuntimeID != data2.RuntimeID {
+		t.Errorf("Recovered runtime ID mismatch. Expected %s, got %s", data1.RuntimeID, data2.RuntimeID)
 	}
 
 	_ = mgr2.Destroy(ctx, sessionID)
+}
+
+func TestManager_DynamicProviderSelection(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	mockDocker := NewMockProvider()
+	mockGVisor := NewMockProvider()
+	mockKata := NewMockProvider()
+
+	testMgr := session.NewTestManager()
+	testMgr.SetTestProvider("docker", mockDocker)
+	testMgr.SetTestProvider("gvisor", mockGVisor)
+	testMgr.SetTestProvider("kata", mockKata)
+
+	// 1. Resolve by name
+	p1 := testMgr.GetProviderByName("docker")
+	if p1 != mockDocker {
+		t.Errorf("Expected mockDocker for 'docker', got %v", p1)
+	}
+	p2 := testMgr.GetProviderByName("gvisor")
+	if p2 != mockGVisor {
+		t.Errorf("Expected mockGVisor for 'gvisor', got %v", p2)
+	}
+	p3 := testMgr.GetProviderByName("kata")
+	if p3 != mockKata {
+		t.Errorf("Expected mockKata for 'kata', got %v", p3)
+	}
+	pFallback := testMgr.GetProviderByName("unknown-provider")
+	if pFallback != mockDocker {
+		t.Errorf("Expected fallback to mockDocker for unknown provider, got %v", pFallback)
+	}
+
+	// 2. Resolve per session
+	testMgr.AddTestSession(store.SessionData{
+		SessionID:   "session-docker-1",
+		RuntimeID:   "cid-1",
+		Provider:    "docker",
+	})
+	testMgr.AddTestSession(store.SessionData{
+		SessionID:   "session-gvisor-1",
+		RuntimeID:   "cid-2",
+		Provider:    "gvisor",
+	})
+	testMgr.AddTestSession(store.SessionData{
+		SessionID:   "session-kata-1",
+		RuntimeID:   "cid-3",
+		Provider:    "kata",
+	})
+
+	resolved1, err := testMgr.GetProvider("session-docker-1")
+	if err != nil || resolved1 != mockDocker {
+		t.Errorf("Expected mockDocker for session-docker-1, got %v (err: %v)", resolved1, err)
+	}
+
+	resolved2, err := testMgr.GetProvider("session-gvisor-1")
+	if err != nil || resolved2 != mockGVisor {
+		t.Errorf("Expected mockGVisor for session-gvisor-1, got %v (err: %v)", resolved2, err)
+	}
+
+	resolved3, err := testMgr.GetProvider("session-kata-1")
+	if err != nil || resolved3 != mockKata {
+		t.Errorf("Expected mockKata for session-kata-1, got %v (err: %v)", resolved3, err)
+	}
+	_ = log
 }

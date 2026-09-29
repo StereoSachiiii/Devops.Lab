@@ -8,7 +8,7 @@ BEGIN
    IF NOT EXISTS (
       SELECT FROM pg_catalog.pg_roles
       WHERE  rolname = 'app_user') THEN
-      CREATE ROLE app_user LOGIN PASSWORD :'app_user_password';
+      CREATE ROLE app_user LOGIN PASSWORD 'app_password';
    END IF;
 END
 $do$;

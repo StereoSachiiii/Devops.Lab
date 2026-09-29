@@ -18,17 +18,18 @@ export function CategorySidebar({
 
   return (
     <div className="flex flex-col lg:w-[240px] shrink-0">
-      <div className="font-mono text-[11px] tracking-[0.14em] uppercase text-panel-muted mb-4 px-3 font-semibold">
+      <div className="font-mono text-[11px] tracking-[0.14em] uppercase text-panel-muted mb-3 px-3 font-semibold">
         Categories
       </div>
 
-      <div className="flex lg:flex-col gap-2 lg:gap-1 overflow-x-auto lg:overflow-x-visible pb-2 lg:pb-0 hide-scrollbar">
+      {/* Desktop: vertical list with independent scrolling; Mobile: horizontal scroll row */}
+      <div className="flex lg:flex-col gap-2 lg:gap-1 overflow-x-auto lg:overflow-x-hidden lg:overflow-y-auto max-h-[calc(100vh-140px)] pb-2 lg:pb-3 pr-0 lg:pr-1.5 sidebar-scrollbar">
         {/* All Challenges */}
         <button
           onClick={() => onSelectCategory(null)}
-          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-left transition-colors whitespace-nowrap lg:whitespace-normal border-l-2 ${
+          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-left transition-colors whitespace-nowrap lg:whitespace-normal border-l-2 shrink-0 ${
             activeCategory === null
-              ? "bg-panel-2 text-panel-text border-amber"
+              ? "bg-panel-2 text-panel-text border-amber font-semibold"
               : "text-panel-muted hover:bg-panel-2 hover:text-panel-text border-transparent"
           }`}
         >
@@ -46,9 +47,9 @@ export function CategorySidebar({
             <button
               key={category}
               onClick={() => onSelectCategory(category)}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-left transition-colors whitespace-nowrap lg:whitespace-normal border-l-2 ${
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-left transition-colors whitespace-nowrap lg:whitespace-normal border-l-2 shrink-0 ${
                 isActive
-                  ? "bg-panel-2 text-panel-text border-amber"
+                  ? "bg-panel-2 text-panel-text border-amber font-semibold"
                   : "text-panel-muted hover:bg-panel-2 hover:text-panel-text border-transparent"
               }`}
             >

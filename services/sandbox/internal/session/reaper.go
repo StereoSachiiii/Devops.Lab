@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 )
 
@@ -55,10 +56,16 @@ func (r *Reaper) Sweep(ctx context.Context) {
 
 	for _, s := range sessions {
 		age := now.Sub(s.CreatedAt)
-		if age > r.ttl {
+		effectiveTTL := r.ttl
+		if strings.HasPrefix(s.UserID, "guest_") {
+			effectiveTTL = 10 * time.Minute
+		}
+		if age > effectiveTTL {
 			r.log.Info("Reaping expired session",
 				"sessionId", s.SessionID,
+				"userId", s.UserID,
 				"age", age,
+				"effectiveTTL", effectiveTTL,
 			)
 			if err := r.manager.Destroy(ctx, s.SessionID); err != nil {
 				r.log.Error("Failed to reap session", "sessionId", s.SessionID, "error", err)
@@ -69,7 +76,14 @@ func (r *Reaper) Sweep(ctx context.Context) {
 		}
 
 		// Proactive death detection: check if container is still running
-		isRunning, err := r.manager.provider.IsRunning(ctx, s.ContainerID)
+		prov, _ := r.manager.GetProvider(s.SessionID)
+		if prov == nil {
+			prov = r.manager.GetProviderByName(s.Provider)
+		}
+		if prov == nil {
+			continue
+		}
+		isRunning, err := prov.IsRunning(ctx, s.RuntimeID)
 		if err != nil {
 			r.log.Error("Failed to check container status", "sessionId", s.SessionID, "error", err)
 			continue
@@ -78,7 +92,7 @@ func (r *Reaper) Sweep(ctx context.Context) {
 		if !isRunning {
 			r.log.Info("Reaping dead session (container stopped prematurely)",
 				"sessionId", s.SessionID,
-				"containerId", s.ContainerID,
+				"runtimeId", s.RuntimeID,
 			)
 			if err := r.manager.Destroy(ctx, s.SessionID); err != nil {
 				r.log.Error("Failed to reap dead session", "sessionId", s.SessionID, "error", err)
@@ -90,5 +104,20 @@ func (r *Reaper) Sweep(ctx context.Context) {
 
 	if reaped > 0 {
 		r.log.Info("Reaper sweep complete", "reaped", reaped, "active", len(sessions)-reaped)
+	}
+
+	// Daemon-level orphan sweep: clean unindexed containers older than 5m grace period
+	activeMap := make(map[string]struct{}, len(sessions))
+	for _, s := range sessions {
+		activeMap[s.SessionID] = struct{}{}
+	}
+
+	for _, prov := range r.manager.AllProviders() {
+		orphans, err := prov.ReapOrphans(ctx, activeMap, 5*time.Minute)
+		if err != nil {
+			r.log.Error("Failed to sweep daemon orphans", "error", err)
+		} else if len(orphans) > 0 {
+			r.log.Warn("Daemon orphan sweep reaped unindexed containers", "count", len(orphans), "containers", orphans)
+		}
 	}
 }

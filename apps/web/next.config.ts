@@ -8,6 +8,8 @@ config({ path: path.resolve(process.cwd(), "../../.env") });
 const nextConfig: NextConfig = {
   output: "standalone",
   turbopack: {},
+  devIndicators: false,
+  allowedDevOrigins: ["localhost"],
   env: {
     NEXT_PUBLIC_API_BASE_URL: process.env["NEXT_PUBLIC_API_BASE_URL"],
   },

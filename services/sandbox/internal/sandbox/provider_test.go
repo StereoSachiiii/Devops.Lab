@@ -18,6 +18,7 @@ type MockProvider struct {
 	RemoveFunc             func(ctx context.Context, containerID string) error
 	IsRunningFunc          func(ctx context.Context, containerID string) (bool, error)
 	EnforceDiskQuotasFunc  func(ctx context.Context, maxBytes int64) ([]string, error)
+	ReapOrphansFunc        func(ctx context.Context, activeSessionIDs map[string]struct{}, minAge time.Duration) ([]string, error)
 }
 
 func (m *MockProvider) Provision(ctx context.Context, image string) (string, error) {
@@ -65,6 +66,13 @@ func (m *MockProvider) IsRunning(ctx context.Context, containerID string) (bool,
 func (m *MockProvider) EnforceDiskQuotas(ctx context.Context, maxBytes int64) ([]string, error) {
 	if m.EnforceDiskQuotasFunc != nil {
 		return m.EnforceDiskQuotasFunc(ctx, maxBytes)
+	}
+	return nil, nil
+}
+
+func (m *MockProvider) ReapOrphans(ctx context.Context, activeSessionIDs map[string]struct{}, minAge time.Duration) ([]string, error) {
+	if m.ReapOrphansFunc != nil {
+		return m.ReapOrphansFunc(ctx, activeSessionIDs, minAge)
 	}
 	return nil, nil
 }

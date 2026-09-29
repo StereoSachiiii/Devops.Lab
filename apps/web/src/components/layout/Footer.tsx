@@ -2,8 +2,8 @@ import Link from "next/link";
 
 export function Footer() {
   return (
-    <footer className="border-t border-panel-border py-10 px-6 bg-bg mt-auto">
-      <div className="max-w-[1200px] mx-auto flex justify-between items-center flex-wrap gap-4">
+    <footer className="border-t border-panel-border py-10 px-6 md:px-8 xl:px-12 bg-bg mt-auto">
+      <div className="max-w-[1440px] xl:max-w-[1600px] 2xl:max-w-[1720px] mx-auto flex justify-between items-center flex-wrap gap-4">
         <div className="font-mono text-[12.5px] text-panel-muted-dim">
           DevOps.lab - where &quot;it works on my machine&quot; gets tested.
         </div>

@@ -19,10 +19,12 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   
-  --font-sans: var(--font-inter);
-  --font-outfit: var(--font-outfit);
-  --font-space: var(--font-space);
-  --font-mono: var(--font-mono);
+  --font-heading: var(--font-heading), var(--font-space), sans-serif;
+  --font-body: var(--font-body), var(--font-inter), sans-serif;
+  --font-mono: var(--font-mono), monospace;
+  --font-sans: var(--font-body), var(--font-inter), sans-serif;
+  --font-space: var(--font-heading), var(--font-space), sans-serif;
+  --font-outfit: var(--font-heading), sans-serif;
 
   --color-bg: var(--theme-bg);
   --color-panel: var(--theme-panel);
@@ -33,9 +35,15 @@
   --color-panel-muted-dim: var(--theme-panel-muted-dim);
   --color-amber: var(--theme-amber);
   --color-amber-dim: var(--theme-amber-dim);
+  --color-amber-gradient-end: var(--theme-amber-gradient-end);
+  --color-btn-dark-text: var(--theme-btn-dark-text);
   --color-teal: var(--theme-teal);
   --color-teal-dim: var(--theme-teal-dim);
   --color-red-auth: var(--theme-red-auth);
+  --color-term-dot-red: var(--theme-term-dot-red);
+  --color-term-dot-yellow: var(--theme-term-dot-yellow);
+  --color-term-dot-green: var(--theme-term-dot-green);
+  --color-term-blue: var(--theme-term-blue);
   --color-particle: var(--theme-particle);
   --color-particle-2: var(--theme-particle-2);
   --color-red-particle: var(--theme-red-particle);
@@ -66,9 +74,15 @@
     --theme-panel-muted-dim: #94a3b8;
     --theme-amber: #ea580c;
     --theme-amber-dim: #ffedd5;
+    --theme-amber-gradient-end: #f97316;
+    --theme-btn-dark-text: #ffffff;
     --theme-teal: #0f766e;
     --theme-teal-dim: #ccfbf1;
     --theme-red-auth: #dc2626;
+    --theme-term-dot-red: #fca5a5;
+    --theme-term-dot-yellow: #fde047;
+    --theme-term-dot-green: #86efac;
+    --theme-term-blue: #2563eb;
     --theme-particle: 234, 88, 12;
     --theme-particle-2: 15, 118, 110;
     --theme-red-particle: 220, 38, 38;
@@ -98,9 +112,15 @@
     --theme-panel-muted-dim: #475569;
     --theme-amber: #ff9d5c;
     --theme-amber-dim: #7a5535;
+    --theme-amber-gradient-end: #ffb877;
+    --theme-btn-dark-text: #241505;
     --theme-teal: #35d6b4;
     --theme-teal-dim: #164a3f;
     --theme-red-auth: #ff6b6b;
+    --theme-term-dot-red: #4a3234;
+    --theme-term-dot-yellow: #4a4530;
+    --theme-term-dot-green: #2f4a3a;
+    --theme-term-blue: #7c9cff;
     --theme-particle: 255, 157, 92;
     --theme-particle-2: 53, 214, 180;
     --theme-red-particle: 255, 107, 107;
@@ -120,6 +140,54 @@
   .press-feedback:active {
     transform: scale(0.97);
     transition: transform 100ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .sidebar-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-panel-border) transparent;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--color-panel-border);
+    border-radius: 9999px;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--color-panel-muted-dim);
+  }
+
+  /* Sleek modern dark scrollbar */
+  .dark-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+  }
+  .dark-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .dark-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .dark-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 9999px;
+  }
+  .dark-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  /* Complete hide scrollbar */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }
 

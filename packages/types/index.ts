@@ -116,6 +116,8 @@ export interface Article {
   readTime: string;
   tags: string[];
   featured?: boolean;
+  trendingRank?: number;
+  likes?: number;
   publishedAt: string;
 }
 
@@ -131,7 +133,8 @@ export interface Challenge {
   templateCode?: string;
   editorLanguage?: string;
   editorial?: string | null;
-  authorNotes?: string | null;
+  requiredProvider?: string;
+  guestTrialEligible?: boolean;
   moduleId?: string;
   module?: {
     title: string;
@@ -143,14 +146,19 @@ export interface Session {
   sessionId: string;
   status: string;
   challengeTitle: string;
-  dockerImage: string;
-  userId: string;
-  challengeId: string;
-  sandboxId: string | null;
-  host: string | null;
-  sshPort: number | null;
-  httpPort: number | null;
-  expiresAt: string | null;
+  dockerImage?: string;
+  userId?: string;
+  challengeId?: string;
+  sandboxId?: string | null;
+  host?: string | null;
+  sshPort?: number | null;
+  httpPort?: number | null;
+  expiresAt?: string | null;
+  terminalUrl?: string;
+  validateUrl?: string;
+  ttlMins?: number;
+  isGuestTrial?: boolean;
+  token?: string;
 }
 
 export interface RoadmapNode {
@@ -173,6 +181,8 @@ export interface Roadmap {
   icon: string;
   nodeCount: number;
   timeEstimate: string;
+  category?: string | null;
+  tags?: string[];
   nodes?: RoadmapNode[];
 }
 

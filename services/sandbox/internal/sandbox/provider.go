@@ -56,6 +56,11 @@ type SandboxProvider interface {
 	// when StorageOpt limits are not supported by the host's filesystem.
 	// Returns a list of container IDs that were killed.
 	EnforceDiskQuotas(ctx context.Context, maxBytes int64) ([]string, error)
+
+	// ReapOrphans scans the underlying daemon for resources with label managed-by=devops-platform-sandbox
+	// whose session IDs are not present in activeSessionIDs and whose creation age exceeds minAge.
+	// Returns a list of container/runtime IDs that were purged.
+	ReapOrphans(ctx context.Context, activeSessionIDs map[string]struct{}, minAge time.Duration) ([]string, error)
 }
 
 // ResizeFunc resizes the PTY when the browser window is resized.

@@ -15,6 +15,7 @@ async function main() {
     shutdown,
     jwtPublicKey: requireEnv("JWT_PUBLIC_KEY").replace(/\\n/g, "\n"),
     sessionTTLMins: parseInt(requireEnv("SESSION_TTL_MINS"), 10),
+    guestTrialTTLMins: parseInt(requireEnv("GUEST_TRIAL_TTL_MINS"), 10),
   });
 
   try {

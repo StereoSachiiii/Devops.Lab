@@ -2,9 +2,9 @@ import Fastify from "fastify";
 import { MessagingService, RabbitMQService } from "@devops/messaging";
 import { registerNotificationConsumers } from "./consumers";
 import { metricsPlugin } from "./plugins/metrics";
-import fastifyRedis from "@fastify/redis";
+import Redis from "ioredis";
 
-import type { ObservabilityConfig } from "@devops/observability";
+import { requireEnv, type ObservabilityConfig } from "@devops/observability";
 
 export async function buildApp(obs: ObservabilityConfig) {
   const app = Fastify({
@@ -13,8 +13,17 @@ export async function buildApp(obs: ObservabilityConfig) {
 
   await app.register(metricsPlugin);
 
-  await app.register(fastifyRedis, {
-    url: process.env["REDIS_URL"] || "redis://127.0.0.1:6379",
+  const redis = new Redis(requireEnv("REDIS_URL"), {
+    lazyConnect: true,
+    enableOfflineQueue: true,
+    maxRetriesPerRequest: null,
+    retryStrategy: (times: number) => Math.min(times * 100, 3000),
+  });
+  redis.on("connect", () => app.log.info("Redis connected"));
+  redis.on("error", (err: Error) => app.log.warn({ err: err.message }, "Redis connection issue"));
+  app.decorate("redis", redis);
+  redis.connect().catch((err: Error) => {
+    app.log.error({ err: err.message }, "Redis background connection failed");
   });
 
   const kafka = new MessagingService("notification-service");
@@ -37,6 +46,7 @@ export async function buildApp(obs: ObservabilityConfig) {
   });
 
   app.addHook("onClose", async () => {
+    await redis.quit().catch(() => {});
     await kafka.disconnect();
     await rabbitmq.disconnect();
   });
@@ -51,6 +61,7 @@ export async function buildApp(obs: ObservabilityConfig) {
 // Type declaration for the decorated instance
 declare module "fastify" {
   interface FastifyInstance {
+    redis: Redis;
     kafka: MessagingService;
     rabbitmq: RabbitMQService;
   }

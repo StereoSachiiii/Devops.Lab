@@ -263,3 +263,48 @@ func (d *DockerProvider) EnforceDiskQuotas(ctx context.Context, maxBytes int64) 
 
 	return killed, nil
 }
+
+// ReapOrphans scans the Docker daemon for containers with label managed-by=devops-platform-sandbox
+// whose session ID is not present in activeSessionIDs and whose Created timestamp is older than minAge.
+func (d *DockerProvider) ReapOrphans(ctx context.Context, activeSessionIDs map[string]struct{}, minAge time.Duration) ([]string, error) {
+	containers, err := d.client.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return nil, fmt.Errorf("docker: failed to list containers for orphan reap: %w", err)
+	}
+
+	now := time.Now().UTC()
+	var reaped []string
+
+	for _, c := range containers {
+		if c.Labels["managed-by"] != "devops-platform-sandbox" {
+			continue
+		}
+
+		sessionID := c.Labels["session-id"]
+		if sessionID != "" {
+			if _, isActive := activeSessionIDs[sessionID]; isActive {
+				continue
+			}
+		}
+
+		createdTime := time.Unix(c.Created, 0).UTC()
+		age := now.Sub(createdTime)
+		if age < minAge {
+			// Inside grace period — allow in-flight provisioning to register
+			continue
+		}
+
+		d.log.Warn("Reaping unindexed orphan container",
+			"containerId", c.ID[:12],
+			"sessionId", sessionID,
+			"age", age,
+		)
+		if err := d.Remove(ctx, c.ID); err != nil {
+			d.log.Error("Failed to remove orphan container", "containerId", c.ID[:12], "error", err)
+		} else {
+			reaped = append(reaped, c.ID)
+		}
+	}
+
+	return reaped, nil
+}

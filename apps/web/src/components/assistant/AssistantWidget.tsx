@@ -76,7 +76,7 @@ export function AssistantWidget() {
                 <div className="p-1 bg-zinc-800 rounded-lg">
                   <Sparkles size={16} className="text-foreground" />
                 </div>
-                <span className="font-extrabold font-outfit text-lg tracking-tight">
+                <span className="font-extrabold font-heading text-lg tracking-tight">
                   DevOps Mentor
                 </span>
               </div>

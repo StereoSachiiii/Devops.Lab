@@ -5,6 +5,7 @@ declare module "fastify" {
     kafka: import("@devops/messaging").MessagingService;
     rabbitmq: import("@devops/messaging").RabbitMQService;
     sessionTTLMins: number;
+    guestTrialTTLMins: number;
     authenticate: (
       request: import("fastify").FastifyRequest,
       reply: import("fastify").FastifyReply

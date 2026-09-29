@@ -8,6 +8,7 @@ export const TOPICS = {
 
   SESSION_STARTED: "sandbox.session.started",
   SESSION_ENDED: "sandbox.session.ended",
+  SESSION_FAILED: "sandbox.session.failed",
 } as const;
 
 export type Topic = (typeof TOPICS)[keyof typeof TOPICS];
@@ -109,6 +110,7 @@ export class SessionStartedEvent extends BaseEvent<{
   challengeId: string;
   image: string;
   ttlMins: number;
+  requiredProvider?: string;
 }> {
   readonly topic = TOPICS.SESSION_STARTED;
 }
@@ -127,6 +129,16 @@ export class SessionEndedEvent extends BaseEvent<{
   readonly topic = TOPICS.SESSION_ENDED;
 }
 
+export class SessionFailedEvent extends BaseEvent<{
+  type: "session.failed";
+  sessionId: string;
+  userId: string;
+  challengeId: string;
+  error: string;
+}> {
+  readonly topic = TOPICS.SESSION_FAILED;
+}
+
 export type EventClassMap = {
   [TOPICS.USER_REGISTERED]: UserRegisteredEvent;
   [TOPICS.EMAIL_VERIFICATION_REQUESTED]: EmailVerificationRequestedEvent;
@@ -136,4 +148,5 @@ export type EventClassMap = {
   [TOPICS.CHALLENGE_FAILED]: ChallengeFailedEvent;
   [TOPICS.SESSION_STARTED]: SessionStartedEvent;
   [TOPICS.SESSION_ENDED]: SessionEndedEvent;
+  [TOPICS.SESSION_FAILED]: SessionFailedEvent;
 };

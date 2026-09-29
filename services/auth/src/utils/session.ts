@@ -67,7 +67,7 @@ export const config = {
     accessToken: "15m",
     // MFA token: Short-lived token purely for the MFA challenge step
     mfaToken: requireEnv("EXPIRY_MFA_TOKEN"),
-    refreshToken: parseDurationToSeconds(process.env["EXPIRY_REFRESH_TOKEN"] || "30d"),
+    refreshToken: parseDurationToSeconds(requireEnv("EXPIRY_REFRESH_TOKEN")),
     lockout: 15 * 60,
     passwordReset: 60 * 60,
     emailVerification: 24 * 60 * 60,
@@ -125,14 +125,28 @@ export async function denylistAccessToken(
 }
 
 import { redisSafeGet } from "./redis-safe";
-/** Check if an access token JTI is denylisted in Redis. */
+/** Check if an access token JTI is denylisted in Redis or if user sessions were revoked. */
 export async function isTokenDenylisted(
   fastify: FastifyInstance,
-  jti?: string
+  jti?: string,
+  userId?: string,
+  iat?: number
 ): Promise<boolean> {
-  if (!jti) return false;
-  const status = await redisSafeGet(fastify, `auth:denylist:jti:${jti}`, 250);
-  return status === "revoked";
+  if (jti) {
+    const status = await redisSafeGet(fastify, `auth:denylist:jti:${jti}`, 250);
+    if (status === "revoked") return true;
+  }
+  if (userId) {
+    const revokedAtStr = await redisSafeGet(fastify, `auth:revoked:user:${userId}`, 250);
+    if (revokedAtStr) {
+      const revokedAt = parseInt(revokedAtStr, 10);
+      // iat is in seconds; revokedAt is in ms
+      if (!iat || iat * 1000 <= revokedAt) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 // ─── Session management ───────────────────────────────────────────────────────
@@ -220,6 +234,9 @@ export async function invalidateAllSessions(
   fastify: FastifyInstance,
   userId: string
 ): Promise<void> {
+  // Mark all tokens issued at or before now as revoked for this user
+  await fastify.redis.set(`auth:revoked:user:${userId}`, String(Date.now()), "EX", 900);
+
   // AUTH-005 FIX: Use SCAN instead of KEYS to avoid blocking Redis
   const pattern = `auth:refresh:${userId}:*`;
   let cursor = "0";

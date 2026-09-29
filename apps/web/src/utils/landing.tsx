@@ -252,12 +252,12 @@ export function ChallengeSlider() {
   const { visibleLines, isComplete } = useTypewriter(slide.lines, 20);
 
   return (
-    <div className="relative max-w-[760px] mx-auto">
+    <div className="relative max-w-[840px] xl:max-w-[920px] w-full mx-auto">
       <div className="rounded-[14px] border border-panel-border bg-panel shadow-[0_30px_60px_-25px_var(--theme-shadow)] overflow-hidden">
         <div className="flex items-center gap-2 px-3.5 py-3 bg-panel-2 border-b border-panel-border">
-          <div className="w-[9px] h-[9px] rounded-full bg-[#4a3234]" />
-          <div className="w-[9px] h-[9px] rounded-full bg-[#4a4530]" />
-          <div className="w-[9px] h-[9px] rounded-full bg-[#2f4a3a]" />
+          <div className="w-[9px] h-[9px] rounded-full bg-term-dot-red" />
+          <div className="w-[9px] h-[9px] rounded-full bg-term-dot-yellow" />
+          <div className="w-[9px] h-[9px] rounded-full bg-term-dot-green" />
           <span className="ml-2 font-mono text-[11.5px] text-panel-muted-dim">{slide.title}</span>
         </div>
         <div className="px-7 pt-6 pb-[30px] font-mono text-[13.5px] leading-[2] min-h-[190px]">
@@ -267,7 +267,7 @@ export function ChallengeSlider() {
               <div
                 key={i}
                 className={
-                  l.t === "ok" ? "text-teal" : l.t === "err" ? "text-red-auth" : "text-[#7c9cff]"
+                  l.t === "ok" ? "text-teal" : l.t === "err" ? "text-red-auth" : "text-term-blue"
                 }
               >
                 {l.v}
@@ -275,13 +275,13 @@ export function ChallengeSlider() {
                   i === visibleLines.length - 1 &&
                   slide.lines[i] &&
                   l.v.length < slide.lines[i]!.v.length && (
-                    <span className="inline-block w-2 h-3.5 bg-[#7c9cff] ml-1.5 align-middle animate-[cursorBlink_1s_step-end_infinite]" />
+                    <span className="inline-block w-2 h-3.5 bg-term-blue ml-1.5 align-middle animate-[cursorBlink_1s_step-end_infinite]" />
                   )}
               </div>
             );
           })}
           {isComplete && (
-            <div className="inline-block mt-4 font-mono text-[11px] px-2.5 py-1 rounded-[5px] bg-[rgba(53,214,180,0.12)] text-teal animate-[popIn_300ms_ease-out]">
+            <div className="inline-block mt-4 font-mono text-[11px] px-2.5 py-1 rounded-[5px] bg-teal-dim text-teal animate-[popIn_300ms_ease-out]">
               {slide.badge}
             </div>
           )}
@@ -341,7 +341,7 @@ export function QuizCard() {
       : "";
 
   return (
-    <div className="max-w-[520px] mx-auto bg-panel border border-panel-border rounded-[14px] px-8 py-[30px] shadow-[0_30px_60px_-30px_var(--theme-shadow)]">
+    <div className="max-w-[600px] w-full mx-auto bg-panel border border-panel-border rounded-[14px] px-8 py-[30px] shadow-[0_30px_60px_-30px_var(--theme-shadow)]">
       <div className="flex justify-between items-center mb-[18px]">
         <span className="font-mono text-[11px] text-teal bg-[rgba(53,214,180,0.12)] px-[9px] py-1 rounded-[5px]">
           Networking · Q3 of 8

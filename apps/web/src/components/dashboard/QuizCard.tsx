@@ -175,7 +175,9 @@ export function QuizCard({ quiz, progress }: QuizCardProps) {
               color: "var(--auth-muted-dim)",
             }}
           >
-            <span>{questionCount} questions</span>
+            <span>
+              {questionCount} {questionCount === 1 ? "question" : "questions"}
+            </span>
             <span>{quiz.timeEstimate || "~5 min"}</span>
           </div>
           <div

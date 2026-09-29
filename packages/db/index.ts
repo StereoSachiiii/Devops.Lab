@@ -14,11 +14,8 @@ export function createTenantClient(baseClient: PrismaClient, orgId?: string, use
     query: {
       $allModels: {
         async $allOperations({ args, query }) {
-          const [, result] = await baseClient.$transaction([
-            baseClient.$executeRaw`SELECT set_config('app.current_org_id', ${oId}, true), set_config('app.current_user_id', ${uId}, true)`,
-            query(args),
-          ]);
-          return result;
+          await baseClient.$executeRaw`SELECT set_config('app.current_org_id', ${oId}, true), set_config('app.current_user_id', ${uId}, true)`;
+          return query(args);
         },
       },
     },

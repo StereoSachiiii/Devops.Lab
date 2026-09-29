@@ -225,12 +225,16 @@ export const apiClient = {
     getAll: () => engine.get<Challenge[], Challenge[]>(API_ROUTES.challenges.base),
     getById: (id: string) => engine.get<Challenge, Challenge>(API_ROUTES.challenges.byId(id)),
     start: (id: string) => engine.post<Session, Session>(API_ROUTES.challenges.start(id)),
+    trial: (id: string) => engine.post<Session, Session>(API_ROUTES.challenges.trial(id)),
+    getTrialStatus: (id: string) =>
+      engine.get<{ eligible: boolean; trialUsed: boolean }, { eligible: boolean; trialUsed: boolean }>(API_ROUTES.challenges.trialStatus(id)),
     getHistory: (id: string) =>
       engine.get<HistoryItem[], HistoryItem[]>(API_ROUTES.challenges.history(id)),
   },
 
   roadmaps: {
-    getAll: () => engine.get<Roadmap[], Roadmap[]>(API_ROUTES.roadmaps.base),
+    getAll: (params?: { category?: string; tags?: string; search?: string }) =>
+      engine.get<Roadmap[], Roadmap[]>(API_ROUTES.roadmaps.base, { params }),
     getBySlug: (slug: string) => engine.get<Roadmap, Roadmap>(API_ROUTES.roadmaps.bySlug(slug)),
     getProgress: (slug: string) =>
       engine.get<RoadmapProgress, RoadmapProgress>(API_ROUTES.roadmaps.progress(slug)),

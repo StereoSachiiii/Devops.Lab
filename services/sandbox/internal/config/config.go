@@ -41,7 +41,6 @@ type Config struct {
 	EncryptionKey []byte
 
 	// Provider selection
-	SandboxProvider  string
 	FlintlockAddress string
 	WorkerAddr       string
 
@@ -65,7 +64,6 @@ func Load() (*Config, error) {
 		MaxMemoryMB:    getEnvInt("MAX_MEMORY_MB", 512),
 		MaxCPUs:        getEnvFloat("MAX_CPUS", 1.0),
 		NetworkMode:    getEnv("DOCKER_NETWORK_MODE", "none"),
-		SandboxProvider:  getEnv("SANDBOX_PROVIDER", "docker"),
 		FlintlockAddress: getEnv("FLINTLOCK_ADDRESS", "localhost:9090"),
 		WorkerAddr:       getEnv("WORKER_ADDR", "sandbox-worker:8090"),
 		AllowedOrigins:   getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173"),
