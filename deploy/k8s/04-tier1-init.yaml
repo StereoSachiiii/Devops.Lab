@@ -16,7 +16,7 @@ data:
     #!/bin/bash
     set -e
     # Run the SQL script, passing the password from the environment variable injected by the Secret
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" -v app_user_password="$APP_USER_PASSWORD" -f /docker-entrypoint-initdb.d/postgres-init.sql
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" -v app_user_password="$APP_USER_PASSWORD" -f /etc/postgresql-init/postgres-init.sql
 
   # The actual SQL script
   postgres-init.sql: |
@@ -64,9 +64,6 @@ spec:
                 name: devops-config
             - secretRef:
                 name: devops-secrets
-          env:
-            - name: DATABASE_URL
-              value: "postgresql://devops_user:<STRONG_PASSWORD_PLACEHOLDER>@postgres.devops-platform.svc.cluster.local:5432/devops_platform?schema=public"
       restartPolicy: OnFailure
 
 

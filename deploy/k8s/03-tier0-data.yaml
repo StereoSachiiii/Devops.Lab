@@ -50,7 +50,7 @@ spec:
               mountPath: /docker-entrypoint-initdb.d/init-wrapper.sh
               subPath: init-wrapper.sh
             - name: init-scripts
-              mountPath: /docker-entrypoint-initdb.d/postgres-init.sql
+              mountPath: /etc/postgresql-init/postgres-init.sql
               subPath: postgres-init.sql
       volumes:
         - name: init-scripts

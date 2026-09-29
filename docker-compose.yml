@@ -225,9 +225,9 @@ services:
     volumes:
       - ./infra/kong/kong.yml:/usr/local/kong/declarative/kong.yml
     extra_hosts:
-      - "auth-service:172.27.240.1"
-      - "core-service:172.27.240.1"
-      - "host-gateway:172.27.240.1"
+      - "auth-service:host-gateway"
+      - "core-service:host-gateway"
+      - "host-gateway:host-gateway"
     healthcheck:
       test: ["CMD", "kong", "health"]
       interval: 10s

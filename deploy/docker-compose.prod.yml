@@ -305,7 +305,7 @@ services:
     networks:
       - app-internal
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/health || exit 1"]
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:8080/health"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -352,7 +352,7 @@ services:
     networks:
       - app-internal
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8090/health || exit 1"]
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:8090/health"]
       interval: 5s
       timeout: 5s
       retries: 5
