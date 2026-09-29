@@ -49,9 +49,6 @@ spec:
             - name: init-scripts
               mountPath: /docker-entrypoint-initdb.d/init-wrapper.sh
               subPath: init-wrapper.sh
-            - name: init-scripts
-              mountPath: /etc/postgresql-init/postgres-init.sql
-              subPath: postgres-init.sql
       volumes:
         - name: init-scripts
           configMap:
