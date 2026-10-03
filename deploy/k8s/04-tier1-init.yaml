@@ -93,7 +93,7 @@ spec:
               BROKERS="redpanda.devops-platform.svc.cluster.local:9092"
               create_topic() {
                 local name=$1 partitions=$2 retention_ms=$3
-                rpk topic create $name --brokers $BROKERS --partitions $partitions --replicas 1 --topic-config retention.ms=$retention_ms --topic-config cleanup.policy=delete 2>&1 | grep -v "TOPIC_ALREADY_EXISTS" || true
+                rpk topic create $name --brokers $BROKERS --partitions $partitions --replicas 3 --topic-config retention.ms=$retention_ms --topic-config cleanup.policy=delete 2>&1 | grep -v "TOPIC_ALREADY_EXISTS" || true
                 echo "Topic ready: $name"
               }
               

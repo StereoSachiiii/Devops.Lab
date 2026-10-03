@@ -68,10 +68,12 @@ stringData:
   POSTGRES_PASSWORD: "<STRONG_PASSWORD_PLACEHOLDER>"
   APP_USER_PASSWORD: "<APP_PASSWORD_PLACEHOLDER>"
   REDIS_PASSWORD: "<STRONG_REDIS_PASSWORD_PLACEHOLDER>"
+  RABBITMQ_PASSWORD: "<STRONG_RABBITMQ_PASSWORD_PLACEHOLDER>"
+  RABBITMQ_ERLANG_COOKIE: "<STRONG_ERLANG_COOKIE_PLACEHOLDER>"
   # Note: Service names match the K8s Services we will create
   DATABASE_URL: "postgresql://app_user:<APP_PASSWORD_PLACEHOLDER>@postgres.devops-platform.svc.cluster.local:5432/appdb?schema=public"
   REDIS_URL: "redis://:<STRONG_REDIS_PASSWORD_PLACEHOLDER>@redis.devops-platform.svc.cluster.local:6379"
-  RABBITMQ_URL: "amqp://rabbitmq.devops-platform.svc.cluster.local:5672"
+  RABBITMQ_URL: "amqp://user:<STRONG_RABBITMQ_PASSWORD_PLACEHOLDER>@rabbitmq.devops-platform.svc.cluster.local:5672"
 
   # Security & Cryptography Secrets
   # RSA keys must maintain exact line breaks

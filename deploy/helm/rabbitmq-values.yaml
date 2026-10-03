@@ -1,0 +1,40 @@
+## Bitnami RabbitMQ High Availability (HA) Configuration
+## Cluster: 3 Nodes with Raft Quorum Queues support and Pod Anti-Affinity
+
+replicaCount: 3
+
+auth:
+  username: user
+  existingPasswordSecret: devops-secrets
+  existingSecretPasswordKey: RABBITMQ_PASSWORD
+  existingErlangSecret: devops-secrets
+  existingSecretErlangKey: RABBITMQ_ERLANG_COOKIE
+
+# Clustering configuration via K8s peer discovery
+clustering:
+  addressSerializer: hostname
+
+persistence:
+  enabled: true
+  size: 5Gi
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: rabbitmq
+          topologyKey: "kubernetes.io/hostname"
+
+service:
+  type: ClusterIP
+  ports:
+    amqp: 5672
+    dist: 25672
+    management: 15672
+    metrics: 15692
+
+metrics:
+  enabled: true

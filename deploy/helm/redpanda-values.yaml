@@ -1,0 +1,35 @@
+## Redpanda 3-Node High Availability (HA) Configuration
+## Raft Consensus Cluster with 3 Replicas and Pod Anti-Affinity
+
+statefulset:
+  replicas: 3
+  budget:
+    maxUnavailable: 1
+  podAntiAffinity:
+    type: soft
+    topologyKey: "kubernetes.io/hostname"
+    weight: 100
+
+resources:
+  cpu:
+    cores: 1
+  memory:
+    container:
+      min: 1Gi
+      max: 1Gi
+
+storage:
+  persistentVolume:
+    enabled: true
+    size: 10Gi
+
+listeners:
+  kafka:
+    port: 9092
+  admin:
+    port: 9644
+  rpc:
+    port: 33145
+
+monitoring:
+  enabled: true
