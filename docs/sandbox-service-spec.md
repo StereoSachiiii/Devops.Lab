@@ -103,6 +103,16 @@ The API Gateway acts as the single entry point for all client traffic:
 - `/api/content/*` -> `http://core-service:3003` (Strips `/api/content` prefix)
 - `/sessions/*`, `/validate/*` -> `http://sandbox-worker:8090` (Passes path unchanged)
 
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-23)**
+> - **Classification:** WRONG
+> - **Previous text claimed:** Kong routes `/sessions/*` and `/validate/*` directly to `http://sandbox-worker:8090`.
+> - **Actual code behavior:** In `infra/kong/kong.yml`, the service name is `sandbox-service` and its URL points to `http://sandbox-router:8080` (`url: http://sandbox-router:8080`). `sandbox-router` performs dynamic worker lookup in Redis and reverse-proxies the traffic to worker nodes.
+> - **Source of truth:** [`infra/kong/kong.yml:117-128`](file:///c:/Users/sachin%20lakshitha/devop/infra/kong/kong.yml#L117-L128)
+> - **Why this matters:** If you bypass or turn off `sandbox-router`, Kong cannot reach the worker pods. Traffic must go through the router so multi-worker routing and sticky WebSocket proxies function properly.
+
+---
+
 **Gateway Policies**:
 - **CORS Policy**: Restricts origin to `http://localhost:3000` and `http://127.0.0.1:3000` with `credentials: true`.
 - **Rate Limiting**: Global limit of 100 req/sec per IP/credential backed by Redis DB 1. Sandbox `/validate` endpoint restricted to 5 req/min.
@@ -298,7 +308,7 @@ Before the binary PTY stream begins, the server sends **JSON text frames** over 
 
 ### 4.1 Overview & Interface
 
-The Sandbox Service abstracts execution environments behind the `SandboxProvider` interface (`internal/sandbox/provider.go`). The active backend is selected via the `SANDBOX_PROVIDER` environment variable at startup:
+The Sandbox Service abstracts execution environments behind the `SandboxProvider` interface (`internal/sandbox/provider.go`). The active backend is selected dynamically per challenge based on the challenge specification (`requiredProvider`: `docker`, `gvisor`, `kata`, `flintlock`) and resolved per session at runtime:
 
 ```go
 type SandboxProvider interface {

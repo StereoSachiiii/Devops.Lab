@@ -31,11 +31,18 @@ This document serves as the authoritative production operational guide for orche
                 ┌─────────────────────────┼────────────────────────┐             │
                 ▼                         ▼                        ▼             ▼
        ┌─────────────────┐       ┌─────────────────┐      ┌─────────────────────────┐
-       │   PostgreSQL    │       │   Redis 7.2     │      │   Apache Kafka /        │
-       │   (Prisma DB)   │       │  (Session Cache │      │   RabbitMQ RPC Bus      │
-       │   Port: 5444    │       │   & Revocation) │      │   Ports: 19092 / 5672   │
+       │ Citus Sharded DB│       │ Redis Sentinel  │      │ Redpanda Raft Cluster   │
+       │ (Coordinator +  │       │ (3 Nodes +      │      │ (3 Brokers, Quorum Replicas)
+       │  2 Worker Shards│       │  HAProxy VIP)   │      │ RabbitMQ HA Mesh        │
+       │  Port: 5432)    │       │ Port: 6379      │      │ Ports: 9092 / 5672      │
        └─────────────────┘       └─────────────────┘      └─────────────────────────┘
 ```
+
+> *Production Infrastructure Upgrades (HA & Sharding)*:
+> - **PostgreSQL**: Transitioned to **Citus Distributed Sharding** (1 Coordinator + 2 Shard Workers with Pod Anti-Affinity). Managed automatically by `03-tier0-data.yaml` and `citus-shard-init` in `04-tier1-init.yaml`.
+> - **Redis**: High Availability managed via Bitnami Helm chart with **3 Redis nodes + 3 Sentinels + HAProxy Load Balancer** (`deploy/helm/redis-values.yaml`) authenticated via `devops-secrets`.
+> - **RabbitMQ**: 3-node HA peer-discovery cluster with native Quorum Queue support (`deploy/helm/rabbitmq-values.yaml`).
+> - **Redpanda (Kafka)**: 3-node Raft consensus cluster with topic replication factor = 3 (`deploy/helm/redpanda-values.yaml`).
 
 ---
 

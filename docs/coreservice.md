@@ -1,91 +1,111 @@
-# Core Service Architecture
+# Core Service Deep-Dive (`services/core`)
 
-## 1. Corrections to Prior Documents
-
-**a. Concurrency Plan Limits Do Not Exist**
-`low_level_architecture.md` claimed that `POST /challenges/:id/start` queries `LabSession` to enforce plan-based concurrency limits (1 for Free, 3 for Pro, 5 for Team). A review of `services/core/src/modules/challenge/challenge.routes.ts` confirms this logic is **completely absent**. The route performs a Redis `SET NX` lock per-challenge but never queries existing `LabSession` counts or checks `Org.planTier`. The limit is "Proposed But Not Yet Implemented."
-
-**b. Missing Health Proxy Route**
-`low_level_architecture.md` claimed `GET /api/session/:id/health` proxies health checks to `sandbox-worker` synchronously. A review of `core-service` reveals **no such route exists**. The only health route is a global service-level `GET /health` (`src/utils/health.ts`).
+Detailed architecture, session orchestration, content graph, outbox pipeline, and resilience mechanisms of `core-service`. Traced directly from source code in `services/core/src/`.
 
 ---
 
-## 2. Resolution of Outbox Poller Issues
+## 1. Role & Architecture Overview
 
-**a. Cross-Contamination and Event Destruction**
-Both `core-service` (`src/plugins/outbox-poller.ts`) and `auth-service` (`src/plugins/outbox.ts`) use `findMany({ where: { processed: false } })` to fetch events. Because neither filters by `eventType` and both share the `OutboxEvent` table, they cross-pollute.
-Crucially, when `core-service` picks up an `auth-service` event (like `UserRegisteredEvent`), it fails to recognize the type, skips publishing, logs a warning, and **immediately sets `processed: true`**. This permanently destroys the event, ensuring it is never published to Kafka.
-
-**b. Missing Row-Locking**
-As suspected in `messaging.md`, neither poller uses `FOR UPDATE SKIP LOCKED`. Prisma's `findMany` is not a locking read. If multiple instances of `core-service` or `auth-service` run simultaneously, they will select the exact same rows. This guarantees race conditions leading to either duplicate Kafka emits or cross-service event destruction.
-
----
-
-## 3. Service Responsibility Summary
-
-`core-service` is the central orchestrator of the learning platform. It owns:
-
-- **Content Delivery**: Serving the graph of Challenges, Nodes, and Quizzes (`/api/challenges`, `/api/nodes`, `/api/quizzes`).
-- **Session Orchestration**: Creating session locks, allocating `LabSession` rows, and emitting reliable provisioning/termination events to RabbitMQ/Kafka.
-- **Progress Tracking**: Consuming `CHALLENGE_SOLVED` and `CHALLENGE_FAILED` Kafka events to unlock new DAG nodes (creating `Completion` rows) and incrementing User XP.
+`core-service` is the central orchestrator of the learning platform:
+- **Content Plane**: Serves challenges, modules, learning paths, quizzes, articles, and flashcards.
+- **Session Orchestration**: Manages `LabSession` lifecycle, atomic Redis session locking, and dispatches provisioning jobs to RabbitMQ / Kafka.
+- **Progress Tracking & Gamification**: Consumes `sandbox.challenge.solved` and `sandbox.challenge.failed` Kafka events to update user XP, unlock DAG nodes, track streaks, and issue badges.
+- **B2B Multi-Tenancy**: Manages organizations (`Org`), custom organizational scenarios (`OrgScenario`), invitations, path assignments, and analytics.
 
 ---
 
-## 4. Full Internal Structure
+## 2. Session Start & Provisioning Pipeline
 
-The `services/core/src` directory is structured by domain:
+When a user clicks "Start Challenge" (`POST /api/challenges/:id/start`):
 
-- **`modules/challenge/challenge.routes.ts`**: Routes for fetching challenges and orchestrating sandbox sessions (`POST /start`, `DELETE /session/:id`).
-- **`modules/content/node.routes.ts`**: DAG traversal logic using Recursive CTEs for ancestors, children, and calculating the "frontier" of unlocked nodes.
-- **`modules/content/quiz.routes.ts`**: Fetching quizzes and evaluating submitted answers to generate `Completion` records.
-- **`modules/progress/consumers.ts`**: Kafka consumer group that listens for `CHALLENGE_SOLVED` and `CHALLENGE_FAILED`, handling XP increments and DB updates.
-- **`plugins/outbox-poller.ts`**: Periodic background task to flush unsent `OutboxEvent` rows.
-- **`plugins/metrics.ts`**: Prometheus metrics registry (counters for sessions and challenges).
-- **`utils/health.ts`**: Implements the `GET /health` registry checking Postgres and Kafka readiness.
+1. **Authentication & Authorization**: Fastify JWT authentication hook decodes access token, extracts `userId` and `orgId`.
+2. **Challenge Resolution**: Loads challenge from Postgres (`prisma.challenge.findUnique`), extracting the target `dockerImage` and `requiredProvider` (`docker`, `gvisor`, `kata`, or `flintlock`).
+3. **Atomic Session Lock (Redis `SET NX`)**:
+   - Acquires lock key: `core:session:{userId}:{challengeId}` with TTL matching session duration.
+   - Prevents duplicate provisioning races if the user double-clicks or triggers multiple concurrent requests.
+   - If key already exists, aborts and returns the existing active session details.
 
----
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-23)**
+> - **Classification:** WRONG
+> - **Previous text claimed:** The Redis `SET NX` lock key `core:session:{userId}:{challengeId}` uses a TTL matching the entire session duration (e.g. 60 minutes).
+> - **Actual code behavior:** The lock uses a short 10-second acquisition TTL (`await fastify.redis.set(lockKey, sessionId, "EX", 10, "NX")`). Once provisioning completes or fails, the key expires quickly so users aren't locked out of their challenge if a transient crash occurs.
+> - **Source of truth:** [`services/core/src/modules/challenge/challenge.routes.ts:501`](file:///c:/Users/sachin%20lakshitha/devop/services/core/src/modules/challenge/challenge.routes.ts#L501)
+> - **Why this matters:** If a worker crashes mid-provisioning, a 60-minute lock would leave the user dead in the water for an hour unable to restart. With a 10-second lock, they can refresh and try again immediately.
 
-## 5. The Session-Start Flow (Fully Re-Traced)
-
-When `POST /challenges/:id/start` is called:
-
-1. **Redis `SET NX` Lock**:
-   - Acquires `core:session:{userId}:{challengeId}` using `SET ... EX {ttl} NX`.
-   - **TTL Danger**: The `EX` expiry is set to the full session duration (`fastify.sessionTTLMins * 60`). If the `core-service` node crashes _after_ acquiring the lock but _before_ committing the Prisma transaction, the lock remains held for the full duration (e.g., 60 minutes), permanently deadlocking that user from starting that challenge until expiry.
-2. **Prisma Transaction Boundaries**:
-   - Inside the `$transaction`: `LabSession.create` and `OutboxEvent.create`.
-   - If this fails, a `catch` block explicitly calls `fastify.redis.del(lockKey)` to roll back the lock before returning 500.
-3. **Plan-Tier Concurrency Limits**:
-   - As noted in Corrections, this does not exist in the code.
-
----
-
-## 6. Content Delivery Routes
-
-`core-service` serves content via `/challenges`, `/nodes`, and `/quizzes`.
-
-- **Caching Layer**: Absent. Every request executes a direct, synchronous query against the Postgres database (e.g., `prisma.challenge.findMany`, `prisma.$queryRaw` CTEs).
-- _Proposed But Not Yet Implemented_: Any design documents mentioning a Redis-backed caching layer for the content-plane are unbuilt.
+4. **Transactional Database Write**:
+   - Executes inside a Prisma `$transaction`:
+     - Creates `LabSession` row with `status: ACTIVE`.
+     - Creates `CoreOutboxEvent` row with `eventType: "SessionStartedEvent"`, storing `sessionId`, `userId`, `challengeId`, `image`, and `requiredProvider`.
+   - **Rollback Safety**: If the database transaction fails, the Redis lock is explicitly deleted via `fastify.redis.del(lockKey)` to avoid permanently wedging the session.
+5. **Event Emission & Broker Queueing**:
+   - Dispatches `SessionStartedEvent` to Kafka topic `sandbox.session.started`.
+   - Dispatches provisioning message to RabbitMQ queue `provision.sandbox.{provider}` (e.g. `provision.sandbox.docker`, `provision.sandbox.gvisor`, `provision.sandbox.kata`, `provision.sandbox.flintlock`).
 
 ---
 
-## 7. Session Lifecycle Beyond Creation
+## 3. Outbox Poller & Broker Circuit Breaker
 
-- **`DELETE /session/:id`**: Finds the `ACTIVE` session, updates it to `TERMINATED`, sets `endedAt`, and inserts a `SessionEndedEvent` payload to RabbitMQ/Kafka.
-- **Mid-Session Death State**: As found in `sandboxservice.md`, sandbox-worker cannot detect if a container crashes mid-session. `core-service`'s `progress/consumers.ts` only listens to `CHALLENGE_SOLVED` and `CHALLENGE_FAILED`. Therefore, if a sandbox dies silently, the `LabSession.status` remains `ACTIVE` forever in Postgres (unless explicitly deleted by the user).
-- **`GET /session/:id/health`**: Does not exist (see Corrections).
+To prevent the **Dual Write** problem between PostgreSQL and Kafka/RabbitMQ, `core-service` implements an asynchronous outbox worker with an automated **Circuit Breaker** (`src/plugins/outbox-poller.ts`):
+
+```
++------------------+         +-----------------------+         +------------------+
+| Postgres DB      | <====== | Core Outbox Poller    | ======> | Kafka / RabbitMQ |
+| CoreOutboxEvent  |  poll   | (FOR UPDATE           | publish | Message Brokers  |
+| table            |         |  SKIP LOCKED)         |         |                  |
++------------------+         +-----------+-----------+         +------------------+
+                                         |
+                                         v
+                              [ Circuit Breaker State ]
+                              • Closed: Poll every 500ms
+                              • 3 Failures: Trip to OPEN
+                              • Exponential backoff: 5s → 60s
+                              • 5 Failures on Event: Mark Failed
+```
+
+### Key Implementation Mechanics:
+- **Dedicated Outbox Table**: Uses `CoreOutboxEvent` (isolated from `AuthOutboxEvent`) to eliminate cross-service event contamination.
+- **Row-Level Locking**: Executes `SELECT * FROM "CoreOutboxEvent" WHERE processed = false AND failed = false ORDER BY "createdAt" ASC LIMIT 10 FOR UPDATE SKIP LOCKED`. Allows multiple instances of `core-service` to run concurrently without duplicate message processing.
+- **Circuit Breaker States**:
+  - **CLOSED**: Default operational state. Polls every 500ms.
+  - **TRIP (OPEN)**: After **3 consecutive broker publish failures**, the poller trips into `OPEN` state and pauses polling for `backoffMs`.
+  - **Exponential Backoff**: Backoff starts at 5,000ms and doubles on consecutive trips up to 60,000ms (`MAX_BACKOFF_MS`).
+  - **Reset**: Any successful event emission resets `consecutiveFailures = 0` and restores `backoffMs = 5000`.
+- **Poison-Pill Protection**: If a single corrupt or un-publishable event fails 5 times (`retryCount >= 5`), it is marked `failed = true` to allow remaining events to proceed without deadlocking the queue.
+- **Timeout Protection**: All Kafka emits and RabbitMQ publishes are guarded by a 5-second `Promise.race` timeout.
 
 ---
 
-## 8. Auth / Authorization Enforcement
+## 4. Challenge Validation & Lifecycle Management
 
-- **JWT Authentication**: Routes require auth via the `fastify.authenticate` middleware, which decodes the JWT and attaches claims to `req.user` (e.g., `req.user.sub` for `userId`).
-- **Org-Scoping Authorization**: Completely absent at the application layer. `challenge.routes.ts` simply looks up the challenge ID without verifying if the requesting user belongs to the Organization that owns the challenge. It relies entirely on implicit lack of knowledge or downstream Postgres enforcement.
+### Live Session Termination (`DELETE /api/session/:id`)
+- Sets `LabSession.status = TERMINATED` and sets `endedAt = now()`.
+- Creates `CoreOutboxEvent` with `eventType: "SessionEndedEvent"`, reason `"terminated"`.
+- Emits termination commands to RabbitMQ (`terminate.sandbox`) and Kafka (`sandbox.session.ended`).
+- The `sandbox-worker` tears down the container or microVM and removes the session from Redis.
+
+### Automated TTL Reaper & Daemon Orphan Sweeper
+- The `sandbox-worker` runs an internal ticker-based reaper (`internal/session/reaper.go`).
+- When a session exceeds its allocated `ttlMins` (default 60 minutes), the sandbox worker terminates the container and emits a `session.ended` event with `reason: "expired"`.
+- In addition to tracked sessions, the reaper runs a daemon-level sweep across container engines every minute to discover unindexed containers carrying `managed-by: devops-platform-sandbox` that are absent from memory/Redis and older than a 5-minute grace period.
+
+### Provisioning Failure Handling
+- If `sandbox-worker` fails to provision a container/microVM, it broadcasts `StageFailed` via SSE, purges transient state from Redis, and emits `SessionFailedEvent` (`sandbox.session.failed`) to Kafka.
+- `core-service` consumes `sandbox.session.failed` and immediately transitions the `LabSession` in PostgreSQL from `ACTIVE` to `TERMINATED`.
 
 ---
 
-## 9. Open Questions / Unverified
+## 5. Learning Path DAG & Content Graph
 
-- **Postgres Enum Casting**: (Carried forward) Raw SQL strings inserted into strict enum columns (`CheckStatus`) in `sandbox-worker` remain unverified at runtime.
-- **Outbox Destruction Hotfix**: How should the `outbox-poller.ts` files be rewritten immediately to prevent the catastrophic cross-service deletion of events? Should `eventType` filtering be hardcoded, or should the outbox table be split per-service?
-- **Active Session Zombie Cleanup**: Since mid-session sandbox deaths leave `LabSession` rows permanently `ACTIVE`, should `core-service` implement a background sweep based on the session's max TTL?
+The curriculum is represented as a Directed Acyclic Graph (DAG) using `Node` and `Edge` models:
+- **`NodeType`**: `CONCEPT` (theory), `SCENARIO` (practical lab), `QUIZ` (knowledge assessment).
+- **DAG Traversal**: `modules/content/node.routes.ts` uses PostgreSQL Recursive Common Table Expressions (CTEs) to evaluate prerequisites, child nodes, and identify the user's unlocked learning frontier.
+- **Completion Tracking**: Stored in the `Completion` composite table (`[userId, nodeId]`). A node is marked complete when its corresponding challenge is solved or quiz is passed.
+
+---
+
+## 6. Service Health & Observability
+
+- **Health Endpoint**: `GET /health` evaluates database queries and Kafka producer readiness using the cached `HealthRegistry`.
+- **Prometheus Metrics**: Exposes `GET /metrics` tracking active sessions, challenge starts, and HTTP request durations.
+- **Distributed Tracing**: Integrates with `@devops/observability` and OpenTelemetry to inject trace context across outbox events and HTTP request flows.

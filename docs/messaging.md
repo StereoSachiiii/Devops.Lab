@@ -8,6 +8,14 @@ Both `high_level_architecture.md` and `low_level_architecture.md` state that `co
 The underlying clients (`MessagingService.emit` and `RabbitMQService.publish` in `packages/messaging`) wrap their publish calls in a `try/catch`, log any errors to the console, and **swallow the error without throwing**.
 As a result, `core-service`'s `POST /challenges/:id/start` receives a successful return from the publish functions even if the brokers are completely unreachable, and subsequently marks the `OutboxEvent` row as `processed: true`. If the brokers are down at the moment of the request, the message is permanently lost, bypassing the outbox safety net entirely.
 
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-23)**
+> - **Classification:** STALE
+> - **Previous text claimed:** `MessagingService.emit` and `RabbitMQService.publish` swallow connection errors and do not throw, causing `core-service` to falsely mark events as processed.
+> - **Actual code behavior:** Both `MessagingService.emit` (`packages/messaging/kafka.ts:116`) and `RabbitMQService.publish` (`packages/messaging/rabbitmq.ts`) now re-throw errors upon broker failure. When thrown, `core-service`'s `try/catch` block catches the exception, logs a warning, and leaves the outbox event as `processed: false`, allowing the background outbox worker to retry successfully.
+> - **Source of truth:** [`packages/messaging/kafka.ts:116`](file:///c:/Users/sachin%20lakshitha/devop/packages/messaging/kafka.ts#L116) and [`services/core/src/modules/challenge/challenge.routes.ts:577-583`](file:///c:/Users/sachin%20lakshitha/devop/services/core/src/modules/challenge/challenge.routes.ts#L577-L583)
+> - **Why this matters:** If a broker has a momentary network blip during challenge launch, your event isn't lost to the void anymore. The poller will safely pick it up from the database and publish it once the broker recovers.
+
 ---
 
 ## 2. Resolution of Prior Open Questions
@@ -22,6 +30,14 @@ It is declared as a string constant in `packages/messaging/types.ts` (`TOPICS.QU
 - **Consumer Idempotency:**
   - **`sandbox-worker`**: **Safe.** It checks its in-memory map of `sessionID` on `SessionStartedJob` delivery (`internal/session/manager.go`, line 59) and returns early if the session exists. It also syncs this map from Redis on startup, ensuring idempotency across restarts. Duplicate provisioning is prevented.
   - **`notification-service`**: **Unsafe.** It blindly calls `sendWelcomeEmail` upon processing the RabbitMQ job (`services/notification/src/consumers.ts`, line 38). There is no idempotency key check or deduplication. A duplicate delivery will result in the user receiving duplicate emails.
+
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-23)**
+> - **Classification:** STALE
+> - **Previous text claimed:** `notification-service` blindly sends emails without deduplication, leading to duplicate emails if Kafka or RabbitMQ delivers duplicates.
+> - **Actual code behavior:** `services/notification/src/consumers.ts` uses Redis `SET NX` locks with a 24-hour TTL (`email:welcome:{userId}` and `email:verification:{userId}:{token}`). If a duplicate event arrives, the lock acquisition fails and the message is safely dropped with a debug log.
+> - **Source of truth:** [`services/notification/src/consumers.ts:20-24`](file:///c:/Users/sachin%20lakshitha/devop/services/notification/src/consumers.ts#L20-L24)
+> - **Why this matters:** If you retry an outbox batch or replay Kafka events, users won't get spammed with five duplicate welcome emails.
 
 ---
 

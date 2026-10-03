@@ -72,4 +72,17 @@ This document is the running structured backlog tracking all findings from the f
 | AUDIT-054 | Phase 8 | `docs/coreservice-contract.md` | `docs/coreservice-contract.md` Section 5 states outbox poller filters explicitly for `SessionStartedEvent` and `SessionEndedEvent`, but omits mentioning poison-pill isolation (`failed: true`) after 5 retry attempts. | LOW | Documentation | RESOLVED |
 | AUDIT-055 | Phase 8 | `docs/high_level_architecture.md` | Architecture diagrams in `docs/high_level_architecture.md` list `OutboxEvent` single table rather than the partitioned `AuthOutboxEvent` and `CoreOutboxEvent` architecture. | MEDIUM | Documentation | RESOLVED |
 | AUDIT-056 | Phase 8 | `docs/b2b-product-requirements.md` | `docs/b2b-product-requirements.md` references `PathAssignment` model and endpoints, but PathAssignment routes are not yet implemented in `org.routes.ts`. | LOW | Documentation | RESOLVED |
+| AUDIT-057 | Post-Audit / Runtime | `services/sandbox/` & `services/core/` | **Provisioning failure feedback loop gap**: `sandbox-worker` never notifies `core-service` when sandbox provisioning fails (e.g. image pull failure, container runtime error, network timeout), leaving the session in `core-service` stuck in a falsely `ACTIVE` state until manual reaper expiry. | HIGH | Error Handling | KNOWN GAP (Deferred) |
+| AUDIT-058 | Post-Audit / Runtime | `services/sandbox/internal/sandbox/reaper.go` | **Reaper reconciliation gap**: `reaper.go` only tracks sessions in its own in-memory state and Redis keys. It does not perform a reconciliation sweep against live Docker containers by label (`devops.lab.session_id`) on worker startup. A worker crash or restart can therefore orphan running containers permanently invisible to cleanup. | HIGH | Reliability / Resource Leak | KNOWN GAP (Deferred) |
+
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-24)**
+> - **Classification:** STALE
+> - **Previous text claimed:** AUDIT-057 (provisioning failure feedback gap) and AUDIT-058 (reaper orphan reconciliation gap) remain deferred known gaps.
+> - **Actual code behavior:** Both items have been resolved in the codebase:
+>   1. **AUDIT-057**: `sandbox-worker` publishes a `sandbox.session.failed` event to Kafka upon container provisioning error, and `core-service`'s consumer in `services/core/src/modules/progress/consumers.ts:109` immediately catches it and transitions the `LabSession` status from `ACTIVE` to `TERMINATED`.
+>   2. **AUDIT-058**: `services/sandbox/internal/session/reaper.go` executes a daemon-level sweep across Docker container engines every minute, removing all unindexed containers labeled `managed-by=devops-platform-sandbox` older than 5 minutes.
+> - **Source of truth:** [`services/core/src/modules/progress/consumers.ts:109`](file:///c:/Users/sachin%20lakshitha/devop/services/core/src/modules/progress/consumers.ts#L109) and [`services/sandbox/internal/session/reaper.go`](file:///c:/Users/sachin%20lakshitha/devop/services/sandbox/internal/session/reaper.go)
+> - **Why this matters:** Anyone reviewing this backlog would think container crashes still wedge user sessions and leak Docker containers. Both gaps are already fixed in code.
+
 

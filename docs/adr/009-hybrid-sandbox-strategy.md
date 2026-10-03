@@ -20,6 +20,16 @@ Firecracker:
 - `GET /vm/{key}/terminal` — WebSocket into VM
 - `POST /vm/{key}/validate` — run validator in VM
 
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-23)**
+> - **Classification:** STALE
+> - **Previous text claimed:** Hybrid execution adds dedicated `/vm/*` endpoints for Firecracker microVMs and separate config flags (`ENABLE_FIRECRACKER`).
+> - **Actual code behavior:** The unified `SandboxProvider` interface abstracts all engines (Docker, gVisor, Kata, Flintlock) behind the existing `/sessions/{id}/terminal` and `/validate/{id}` routes. `core-service` selects the provider dynamically based on `challenge.requiredProvider`.
+> - **Source of truth:** [`services/sandbox/internal/sandbox/provider.go`](file:///c:/Users/sachin%20lakshitha/devop/services/sandbox/internal/sandbox/provider.go) and [`services/core/src/modules/challenge/challenge.routes.ts:312`](file:///c:/Users/sachin%20lakshitha/devop/services/core/src/modules/challenge/challenge.routes.ts#L312)
+> - **Why this matters:** There is no separate API client or frontend code path needed for microVM challenges. Everything flows through the standard session lifecycle.
+
+---
+
 ## Health
 
 Check Docker daemon + containerd socket + Redis + Postgres + Kafka. Cached 30s TTL.

@@ -22,6 +22,16 @@
   - `403 Forbidden`: Concurrency limit reached for the user's plan tier (e.g., `CONCURRENCY_LIMIT_REACHED`).
 - **Delivery Guarantee**: At-least-once provisioning dispatch. If the broker is down, the request still succeeds, and the outbox poller will retry dispatching until acknowledged.
 
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-23)**
+> - **Classification:** WRONG
+> - **Previous text claimed:** `POST /challenges/:id/start` returns `200 OK` when provisioning a fresh session.
+> - **Actual code behavior:** Creating a new session returns `201 Created` (`return reply.code(201).send(...)`). It only returns `200 OK` when collision-detecting an existing already-active or cached session.
+> - **Source of truth:** [`services/core/src/modules/challenge/challenge.routes.ts:587`](file:///c:/Users/sachin%20lakshitha/devop/services/core/src/modules/challenge/challenge.routes.ts#L587)
+> - **Why this matters:** If your client code checks `res.status === 200` to confirm a brand new session was spun up, it will falsely think new sessions failed.
+
+---
+
 ## 3. Failure modes and what the caller should expect
 
 - **Message Broker Down**: The API will still return `200 OK`. The event is stored in the PostgreSQL outbox. The sandbox provisioning will be delayed until the broker recovers. The caller should expect the session to exist, but the gateway might temporarily return 502/503 until the sandbox actually spins up.

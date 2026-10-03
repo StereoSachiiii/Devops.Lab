@@ -35,6 +35,14 @@ The `sandbox-worker` configuration is loaded strictly once at startup (`internal
 | `FLINTLOCK_ADDRESS` | Address for Flintlock gRPC | `localhost:9090` | No (Restart required) |
 | `ALLOWED_ORIGINS` | CORS origins for WebSockets | `http://localhost:3000,http://localhost:5173` | No (Restart required) |
 
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-23)**
+> - **Classification:** STALE
+> - **Previous text claimed:** `DATABASE_URL` is a required environment variable for `sandbox-worker` to update PostgreSQL tables.
+> - **Actual code behavior:** While the worker's application code no longer queries Postgres (reporting challenge results purely via Kafka and Redis), `config.go` still strictly validates that `DATABASE_URL` is non-empty at startup (`if cfg.DatabaseURL == "" { return nil, fmt.Errorf("DATABASE_URL is required") }`). If you remove the variable from `docker-compose` or K8s manifests, the worker daemon will fail to boot with an error.
+> - **Source of truth:** [`services/sandbox/internal/config/config.go:79-81`](file:///c:/Users/sachin%20lakshitha/devop/services/sandbox/internal/config/config.go#L79-L81) and [`services/sandbox/main.go:45-105`](file:///c:/Users/sachin%20lakshitha/devop/services/sandbox/main.go#L45-L105)
+> - **Why this matters:** If a DevOps engineer removes `DATABASE_URL` from the worker's deployment config believing it's fully decoupled, the worker will crash loop on startup. *(TODO: `config.go`'s `DATABASE_URL` check is now dead validation and could be removed in a future code cleanup pass — flagged here, not fixed, since this is docs-only work).*
+
 ---
 
 ## 3. Port Reference

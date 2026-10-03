@@ -18,6 +18,16 @@ No corrections to the prior three documents (`high_level_architecture.md`, `low_
 - **Schema Validation**: The table and column names precisely match what Prisma generated (`schema.prisma`).
 - **Type Mismatch/Risk**: In `sandbox-worker/internal/db/client.go`, the Go application passes plain string values (e.g., `"PENDING"`, `"PASSED"`) for the `$1` / `$4` parameters targeting the `status` columns. In Postgres, these columns are strictly typed as enums (`SubmissionStatus` and `CheckStatus`). The `pq` driver sends these as `text`, which Postgres will reject with a type mismatch error unless an explicit cast (e.g., `$1::"SubmissionStatus"`) is used. The raw SQL queries lack these casts.
 
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-23)**
+> - **Classification:** STALE
+> - **Previous text claimed:** `sandbox-worker` executes raw SQL queries against `Submission` and `ChallengeCheckResult` via `sqlx`.
+> - **Actual code behavior:** `sandbox-worker` no longer executes direct SQL writes to Postgres. It communicates challenge outcomes via Kafka event streams (`sandbox.challenge.solved` and `sandbox.challenge.failed`), and `core-service`'s consumer persists check results and marks submissions completed.
+> - **Source of truth:** [`services/sandbox/main.go:94`](file:///c:/Users/sachin%20lakshitha/devop/services/sandbox/main.go#L94) and [`packages/messaging/types.ts:6-7`](file:///c:/Users/sachin%20lakshitha/devop/packages/messaging/types.ts#L6-L7)
+> - **Why this matters:** If you're altering PostgreSQL table structures or adding database replication, you don't need to check Go code for SQL compatibility. The database is purely accessed through Prisma in the Node services.
+
+---
+
 **b. Implicit Coupling Through Shared Schema**
 Because there is no schema-level separation, `sandbox-worker` implicitly relies on the foreign keys established by Node services:
 
@@ -98,6 +108,19 @@ model OutboxEvent {
   eventType String
   payload   Json
   processed Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+```
+
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-23)**
+> - **Classification:** STALE
+> - **Previous text claimed:** There is a single, shared `OutboxEvent` table used by both auth and core services.
+> - **Actual code behavior:** The single `OutboxEvent` table was partitioned into two isolated models in Prisma: `AuthOutboxEvent` and `CoreOutboxEvent`, each with dedicated indices on `[processed, failed, createdAt]`.
+> - **Source of truth:** [`packages/db/prisma/schema.prisma:390-412`](file:///c:/Users/sachin%20lakshitha/devop/packages/db/prisma/schema.prisma#L390-L412)
+> - **Why this matters:** If you run queries against `SELECT * FROM "OutboxEvent"`, it will fail because the table does not exist. You must query `"AuthOutboxEvent"` or `"CoreOutboxEvent"`.
+
+---
   createdAt DateTime @default(now())
 
   @@index([processed, createdAt])

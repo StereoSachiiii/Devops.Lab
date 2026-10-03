@@ -72,6 +72,15 @@ Handles challenges, learning paths, quizzes, and user progress/leaderboard.
 | `/api/content/quizzes/:id/submit` | `POST` | `{ "answers": { "q1": 0, "q2": 1 } }` (Auth session or optional `userId` in body) | `SubmitResponse` |
 | `/api/leaderboard`                | `GET`  | _None_                                | `LeaderboardResponse`                  |
 | `/api/dashboard`                  | `GET`  | _None_ (Auth required)                | `DashboardData`                        |
+
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-23)**
+> - **Classification:** WRONG
+> - **Previous text claimed:** The dashboard endpoint is `GET /api/dashboard`.
+> - **Actual code behavior:** In `services/core/src/modules/dashboard/dashboard.routes.ts`, the route is registered as `GET /api/me/dashboard` under the Fastify instance.
+> - **Source of truth:** [`services/core/src/modules/dashboard/dashboard.routes.ts:16`](file:///c:/Users/sachin%20lakshitha/devop/services/core/src/modules/dashboard/dashboard.routes.ts#L16)
+> - **Why this matters:** If a frontend developer calls `/api/dashboard`, Kong and core-service will return 404 Not Found. You have to query `/api/me/dashboard`.
+
 | `/api/assistant/chat`             | `POST` | `{ "message": "string" }` or `{ "messages": ChatMessage[] }` | `{ "content": "..." }` |
 | `/api/articles`                   | `GET`  | Query: `?category=...&tag=...`        | `Article[]`                            |
 | `/api/articles/:slug`             | `GET`  | _None_                                | `Article`                              |

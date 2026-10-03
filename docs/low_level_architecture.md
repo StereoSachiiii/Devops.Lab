@@ -2,7 +2,6 @@
 
 ## 1. Corrections to high_level_architecture.md
 
-No corrections to the high-level architecture were found during the low-level trace. All major boundaries, dependencies, and communication paths defined in `high_level_architecture.md` are accurate at the implementation level.
 
 ---
 
@@ -26,6 +25,14 @@ The route calls `val.Check` which invokes `v.docker.Exec(ctx, containerID, []str
 
 - `auth-service` and `core-service` use Prisma with the shared `@devops/db` package (`packages/db/prisma/schema.prisma`), which generates tables in the default `public` schema (no `@@schema` specified).
 - `sandbox-worker` connects via `sqlx` and issues raw SQL queries quoting exact Prisma-generated table names without any schema prefix (e.g., `UPDATE "Submission"`, `INSERT INTO "ChallengeCheckResult"`) (`services/sandbox/internal/db/client.go`, lines 48, 88). This means it is directly writing to the same `public` schema as the Node.js services.
+
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-23)**
+> - **Classification:** STALE
+> - **Previous text claimed:** `sandbox-worker` connects to PostgreSQL via `sqlx` and directly executes raw SQL queries against Prisma-managed tables in the `public` schema.
+> - **Actual code behavior:** `sandbox-worker` has zero direct SQL connections to Postgres. It reports validator outcomes asynchronously via Kafka event streams (`sandbox.challenge.solved` / `sandbox.challenge.failed`), and `core-service` consumes those events to write submissions and awards to Postgres.
+> - **Source of truth:** [`services/sandbox/internal/config/config.go`](file:///c:/Users/sachin%20lakshitha/devop/services/sandbox/internal/config/config.go) and [`packages/messaging/types.ts:6-7`](file:///c:/Users/sachin%20lakshitha/devop/packages/messaging/types.ts#L6-L7)
+> - **Why this matters:** If you're altering PostgreSQL credentials or firewall rules, you might assume you need to update and restart `sandbox-worker`. You don't — only `auth-service` and `core-service` talk to Postgres.
 
 ---
 
@@ -121,3 +128,11 @@ Terminal persistence is fully implemented using **tmux** inside the container (`
 
 - **Missing Event Classes**: `curriculum.quiz.completed` is defined as a topic in the messaging package, but no corresponding Typescript class exists in the `EventClassMap`. Is this event actually published or consumed anywhere?
 - **Outbox Race Condition**: In `core-service`'s `POST /challenges/:id/start`, the `OutboxEvent` row is inserted, and then inline publishing is attempted. What happens if the background outbox poller picks up the unprocessed row in the milliseconds before the inline publish finishes? Does the system handle duplicate broker deliveries safely?
+
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-23)**
+> - **Classification:** STALE
+> - **Previous text claimed:** The Outbox pattern has an open race condition where inline publishes and background pollers can race on a shared `OutboxEvent` table.
+> - **Actual code behavior:** The monolithic `OutboxEvent` was split into service-specific tables (`CoreOutboxEvent` and `AuthOutboxEvent`). In `challenge.routes.ts`, writes go to `coreOutboxEvent`, and outbox workers select events using `FOR UPDATE SKIP LOCKED`, preventing multiple workers or pollers from double-processing entries.
+> - **Source of truth:** [`packages/db/prisma/schema.prisma:390-412`](file:///c:/Users/sachin%20lakshitha/devop/packages/db/prisma/schema.prisma#L390-L412) and [`services/core/src/plugins/outbox.ts`](file:///c:/Users/sachin%20lakshitha/devop/services/core/src/plugins/outbox.ts)
+> - **Why this matters:** If you're debugging duplicate event emissions, looking for a race condition in the outbox poller is barking up the wrong tree. The database lock protects this boundary; duplicate event handling is primarily managed via consumer-side Redis idempotency keys.

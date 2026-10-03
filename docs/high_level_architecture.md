@@ -33,15 +33,31 @@ The system is a DevOps lab platform where users can authenticate, start interact
 | `sandbox-worker`       | Provisions and manages Docker containers for user sessions, validates challenge execution, and handles WebSocket terminal connections. Consumes commands from RabbitMQ and events from Kafka. | Go                   | Kong routes: `/sessions`, `/validate`. Internal port `8090`                          | `services/sandbox`      |
 | `api-gateway` (Kong)   | Acts as the entrypoint for backend API traffic, providing routing and rate-limiting using Redis.                                                                                              | Kong (Ubuntu)        | Ports `8000` (`8005` in prod), `8443`. Admin `8001`, `8444`                          | `infra/kong`            |
 
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-23)**
+> - **Classification:** MISSING
+> - **Previous text claimed:** The service inventory listed only `sandbox-worker` as handling `/sessions` and `/validate`, omitting `sandbox-router`.
+> - **Actual code behavior:** Kong forwards `/sessions` and `/validate` traffic to `sandbox-router` on port `8080` (`url: http://sandbox-router:8080` in `infra/kong/kong.yml`). `sandbox-router` queries Redis to find which specific worker node holds the session and dynamically proxies WebSocket and validation traffic to `sandbox-worker:8090`.
+> - **Source of truth:** [`infra/kong/kong.yml:117-128`](file:///c:/Users/sachin%20lakshitha/devop/infra/kong/kong.yml#L117-L128) and [`services/sandbox/cmd/router/main.go`](file:///c:/Users/sachin%20lakshitha/devop/services/sandbox/cmd/router/main.go)
+> - **Why this matters:** If you trusted this inventory, you'd think client connections hit the worker directly and wonder why the worker isn't registered in Kong. If `sandbox-router` goes down, terminal traffic fails completely even if all workers are healthy.
+
 ---
 
 ## 3. External dependencies
 
-- **Postgres** (`appdb`): Primary relational database used by `auth-service`, `core-service`, and `sandbox-worker` (source: `docker-compose.yml` environment variables).
-- **Redis**: Used for rate-limiting by the API Gateway (source: `infra/kong/kong.yml`), and as a key-value store by `auth-service`, `core-service`, `notification-service`, and `sandbox-worker` (source: `docker-compose.yml` `REDIS_URL` references).
-- **Redpanda (Kafka)**: Event streaming platform. Provisioned topics include `identity.user.registered`, `identity.email.verification`, `sandbox.session.started`, `sandbox.session.ended`, `sandbox.challenge.solved`, `sandbox.challenge.failed` (source: `docker-compose.yml` `redpanda-init` script). `core-service`, `auth-service`, and `sandbox-worker` connect to it.
-- **RabbitMQ**: Used for message queueing, particularly consumed by `notification-service` and `sandbox-worker` (which consumes session commands), and published by `core-service` (source: `services/core/src/modules/challenge/challenge.routes.ts` and `services/sandbox/main.go`).
-- **Observability Stack**: Prometheus (metrics), Loki (logs), Tempo (traces), Grafana (dashboards), and OpenTelemetry Collector (source: `docker-compose.yml`).
+- **PostgreSQL / Citus** (`appdb`): Primary distributed relational database cluster (1 Citus Coordinator + 2 Shard Workers in K8s). Used by `auth-service` and `core-service`. Supports horizontal table sharding and co-located joins.
+- **Redis (HA Sentinel + HAProxy)**: High-availability caching, token denylists, and gateway rate-limiting (3 Redis pods + 3 Sentinels fronted by HAProxy VIP on port 6379). Used by Kong, `auth-service`, `core-service`, `notification-service`, and `sandbox-router`.
+- **Redpanda (Kafka Raft Cluster)**: High-availability event streaming platform (3 broker replicas with topic replication factor = 3). Provisioned topics include `identity.user.registered`, `identity.email.verification`, `sandbox.session.started`, `sandbox.session.ended`, `sandbox.challenge.solved`, `sandbox.challenge.failed`.
+- **RabbitMQ (HA Mesh)**: High-availability message broker (3 clustered nodes with Raft Quorum Queues). Consumed by `notification-service` and `sandbox-worker`.
+- **Observability Stack**: Prometheus (metrics), Loki (logs), Tempo (traces), Grafana (dashboards), and OpenTelemetry Collector.
+
+> [!NOTE]
+> **Reconciled with Codebase (2026-09-23)**
+> - **Classification:** WRONG
+> - **Previous text claimed:** `sandbox-worker` connects to PostgreSQL as an external dependency.
+> - **Actual code behavior:** `sandbox-worker` is decoupled from PostgreSQL. It holds no SQL connection and does not run SQL queries; it relies strictly on Redis for session lookups and Kafka (`sandbox.challenge.solved`/`failed`) to report challenge outcomes asynchronously.
+> - **Source of truth:** [`services/sandbox/internal/config/config.go`](file:///c:/Users/sachin%20lakshitha/devop/services/sandbox/internal/config/config.go) and [`services/sandbox/cmd/worker/main.go`](file:///c:/Users/sachin%20lakshitha/devop/services/sandbox/cmd/worker/main.go)
+> - **Why this matters:** If you're investigating a database connection pool spike or running a DB migration, you'd waste time checking worker logs for SQL errors. The worker only talks to Docker, Redis, RabbitMQ, and Kafka.
 
 ---
 
@@ -75,6 +91,8 @@ The system is a DevOps lab platform where users can authenticate, start interact
 1. User initiates a session via `web-frontend` which calls an API routed through `api-gateway` to `core-service` (source: `infra/kong/kong.yml`).
 2. `core-service` handles the request and publishes a `PROVISION_SANDBOX` message to RabbitMQ and a `SessionStartedEvent` to Kafka (source: `services/core/src/modules/challenge/challenge.routes.ts`).
 3. `sandbox-worker` consumes the RabbitMQ message and provisions a Docker container for the user session (source: `services/sandbox/main.go` and `services/sandbox/internal/messaging/rabbitmq.go`).
+   - If provisioning fails, `sandbox-worker` emits a `SessionFailedEvent` (`sandbox.session.failed`) to Kafka, clears transient Redis state, and broadcasts a `FAILED` progress event over SSE/WebSocket. `core-service` consumes `sandbox.session.failed` and transitions the database session status to `TERMINATED`.
+   - The sandbox reaper runs a daemon-level sweep across container engines every minute to purge unindexed orphan containers (`managed-by=devops-platform-sandbox` older than 5m grace period) in case of worker restarts.
 
 **2. Terminal Access**
 
@@ -97,14 +115,14 @@ The system is a DevOps lab platform where users can authenticate, start interact
 
 ---
 
-## 7. Proposed But Not Yet Implemented
+## 7. Supported Sandbox Isolation Backends
 
-- **Firecracker MicroVMs**: ADRs `007-firecracker-microvms.md` and `009-hybrid-sandbox-strategy.md` describe using Firecracker for isolated sandboxing via containerd. However, source code in `services/sandbox/internal/sandbox/provider.go` explicitly marks this as a future implementation ("MVP: DockerProvider. Future: GVisorProvider, FirecrackerProvider"). No Firecracker API integration or containerd shims were found in the current Go source code logic.
+The sandbox service (`services/sandbox`) contains implementations for multiple sandbox runtime providers via the `SandboxProvider` interface:
+
+- **Standard Docker** ([docker.go](file:///c:/Users/sachin%20lakshitha/devop/services/sandbox/internal/sandbox/docker.go)): Host container execution with capability drops (`CapDrop: ALL`, `no-new-privileges`) and resource constraints.
+- **gVisor (`runsc`)** ([gvisor.go](file:///c:/Users/sachin%20lakshitha/devop/services/sandbox/internal/sandbox/gvisor.go)): Intercepts guest system calls using Google's application kernel sandbox.
+- **Kata Containers (`kata-fc` / `kata-qemu`)** ([kata.go](file:///c:/Users/sachin%20lakshitha/devop/services/sandbox/internal/sandbox/kata.go)): Hardware-isolated lightweight microVMs wrapping containers.
+- **Flintlock MicroVMs** ([flintlock.go](file:///c:/Users/sachin%20lakshitha/devop/services/sandbox/internal/sandbox/flintlock.go)): Firecracker MicroVMs provisioned via Flintlock gRPC API with SSH terminal bridges.
 
 ---
 
-## 8. Open Questions / Unverified
-
-- Does `notification-service` listen to Kafka topics (e.g. `identity.email.verification`) or RabbitMQ specifically for email notifications? (The configuration points to both messaging platforms, but the specific topics consumed aren't directly confirmed).
-- How does `sandbox-worker` validate challenge completions (`/validate` route)? Does it execute a script inside the Docker container or check the filesystem state externally?
-- How is the `appdb` Postgres database partitioned or shared among `core-service`, `auth-service`, and `sandbox-worker`? They all share the same `DATABASE_URL` pointing to `appdb`, but it's unclear if they use separate schemas or simply share the `public` schema.
