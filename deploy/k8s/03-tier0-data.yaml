@@ -15,27 +15,40 @@ spec:
     - port: 5432
       targetPort: 5432
   selector:
-    app: postgres
+    app: postgres-coordinator
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-worker-headless
+  namespace: devops-platform
+spec:
+  clusterIP: None
+  ports:
+    - port: 5432
+      name: postgres
+  selector:
+    app: postgres-worker
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: postgres
+  name: postgres-coordinator
   namespace: devops-platform
 spec:
   serviceName: "postgres"
   replicas: 1
   selector:
     matchLabels:
-      app: postgres
+      app: postgres-coordinator
   template:
     metadata:
       labels:
-        app: postgres
+        app: postgres-coordinator
     spec:
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          image: citusdata/citus:12.1-alpine
           ports:
             - containerPort: 5432
           envFrom:
@@ -44,7 +57,7 @@ spec:
             - secretRef:
                 name: devops-secrets
           volumeMounts:
-            - name: postgres-data
+            - name: coordinator-data
               mountPath: /var/lib/postgresql/data
             - name: init-scripts
               mountPath: /docker-entrypoint-initdb.d/init-wrapper.sh
@@ -56,7 +69,62 @@ spec:
             defaultMode: 0755
   volumeClaimTemplates:
     - metadata:
-        name: postgres-data
+        name: coordinator-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-worker
+  namespace: devops-platform
+spec:
+  serviceName: "postgres-worker-headless"
+  replicas: 2
+  selector:
+    matchLabels:
+      app: postgres-worker
+  template:
+    metadata:
+      labels:
+        app: postgres-worker
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: postgres-worker
+                topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: postgres-worker
+          image: citusdata/citus:12.1-alpine
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - configMapRef:
+                name: devops-config
+            - secretRef:
+                name: devops-secrets
+          volumeMounts:
+            - name: worker-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d/init-wrapper.sh
+              subPath: init-wrapper.sh
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: postgres-init-script
+            defaultMode: 0755
+  volumeClaimTemplates:
+    - metadata:
+        name: worker-data
       spec:
         accessModes: [ "ReadWriteOnce" ]
         resources:

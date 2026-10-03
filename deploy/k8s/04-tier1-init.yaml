@@ -16,6 +16,9 @@ data:
     #!/bin/bash
     set -e
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+        -- Enable Citus extension
+        CREATE EXTENSION IF NOT EXISTS citus;
+
         DO \$\$
         BEGIN
            IF NOT EXISTS (
@@ -29,11 +32,60 @@ data:
         \$\$;
         GRANT ALL PRIVILEGES ON DATABASE appdb TO app_user;
         \c appdb
+        CREATE EXTENSION IF NOT EXISTS citus;
         GRANT ALL ON SCHEMA public TO app_user;
         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app_user;
         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO app_user;
         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO app_user;
     EOSQL
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Citus Shard Registration Job
+# ─────────────────────────────────────────────────────────────────────────────
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: citus-shard-init
+  namespace: devops-platform
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+spec:
+  template:
+    spec:
+      containers:
+        - name: citus-init
+          image: citusdata/citus:12.1-alpine
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -e
+              echo "Waiting for Coordinator and Workers to become ready..."
+              until pg_isready -h postgres.devops-platform.svc.cluster.local -p 5432; do sleep 2; done
+              until pg_isready -h postgres-worker-0.postgres-worker-headless.devops-platform.svc.cluster.local -p 5432; do sleep 2; done
+              until pg_isready -h postgres-worker-1.postgres-worker-headless.devops-platform.svc.cluster.local -p 5432; do sleep 2; done
+
+              echo "Registering Shard Workers with Citus Coordinator..."
+              PGPASSWORD="$POSTGRES_PASSWORD" psql -h postgres.devops-platform.svc.cluster.local -U postgres -d appdb <<-EOSQL
+                SELECT citus_set_coordinator_host('postgres.devops-platform.svc.cluster.local', 5432);
+                -- Register Worker 0 (Shard 0)
+                SELECT citus_add_node('postgres-worker-0.postgres-worker-headless.devops-platform.svc.cluster.local', 5432)
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM pg_dist_node WHERE nodename = 'postgres-worker-0.postgres-worker-headless.devops-platform.svc.cluster.local'
+                );
+                -- Register Worker 1 (Shard 1)
+                SELECT citus_add_node('postgres-worker-1.postgres-worker-headless.devops-platform.svc.cluster.local', 5432)
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM pg_dist_node WHERE nodename = 'postgres-worker-1.postgres-worker-headless.devops-platform.svc.cluster.local'
+                );
+              EOSQL
+              echo "✅ Citus Shards successfully registered with Coordinator."
+          envFrom:
+            - configMapRef:
+                name: devops-config
+            - secretRef:
+                name: devops-secrets
+      restartPolicy: OnFailure
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DB Migrate Job
