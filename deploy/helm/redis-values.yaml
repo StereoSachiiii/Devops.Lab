@@ -1,0 +1,76 @@
+## Bitnami Redis High Availability (HA) Configuration
+## Architecture: Primary-Replica with Redis Sentinel + HAProxy
+##
+## This values file configures:
+## 1. 3 Redis pods (1 Primary + 2 Replicas) with 3 Sentinels (quorum = 2)
+## 2. Pod Anti-Affinity ensuring no two Redis/Sentinel pods share the same K8s worker node
+## 3. HAProxy fronting the cluster: exposes standard Redis port 6379 and routes writes exclusively
+##    to whichever node Sentinel currently designates as master.
+## 4. Full drop-in compatibility with existing REDIS_URL endpoints (redis://redis.devops-platform.svc.cluster.local:6379)
+##    and Kong API gateway rate limiting without application-level client changes.
+
+architecture: replication
+
+# Authentication: Backed by Kubernetes Secret 'devops-secrets'
+auth:
+  enabled: true
+  existingSecret: devops-secrets
+  existingSecretPasswordKey: REDIS_PASSWORD
+
+# Sentinel HA configuration
+sentinel:
+  enabled: true
+  masterSet: mymaster
+  quorum: 2
+  downAfterMilliseconds: 5000
+  failoverTimeout: 10000
+
+# Replica nodes configuration
+replica:
+  replicaCount: 2
+  persistence:
+    enabled: true
+    size: 5Gi
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: redis
+            topologyKey: "kubernetes.io/hostname"
+
+# Primary node configuration
+master:
+  persistence:
+    enabled: true
+    size: 5Gi
+  configuration: |
+    appendonly yes
+    appendfsync everysec
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: redis
+            topologyKey: "kubernetes.io/hostname"
+
+# HAProxy proxy layer
+# Intercepts standard Redis traffic on 6379 and dynamically tracks active primary via Sentinel
+haproxy:
+  enabled: true
+  replicaCount: 2
+  service:
+    type: ClusterIP
+    ports:
+      redis: 6379
+
+# Prometheus metrics exporter
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false

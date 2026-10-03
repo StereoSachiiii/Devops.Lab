@@ -52,6 +52,7 @@ data:
           redis:
             host: redis.devops-platform.svc.cluster.local
             port: 6379
+            password: ${REDIS_PASSWORD}
             database: 1
       - name: prometheus
         config:
@@ -116,6 +117,7 @@ data:
               redis:
                 host: redis.devops-platform.svc.cluster.local
                 port: 6379
+                password: ${REDIS_PASSWORD}
                 database: 1
     
       - name: sandbox-service
@@ -136,6 +138,7 @@ data:
               redis:
                 host: redis.devops-platform.svc.cluster.local
                 port: 6379
+                password: ${REDIS_PASSWORD}
                 database: 1
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -198,6 +201,11 @@ spec:
               value: "0.0.0.0:8001, 0.0.0.0:8444 ssl"
             - name: KONG_NGINX_HTTP_LARGE_CLIENT_HEADER_BUFFERS
               value: "4 64k"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: devops-secrets
+                  key: REDIS_PASSWORD
           volumeMounts:
             - name: kong-config-vol
               mountPath: /usr/local/kong/declarative/kong.yml

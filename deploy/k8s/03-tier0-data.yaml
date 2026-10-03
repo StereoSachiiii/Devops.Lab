@@ -64,55 +64,10 @@ spec:
             storage: 10Gi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Redis
+# Redis (HA Managed via Bitnami Helm Chart - deploy/helm/redis-values.yaml)
+# Note: Deployed via `helm upgrade --install redis bitnami/redis -n devops-platform -f deploy/helm/redis-values.yaml`
+# Exposes service `redis.devops-platform.svc.cluster.local:6379` via HAProxy
 # ─────────────────────────────────────────────────────────────────────────────
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: redis
-  namespace: devops-platform
-spec:
-  ports:
-    - port: 6379
-      targetPort: 6379
-  selector:
-    app: redis
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: redis
-  namespace: devops-platform
-spec:
-  serviceName: "redis"
-  replicas: 1
-  selector:
-    matchLabels:
-      app: redis
-  template:
-    metadata:
-      labels:
-        app: redis
-    spec:
-      containers:
-        - name: redis
-          image: redis:7-alpine
-          # Enable AOF persistence so denylist state survives pod restarts
-          command: ["redis-server", "--appendonly", "yes"]
-          ports:
-            - containerPort: 6379
-          volumeMounts:
-            - name: redis-data
-              mountPath: /data
-  volumeClaimTemplates:
-    - metadata:
-        name: redis-data
-      spec:
-        accessModes: [ "ReadWriteOnce" ]
-        resources:
-          requests:
-            storage: 1Gi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RabbitMQ
