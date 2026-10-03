@@ -191,6 +191,15 @@ spec:
       labels:
         app: sandbox-router
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: sandbox-router
+                topologyKey: "kubernetes.io/hostname"
       containers:
         - name: sandbox-router
           image: docker.io/devops/sandbox-router:latest
@@ -198,6 +207,18 @@ spec:
           command: ["/sandbox-router"]
           ports:
             - containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
           envFrom:
             - configMapRef:
                 name: devops-config
