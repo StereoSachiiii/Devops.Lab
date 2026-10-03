@@ -106,7 +106,36 @@ spec:
         - name: db-migrate
           image: devops/core-service:latest
           imagePullPolicy: Never
-          command: ["sh", "-c", "cd packages/db && npx prisma db push --accept-data-loss && npx prisma db seed"]
+          command:
+            - "sh"
+            - "-c"
+            - |
+              set -e
+              echo "⏳ Waiting for Citus Coordinator and Shards to be fully registered..."
+              until psql "$DATABASE_URL" -c "SELECT count(*) FROM pg_dist_node;" | grep -q "[1-9]"; do
+                echo "Citus shards not yet registered. Retrying in 2s..."
+                sleep 2
+              done
+              echo "✅ Citus Cluster is ready with registered worker shards."
+
+              echo "🚀 Pushing Prisma database schema..."
+              cd packages/db && npx prisma db push --accept-data-loss
+
+              echo "⚙️ Configuring Citus distributed sharding and reference tables..."
+              # Enable distributed tables across the 2 worker shards for high-throughput multi-tenant models
+              # and reference tables for global lookup data.
+              psql "$DATABASE_URL" <<-EOSQL || true
+                -- Distribute tenant and submission data by orgId / userId across both shards
+                SELECT create_distributed_table('"OrgMember"', 'orgId') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"OrgMember"'::regclass);
+                SELECT create_distributed_table('"OrgScenario"', 'orgId') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"OrgScenario"'::regclass);
+                SELECT create_distributed_table('"Submission"', 'userId') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"Submission"'::regclass);
+                -- Reference tables replicate across all shards for fast local joins
+                SELECT create_reference_table('"Category"') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"Category"'::regclass);
+              EOSQL
+
+              echo "🌱 Executing Prisma Seed Scripts..."
+              npx prisma db seed
+              echo "✅ Citus Database migration, distributed table configuration, and seeding complete!"
           envFrom:
             - configMapRef:
                 name: devops-config
