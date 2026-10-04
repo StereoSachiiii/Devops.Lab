@@ -25,13 +25,17 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import { SocialTab } from "@/components/profile/SocialTab";
+import { ChangePasswordModal } from "@/components/profile/ChangePasswordModal";
 
 export function ProfileContent() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const router = useRouter();
 
   // Active tab state
   const [activeTab, setActiveTab] = useState<"overview" | "social" | "security" | "preferences">("overview");
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [loggingOutAll, setLoggingOutAll] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     if (user === null) {
@@ -273,7 +277,10 @@ export function ProfileContent() {
                       <span className="font-mono text-sm">Password</span>
                     </div>
                     {profile.hasPassword ? (
-                      <button className="text-xs font-mono text-amber hover:underline">
+                      <button
+                        onClick={() => setShowPasswordModal(true)}
+                        className="text-xs font-mono text-amber hover:underline cursor-pointer bg-transparent border-none p-0"
+                      >
                         Change
                       </button>
                     ) : (
@@ -294,10 +301,32 @@ export function ProfileContent() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
             {/* Active Sessions */}
             <div className="bg-panel-2 border border-panel-border rounded-2xl p-6">
-              <h3 className="font-space text-lg font-bold mb-6 flex items-center gap-2">
-                <Laptop size={18} className="text-amber" />
-                Active Devices
-              </h3>
+              <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
+                <h3 className="font-space text-lg font-bold flex items-center gap-2 m-0">
+                  <Laptop size={18} className="text-amber" />
+                  Active Devices
+                </h3>
+                <button
+                  onClick={async () => {
+                    if (confirm("Sign out of all devices and active sessions? You will need to log in again.")) {
+                      setLoggingOutAll(true);
+                      try {
+                        await apiClient.auth.logoutAll();
+                        await logout();
+                      } catch {
+                        // fallback to local logout
+                        await logout();
+                      } finally {
+                        setLoggingOutAll(false);
+                      }
+                    }
+                  }}
+                  disabled={loggingOutAll}
+                  className="px-3 py-1.5 rounded-lg bg-[rgba(255,107,107,0.1)] text-[var(--color-red)] text-xs font-mono border border-[rgba(255,107,107,0.2)] hover:bg-[rgba(255,107,107,0.2)] transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {loggingOutAll ? "Signing out..." : "Log Out All Devices"}
+                </button>
+              </div>
 
               <div className="flex flex-col gap-3">
                 {!sessions ? (
@@ -430,19 +459,42 @@ export function ProfileContent() {
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4">
-                <button className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-panel border border-panel-border font-mono text-sm hover:bg-panel-2 transition-colors">
+                <button className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-panel border border-panel-border font-mono text-sm hover:bg-panel-2 transition-colors cursor-pointer">
                   <Download size={16} />
                   Export Data
                 </button>
-                <button className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[rgba(255,107,107,0.1)] border border-[rgba(255,107,107,0.2)] text-[var(--color-red)] font-mono text-sm hover:bg-[rgba(255,107,107,0.2)] transition-colors">
+                <button
+                  onClick={async () => {
+                    const confirmed = prompt('This will permanently delete your account and learning records. Type "DELETE" to confirm:');
+                    if (confirmed === "DELETE") {
+                      setDeletingAccount(true);
+                      try {
+                        await apiClient.auth.deleteAccount();
+                        await logout();
+                      } catch {
+                        await logout();
+                      } finally {
+                        setDeletingAccount(false);
+                      }
+                    }
+                  }}
+                  disabled={deletingAccount}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[rgba(255,107,107,0.1)] border border-[rgba(255,107,107,0.2)] text-[var(--color-red)] font-mono text-sm hover:bg-[rgba(255,107,107,0.2)] transition-colors cursor-pointer disabled:opacity-50"
+                >
                   <Trash2 size={16} />
-                  Delete Account
+                  {deletingAccount ? "Deleting Account..." : "Delete Account"}
                 </button>
               </div>
             </div>
           </div>
         )}
       </div>
+
+      <ChangePasswordModal
+        isOpen={showPasswordModal}
+        onClose={() => setShowPasswordModal(false)}
+        onSuccess={() => mutate()}
+      />
     </div>
   );
 }
