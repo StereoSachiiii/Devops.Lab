@@ -1,0 +1,215 @@
+# =============================================================================
+# TIER 4: Cilium Service Mesh & Mutual TLS (mTLS) Security Policies
+# =============================================================================
+# These policies enforce Zero-Trust communication between production services.
+# Any inter-pod traffic not explicitly authorized or failing mTLS is dropped.
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. API Gateway (Kong) Security Policy
+# Allows ingress from Web Frontend / External and restricts egress to Tier 2 services.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kong-mesh-policy
+  namespace: devops-platform
+spec:
+  endpointSelector:
+    matchLabels:
+      app: api-gateway
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: web-frontend
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+            - port: "8443"
+              protocol: TCP
+    - fromEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+            - port: "8443"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app: auth-service
+        - matchLabels:
+            app: core-service
+        - matchLabels:
+            app: sandbox-router
+        - matchLabels:
+            app.kubernetes.io/name: redis
+      authentication:
+        mode: required
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. Auth Service Security Policy
+# Ingress allowed ONLY from Kong with required mTLS.
+# Egress allowed ONLY to PostgreSQL (Citus), Redis, and Redpanda (Kafka).
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: auth-service-mesh-policy
+  namespace: devops-platform
+spec:
+  endpointSelector:
+    matchLabels:
+      app: auth-service
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: api-gateway
+      authentication:
+        mode: required
+      toPorts:
+        - ports:
+            - port: "3002"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app: citus-coord
+        - matchLabels:
+            app.kubernetes.io/name: redis
+        - matchLabels:
+            app.kubernetes.io/name: redpanda
+      authentication:
+        mode: required
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. Core Service Security Policy
+# Ingress allowed ONLY from Kong with required mTLS.
+# Egress allowed ONLY to Citus DB, Redis, RabbitMQ, and Redpanda.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: core-service-mesh-policy
+  namespace: devops-platform
+spec:
+  endpointSelector:
+    matchLabels:
+      app: core-service
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: api-gateway
+      authentication:
+        mode: required
+      toPorts:
+        - ports:
+            - port: "3003"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app: citus-coord
+        - matchLabels:
+            app.kubernetes.io/name: redis
+        - matchLabels:
+            app.kubernetes.io/name: redpanda
+        - matchLabels:
+            app.kubernetes.io/name: rabbitmq
+      authentication:
+        mode: required
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. Sandbox Router & Worker Security Policy
+# Enforces authenticated routing from Kong to Router, and Router to Worker.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: sandbox-mesh-policy
+  namespace: devops-platform
+spec:
+  endpointSelector:
+    matchLabels:
+      app: sandbox-router
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: api-gateway
+      authentication:
+        mode: required
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app: sandbox-worker
+        - matchLabels:
+            app.kubernetes.io/name: redis
+      authentication:
+        mode: required
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: sandbox-worker-mesh-policy
+  namespace: devops-platform
+spec:
+  endpointSelector:
+    matchLabels:
+      app: sandbox-worker
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: sandbox-router
+      authentication:
+        mode: required
+      toPorts:
+        - ports:
+            - port: "8090"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: redis
+        - matchLabels:
+            app.kubernetes.io/name: rabbitmq
+        - matchLabels:
+            app.kubernetes.io/name: redpanda
+      authentication:
+        mode: required
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. Citus PostgreSQL Distributed Database Policy
+# Only Auth and Core microservices (and DB migration init jobs) can talk to DB.
+# Citus coordinator communicates with its shard workers.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: citus-db-mesh-policy
+  namespace: devops-platform
+spec:
+  endpointSelector:
+    matchLabels:
+      app: citus-coord
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: auth-service
+        - matchLabels:
+            app: core-service
+        - matchLabels:
+            app: db-migrate
+        - matchLabels:
+            app: citus-worker
+      authentication:
+        mode: required
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP

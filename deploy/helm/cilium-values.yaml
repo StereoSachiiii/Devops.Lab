@@ -1,0 +1,68 @@
+# =============================================================================
+# Cilium Production Service Mesh & Networking Configuration
+# =============================================================================
+# Usage:
+#   helm repo add cilium https://helm.cilium.io/
+#   helm repo update
+#   helm upgrade --install cilium cilium/cilium \
+#     --namespace kube-system \
+#     -f deploy/helm/cilium-values.yaml
+# =============================================================================
+
+# 1. Core eBPF & Kube-Proxy Replacement
+kubeProxyReplacement: "true"
+k8sServiceHost: "auto"
+k8sServicePort: "auto"
+
+# 2. Transparent In-Kernel WireGuard Encryption (Node-to-Node & Pod-to-Pod)
+# All packet data leaving a node's interface is encrypted transparently.
+encryption:
+  enabled: true
+  type: wireguard
+  nodeEncryption: true
+
+# 3. L7 Service Mesh & Envoy Capabilities
+# Deploys Cilium's sidecarless L7 proxy for ingress, traffic management, and L7 policies
+serviceMesh:
+  enabled: true
+
+# 4. Mutual TLS (mTLS) with SPIRE / Workload Identity
+# Enforces cryptographically verified identities between microservices
+authentication:
+  mutual:
+    spire:
+      enabled: true
+      install:
+        enabled: true
+
+# 5. Hubble Observability & Telemetry
+hubble:
+  enabled: true
+  metrics:
+    enabled:
+      - dns:query;ignoreAAAA
+      - drop
+      - tcp
+      - flow
+      - port-distribution
+      - icmp
+      - http
+    serviceMonitor:
+      enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+    replicas: 1
+
+# 6. Prometheus Integration
+prometheus:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+
+# 7. Operator & High Availability
+operator:
+  enabled: true
+  replicas: 2
+  rollOutPods: true

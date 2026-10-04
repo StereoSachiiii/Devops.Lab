@@ -1,0 +1,45 @@
+# =============================================================================
+# TIER 5: Production Edge Certificate Management (cert-manager + Let's Encrypt)
+# =============================================================================
+# Automates issuance and renewal of publicly trusted SSL/TLS certificates
+# for the external Ingress / API Gateway.
+#
+# Prerequisite:
+#   helm repo add jetstack https://charts.jetstack.io
+#   helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --set installCRDs=true
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. Let's Encrypt Production ClusterIssuer
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@devops-platform.local
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: kong
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. Automated Production Edge TLS Certificate
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: devops-platform-tls
+  namespace: devops-platform
+spec:
+  secretName: devops-platform-tls-cert
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - "api.devops-platform.local"
+    - "app.devops-platform.local"
