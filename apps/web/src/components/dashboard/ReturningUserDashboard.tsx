@@ -5,10 +5,16 @@ import { CountUp } from "@/components/landing/StatsRow";
 import { CheckCircle2, ChevronRight, Zap, Target, Users, Layout } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { SocialActivityFeed } from "./SocialActivityFeed";
+import { KnowledgeFrontierWidget } from "./KnowledgeFrontierWidget";
 
 export function ReturningUserDashboard({ data }: { data: DashboardData }) {
   return (
     <div className="space-y-12">
+      {/* Knowledge Graph Frontier Unlocked Section */}
+      <section>
+        <KnowledgeFrontierWidget />
+      </section>
+
       {/* Social Feed */}
       <section>
         <SocialActivityFeed />

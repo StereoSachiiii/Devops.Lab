@@ -35,4 +35,6 @@ export type {
   ActiveSession,
   UserProfile,
   MfaSetupResponse,
+  KnowledgeNode,
+  NodeFrontierResponse,
 } from "@devops/types";

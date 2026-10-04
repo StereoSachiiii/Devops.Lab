@@ -254,11 +254,16 @@ export const apiClient = {
   },
 
   nodes: {
-    getById: (id: string) => engine.get<any, any>(API_ROUTES.nodes.byId(id)),
-    getParents: (id: string) => engine.get<any, any>(API_ROUTES.nodes.parents(id)),
-    getChildren: (id: string) => engine.get<any, any>(API_ROUTES.nodes.children(id)),
-    getAncestors: (id: string) => engine.get<any, any>(API_ROUTES.nodes.ancestors(id)),
-    getUserFrontier: (userId: string) => engine.get<any, any>(API_ROUTES.nodes.userFrontier(userId)),
+    getById: (id: string) =>
+      engine.get<import("@devops/types").KnowledgeNode, import("@devops/types").KnowledgeNode>(API_ROUTES.nodes.byId(id)),
+    getParents: (id: string) =>
+      engine.get<{ nodes: import("@devops/types").KnowledgeNode[] }, { nodes: import("@devops/types").KnowledgeNode[] }>(API_ROUTES.nodes.parents(id)),
+    getChildren: (id: string) =>
+      engine.get<{ nodes: import("@devops/types").KnowledgeNode[] }, { nodes: import("@devops/types").KnowledgeNode[] }>(API_ROUTES.nodes.children(id)),
+    getAncestors: (id: string) =>
+      engine.get<{ nodes: import("@devops/types").KnowledgeNode[] }, { nodes: import("@devops/types").KnowledgeNode[] }>(API_ROUTES.nodes.ancestors(id)),
+    getUserFrontier: (userId: string) =>
+      engine.get<import("@devops/types").NodeFrontierResponse, import("@devops/types").NodeFrontierResponse>(API_ROUTES.nodes.userFrontier(userId)),
   },
 
   articles: {

@@ -76,6 +76,21 @@ export interface QuizProgress {
   total?: number;
 }
 
+export interface KnowledgeNode {
+  id: string;
+  type: "CHALLENGE" | "INCIDENT" | "QUIZ";
+  title: string;
+  description: string;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  outgoing?: Array<{ toId: string }>;
+  incoming?: Array<{ fromId: string }>;
+}
+
+export interface NodeFrontierResponse {
+  nodes: KnowledgeNode[];
+}
+
 export type ApiSuccess<T> = { ok: true; data: T; status: number };
 export type ApiFailure = {
   ok: false;

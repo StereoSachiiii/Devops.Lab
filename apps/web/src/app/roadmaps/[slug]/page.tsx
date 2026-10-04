@@ -14,6 +14,7 @@ import {
   getGuestRoadmapProgress,
   saveGuestRoadmapProgress,
 } from "@/lib/guestRoadmap";
+import { NodeGraphPrerequisites } from "@/components/roadmap/NodeGraphPrerequisites";
 
 import { getErrorMessage, ErrorCodes } from "@/lib/errors";
 
@@ -526,6 +527,12 @@ function RoadmapDetailPage() {
                 </div>
               </div>
             )}
+
+            {/* DAG Knowledge Graph Dependencies */}
+            <NodeGraphPrerequisites
+              nodeId={selectedNode.id}
+              isCompleted={getNodeState(selectedNode.id, progress, roadmap) === "complete"}
+            />
 
             {/* Prerequisites Note */}
             {getNodeState(selectedNode.id, progress, roadmap) === "locked" && (
