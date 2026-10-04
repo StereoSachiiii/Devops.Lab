@@ -46,7 +46,7 @@ export function SettingsContent() {
   const onUpdateProfile = async (data: ProfileFormInputs) => {
     setProfileMsg(null);
     try {
-      await apiClient.put("/api/auth/me", { name: data.name, jobTitle: data.jobTitle });
+      await apiClient.auth.updateProfile({ name: data.name, jobTitle: data.jobTitle });
       await mutate();
       setProfileMsg({ type: "success", text: "Profile details updated successfully." });
     } catch (err: unknown) {

@@ -305,6 +305,8 @@ export const apiClient = {
   auth: {
     me: () => engine.get<UserSession, UserSession>(API_ROUTES.auth.me),
     getProfile: () => engine.get<import("@devops/types").UserProfile, import("@devops/types").UserProfile>(API_ROUTES.auth.me),
+    updateProfile: (body: { name?: string | undefined; jobTitle?: string | undefined }) =>
+      engine.put<import("@devops/types").UserProfile, import("@devops/types").UserProfile>(API_ROUTES.auth.me, body),
     login: (body: unknown) => engine.post<UserSession, UserSession>(API_ROUTES.auth.login, body),
     register: (body: unknown) =>
       engine.post<UserSession, UserSession>(API_ROUTES.auth.register, body),
