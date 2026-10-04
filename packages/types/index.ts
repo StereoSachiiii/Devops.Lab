@@ -376,3 +376,21 @@ export interface MfaSetupResponse {
   secret: string;
   qrCode: string;
 }
+
+export interface FollowedUser {
+  id: string;
+  name: string | null;
+  username?: string | null;
+  avatarUrl?: string | null;
+  jobTitle?: string | null;
+  xp?: number;
+}
+
+export interface BookmarkedChallenge {
+  id: string;
+  title: string;
+  difficulty: "EASY" | "MEDIUM" | "HARD";
+  category: string;
+  tags?: string[];
+  xp: number;
+}

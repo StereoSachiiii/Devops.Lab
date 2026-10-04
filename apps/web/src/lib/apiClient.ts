@@ -379,9 +379,9 @@ export const apiClient = {
     getFeed: (params?: { limit?: number }) =>
       engine.get<{ feed: any[] }, { feed: any[] }>(API_ROUTES.users.feed, { params }),
     getBookmarks: () =>
-      engine.get<any[], any[]>(API_ROUTES.users.bookmarks),
+      engine.get<import("@devops/types").BookmarkedChallenge[], import("@devops/types").BookmarkedChallenge[]>(API_ROUTES.users.bookmarks),
     getFollowing: () =>
-      engine.get<any[], any[]>(API_ROUTES.users.following),
+      engine.get<import("@devops/types").FollowedUser[], import("@devops/types").FollowedUser[]>(API_ROUTES.users.following),
     discover: (q?: string, limit?: number) => {
       const sp = new URLSearchParams();
       if (q) sp.set("q", q);

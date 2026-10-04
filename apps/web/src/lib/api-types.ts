@@ -40,4 +40,6 @@ export type {
   MfaSetupResponse,
   KnowledgeNode,
   NodeFrontierResponse,
+  FollowedUser,
+  BookmarkedChallenge,
 } from "@devops/types";

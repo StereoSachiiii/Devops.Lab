@@ -19,17 +19,19 @@ import {
   Trash2,
   GitBranch,
   AlertTriangle,
+  Bookmark,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { formatDistanceToNow, format } from "date-fns";
+import { SocialTab } from "@/components/profile/SocialTab";
 
 export function ProfileContent() {
   const { user } = useAuth();
   const router = useRouter();
 
   // Active tab state
-  const [activeTab, setActiveTab] = useState<"overview" | "security" | "preferences">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "social" | "security" | "preferences">("overview");
 
   useEffect(() => {
     if (user === null) {
@@ -118,6 +120,7 @@ export function ProfileContent() {
       <div className="flex items-center gap-6 border-b border-panel-border overflow-x-auto no-scrollbar">
         {[
           { id: "overview", label: "Overview", icon: User },
+          { id: "social", label: "Saved & Network", icon: Bookmark },
           { id: "security", label: "Security & Devices", icon: ShieldCheck },
           { id: "preferences", label: "Preferences", icon: Bell },
         ].map((tab) => (
@@ -282,6 +285,9 @@ export function ProfileContent() {
             </div>
           </div>
         )}
+
+        {/* SOCIAL & SAVED TAB */}
+        {activeTab === "social" && <SocialTab />}
 
         {/* SECURITY TAB */}
         {activeTab === "security" && (
