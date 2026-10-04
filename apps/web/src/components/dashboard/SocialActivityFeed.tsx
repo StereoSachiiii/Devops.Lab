@@ -35,7 +35,7 @@ interface FeedItem {
 export function SocialActivityFeed() {
   const { data, isLoading } = useSWR<{ feed: FeedItem[] }>(
     "/api/users/me/feed",
-    (url: string) => apiClient.get(url) as Promise<{ feed: FeedItem[] }>
+    () => apiClient.users.getFeed() as Promise<{ feed: FeedItem[] }>
   );
 
   if (isLoading) {

@@ -57,7 +57,7 @@ export function SettingsContent() {
   const onInitMfa = async () => {
     setMfaMsg(null);
     try {
-      const res = await apiClient.post<MfaSetupResponse>("/api/auth/mfa/setup");
+      const res = await apiClient.auth.setupMfa();
       setMfaSetup(res);
     } catch (err: unknown) {
       setMfaMsg({ type: "error", text: getErrorMessage(err, "Failed to initialize MFA setup.") });
@@ -67,7 +67,7 @@ export function SettingsContent() {
   const onVerifyMfa = async (data: MfaFormInputs) => {
     setMfaMsg(null);
     try {
-      await apiClient.post("/api/auth/mfa/verify", { code: data.code });
+      await apiClient.auth.verifyMfa(data.code);
       await mutate();
       setMfaSetup(null);
       setMfaMsg({ type: "success", text: "Two-Factor Authentication is now enabled on your account!" });

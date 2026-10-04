@@ -131,16 +131,13 @@ export const apiClient = {
   del: <T = unknown>(url: string) => engine.delete<T, T>(url),
   delete: <T = unknown>(url: string) => engine.delete<T, T>(url),
 
-  // Raw variant that returns response data for 4xx payloads (useful for form
-  // validation or sandbox validation endpoints that return 422 with details).
+
   rawPost: async <T = unknown>(url: string, body?: unknown) => {
     const res = await engineRaw.post<T>(url, body);
     return res.data as T;
   },
 
-  // Safe helpers return a structured `ApiResult<T>` so callers can handle
-  // success vs failure without relying solely on exceptions. Use these when
-  // you want explicit success/error state handling in UI code.
+
   safeGet: async <T = unknown>(url: string): Promise<ApiResult<T>> => {
     try {
       const data = await engine.get<T, T>(url);
@@ -203,6 +200,29 @@ export const apiClient = {
       engine.get<{ eligible: boolean; trialUsed: boolean }, { eligible: boolean; trialUsed: boolean }>(API_ROUTES.challenges.trialStatus(id)),
     getHistory: (id: string) =>
       engine.get<HistoryItem[], HistoryItem[]>(API_ROUTES.challenges.history(id)),
+    getEditorial: (id: string) => {
+      type EditorialRes = {
+        id: string;
+        title: string;
+        editorial: string;
+        authorNotes?: string;
+        code?: string;
+        canUnlock?: boolean;
+      };
+      return engine.get<EditorialRes, EditorialRes>(`/api/challenges/${id}/editorial`);
+    },
+    getInteractions: (id: string) => {
+      type InterRes = { likes: number; liked: boolean; saved: boolean };
+      return engine.get<InterRes, InterRes>(`/api/challenges/${id}/interactions`);
+    },
+    like: (id: string) => {
+      type LikeRes = { likes: number; liked: boolean };
+      return engine.post<LikeRes, LikeRes>(`/api/challenges/${id}/like`);
+    },
+    save: (id: string) => {
+      type SaveRes = { saved: boolean };
+      return engine.post<SaveRes, SaveRes>(`/api/challenges/${id}/bookmark`);
+    },
   },
 
   roadmaps: {
@@ -248,11 +268,19 @@ export const apiClient = {
         API_ROUTES.articles.create,
         body
       ),
+    like: (id: string) =>
+      engine.post<{ likes: number; liked: boolean }, { likes: number; liked: boolean }>(`/api/articles/${id}/like`),
+    save: (id: string) =>
+      engine.post<{ saves: number; saved: boolean }, { saves: number; saved: boolean }>(`/api/articles/${id}/bookmark`),
+    report: (id: string, body: { reason: string; details?: string | undefined }) =>
+      engine.post<StandardResponse, StandardResponse>(`/api/articles/${id}/report`, body),
   },
 
   assistant: {
-    chat: (message: string) =>
-      engine.post<{ content: string }, { content: string }>(API_ROUTES.assistant.chat, { message }),
+    chat: (payload: string | { message?: string; messages?: Array<{ role: string; content: string }> }) => {
+      const body = typeof payload === "string" ? { message: payload } : payload;
+      return engine.post<{ content: string }, { content: string }>(API_ROUTES.assistant.chat, body);
+    },
   },
 
   sessions: {
@@ -261,15 +289,114 @@ export const apiClient = {
       engine.delete<StandardResponse, StandardResponse>(API_ROUTES.sessions.byId(id)),
     terminateActive: () =>
       engine.delete<StandardResponse, StandardResponse>(API_ROUTES.sessions.terminateActive),
+    getHealth: (sessionId: string) =>
+      engine.get<import("@devops/types").SandboxHealth, import("@devops/types").SandboxHealth>(API_ROUTES.sessions.health(sessionId)),
+    checkWorkerHealth: (terminalUrl: string) => {
+      const url = terminalUrl
+        .replace("ws://", "http://")
+        .replace("wss://", "https://")
+        .replace("/terminal", "/health");
+      return engine.get<any, any>(url);
+    },
+    getCheckResults: (sessionId: string) =>
+      engine.get<import("@devops/types").CheckResult[], import("@devops/types").CheckResult[]>(API_ROUTES.sessions.checkResults(sessionId)),
   },
 
   auth: {
+    me: () => engine.get<UserSession, UserSession>(API_ROUTES.auth.me),
+    getProfile: () => engine.get<import("@devops/types").UserProfile, import("@devops/types").UserProfile>(API_ROUTES.auth.me),
     login: (body: unknown) => engine.post<UserSession, UserSession>(API_ROUTES.auth.login, body),
     register: (body: unknown) =>
       engine.post<UserSession, UserSession>(API_ROUTES.auth.register, body),
     loginMfa: (body: unknown) =>
       engine.post<UserSession, UserSession>(API_ROUTES.auth.loginMfa, body),
+    loginSso: (body: { email: string }) =>
+      engine.post<{ success: boolean; exchangeToken: string }, { success: boolean; exchangeToken: string }>(`/api/auth/login/sso`, body),
     logout: () => engine.post<StandardResponse, StandardResponse>(API_ROUTES.auth.logout),
     getHistory: () => engine.get<HistoryItem[], HistoryItem[]>(API_ROUTES.auth.history),
+    getSessions: () => engine.get<import("@devops/types").ActiveSession[], import("@devops/types").ActiveSession[]>("/api/auth/sessions"),
+    revokeSession: (sessionId: string) =>
+      engine.post<StandardResponse, StandardResponse>(`/api/auth/sessions/${sessionId}/revoke`),
+    getSecurityLog: () =>
+      engine.get<import("@devops/types").SecurityLogResponse, import("@devops/types").SecurityLogResponse>("/api/auth/security-log"),
+    setupMfa: () =>
+      engine.post<any, any>("/api/auth/mfa/setup"),
+    verifyMfa: (code: string) =>
+      engine.post<StandardResponse, StandardResponse>("/api/auth/mfa/verify", { code }),
+    verifyEmail: (token: string) =>
+      engine.post<StandardResponse, StandardResponse>("/api/auth/verify-email", { token }),
+    forgotPassword: (email: string) =>
+      engine.post<StandardResponse, StandardResponse>("/api/auth/forgot-password", { email }),
+    resetPassword: (body: { token: string; newPassword: string }) =>
+      engine.post<StandardResponse, StandardResponse>("/api/auth/reset-password", body),
+  },
+
+  dashboard: {
+    get: () => engine.get<import("@devops/types").DashboardData, import("@devops/types").DashboardData>(API_ROUTES.auth.dashboard),
+    getLeaderboard: (params?: { category?: string; limit?: number }): Promise<any> => {
+      const sp = new URLSearchParams();
+      if (params?.category && params.category !== "ALL") sp.set("category", params.category);
+      if (params?.limit) sp.set("limit", String(params.limit));
+      const q = sp.toString() ? `?${sp.toString()}` : "";
+      return engine.get<any, any>(`/api/leaderboard${q}`);
+    },
+  },
+
+  users: {
+    getPublicProfile: (username: string) =>
+      engine.get<any, any>(API_ROUTES.users.profile(username)),
+    follow: (userId: string) =>
+      engine.post<{ following: boolean; followingCount: number; followersCount: number }, { following: boolean; followingCount: number; followersCount: number }>(API_ROUTES.users.follow(userId)),
+    getFeed: () => engine.get<{ feed: any[] }, { feed: any[] }>(API_ROUTES.users.feed),
+    discover: (q?: string) => {
+      const queryStr = q ? `?q=${encodeURIComponent(q)}` : "";
+      return engine.get<{ users: any[] }, { users: any[] }>(`${API_ROUTES.users.discover}${queryStr}`);
+    },
+  },
+
+  org: {
+    getMe: () => engine.get<any, any>(API_ROUTES.orgs.me),
+    getMembers: (orgId: string = "me") => engine.get<any[], any[]>(API_ROUTES.orgs.members(orgId)),
+    getAnalytics: (orgId: string = "me") => engine.get<any, any>(API_ROUTES.orgs.analytics(orgId)),
+    getScenarios: (orgId: string = "me") => engine.get<any[], any[]>(API_ROUTES.orgs.scenarios(orgId)),
+    getMatrix: () => engine.get<any[], any[]>("/api/orgs/me/assignments/matrix"),
+    invite: (body: { email: string; role: string }) =>
+      engine.post<any, any>(API_ROUTES.orgs.invites("me"), body),
+  },
+
+  lists: {
+    getAll: () => engine.get<{ lists: any[] }, { lists: any[] }>(API_ROUTES.lists.base),
+    getById: (id: string) => engine.get<any, any>(API_ROUTES.lists.byId(id)),
+    create: (body: { name: string; isPublic?: boolean }) =>
+      engine.post<any, any>(API_ROUTES.lists.base, body),
+    addItem: (listId: string, challengeId: string) =>
+      engine.post<any, any>(API_ROUTES.lists.addItem(listId), { challengeId }),
+    removeItem: (listId: string, challengeId: string) =>
+      engine.delete<any, any>(API_ROUTES.lists.removeItem(listId, challengeId)),
+  },
+
+  comments: {
+    getByChallenge: (challengeId: string) =>
+      engine.get<{ comments: any[] }, { comments: any[] }>(API_ROUTES.comments.byChallenge(challengeId)),
+    post: (challengeId: string, body: { content: string; parentId?: string | undefined }) =>
+      engine.post<any, any>(API_ROUTES.comments.byChallenge(challengeId), body),
+    vote: (commentId: string, vote: number) =>
+      engine.post<{ score: number; userVote: number }, { score: number; userVote: number }>(API_ROUTES.comments.vote(commentId), { vote }),
+    delete: (commentId: string) =>
+      engine.delete<any, any>(API_ROUTES.comments.delete(commentId)),
+  },
+
+  shares: {
+    getByToken: <T = any>(token: string) =>
+      engine.get<T, T>(API_ROUTES.shares.byToken(token)),
+    create: (body: { challengeId: string }) =>
+      engine.post<{ token: string; shareUrl: string; type: string }, { token: string; shareUrl: string; type: string }>(API_ROUTES.shares.base, body),
+  },
+
+  onboarding: {
+    getStatus: () =>
+      engine.get<import("@devops/types").OnboardingStatus, import("@devops/types").OnboardingStatus>(API_ROUTES.onboarding.status),
+    complete: () =>
+      engine.post<StandardResponse, StandardResponse>(API_ROUTES.onboarding.complete),
   },
 };

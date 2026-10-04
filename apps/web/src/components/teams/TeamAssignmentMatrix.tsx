@@ -32,7 +32,7 @@ export function TeamAssignmentMatrix() {
   const [exportError, setExportError] = useState<string | null>(null);
   const { data: matrix, isLoading } = useSWR<EngineerMatrixRow[]>(
     "/api/orgs/me/assignments/matrix",
-    () => apiClient.get<EngineerMatrixRow[]>("/api/orgs/me/assignments/matrix")
+    () => apiClient.org.getMatrix()
   );
 
   const handleExportCSV = async () => {

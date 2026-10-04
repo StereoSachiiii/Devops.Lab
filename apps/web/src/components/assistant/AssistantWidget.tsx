@@ -48,7 +48,7 @@ export function AssistantWidget() {
 
     try {
       const chatHistory = [...messages, userMessage];
-      const res = await apiClient.post<{ content: string }>("/api/assistant/chat", {
+      const res = await apiClient.assistant.chat({
         messages: chatHistory,
       });
 

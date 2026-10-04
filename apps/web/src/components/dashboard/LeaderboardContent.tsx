@@ -48,7 +48,7 @@ export function LeaderboardContent() {
       : `/api/leaderboard?category=${activeCategory}&limit=50`;
 
   const { data, error, isLoading } = useSWR<LeaderboardResponse>(queryUrl, () =>
-    apiClient.get<LeaderboardResponse>(queryUrl)
+    apiClient.dashboard.getLeaderboard({ category: activeCategory, limit: 50 }) as unknown as Promise<LeaderboardResponse>
   );
 
   const users = data?.leaderboard || [];

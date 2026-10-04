@@ -25,7 +25,7 @@
 
 import { useEffect, useRef } from "react";
 import { apiClient } from "@/lib/apiClient";
-import { API_ROUTES } from "@/lib/api-routes";
+
 
 interface ChallengeTourProps {
   /** Whether to show the tour. Caller checks onboarding status. */
@@ -108,7 +108,7 @@ export default function ChallengeTour({ show, onDone }: ChallengeTourProps) {
         onDestroyStarted: () => {
           // Fire the completion mutation regardless of whether the user dismissed
           // or finished - this prevents the tour from reappearing on next visit.
-          apiClient.post(API_ROUTES.onboarding.complete).catch(() => {
+          apiClient.onboarding.complete().catch(() => {
             // Non-fatal: if this fails, the user sees the tour again next visit.
             // That's acceptable - they won't be stuck in a loop.
           });

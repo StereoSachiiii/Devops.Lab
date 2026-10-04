@@ -333,9 +333,7 @@ export function LoginContent() {
                     const email = prompt("Enter your corporate work email (e.g. alex@acme.corp):");
                     if (!email || !email.includes("@")) return;
                     try {
-                      const res = await apiClient.post<{ success: boolean; exchangeToken: string }>("/api/auth/login/sso", {
-                        email,
-                      });
+                      const res = await apiClient.auth.loginSso({ email });
                       if (res.exchangeToken) {
                         window.location.assign(`/auth/callback?exchange_token=${res.exchangeToken}`);
                       }

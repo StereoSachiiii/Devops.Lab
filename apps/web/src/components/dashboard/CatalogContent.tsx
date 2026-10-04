@@ -45,7 +45,7 @@ export function CatalogContent() {
     data: rawChallenges,
     error,
     isLoading,
-  } = useSWR<Challenge[]>("/api/challenges", () => apiClient.get<Challenge[]>("/api/challenges"));
+  } = useSWR<Challenge[]>("/api/challenges", async () => (await apiClient.challenge.getAll()) as Challenge[]);
 
   // Inject mock data for spec fulfillment since DB doesn't have these yet
   const challenges = useMemo(() => {

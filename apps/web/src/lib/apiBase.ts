@@ -1,4 +1,3 @@
-/** Kong (or other API gateway) - browser calls this directly; no Next.js proxy. */
 function getApiBaseUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   if (typeof window !== "undefined") {

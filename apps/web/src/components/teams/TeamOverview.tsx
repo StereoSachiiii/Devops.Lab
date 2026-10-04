@@ -18,7 +18,7 @@ interface TeamAnalytics {
 export function TeamOverview() {
   const { data: stats } = useSWR<TeamAnalytics>(
     "/api/orgs/me/analytics",
-    () => apiClient.get<TeamAnalytics>("/api/orgs/me/analytics")
+    () => apiClient.org.getAnalytics()
   );
 
   const metrics = [

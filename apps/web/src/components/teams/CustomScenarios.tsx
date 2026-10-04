@@ -16,7 +16,7 @@ interface OrgScenario {
 export function CustomScenarios() {
   const { data: scenarios, error, isLoading } = useSWR<OrgScenario[]>(
     "/api/orgs/me/scenarios",
-    (url: string) => apiClient.get<OrgScenario[]>(url)
+    () => apiClient.org.getScenarios()
   );
 
   const getIcon = (type: string) => {

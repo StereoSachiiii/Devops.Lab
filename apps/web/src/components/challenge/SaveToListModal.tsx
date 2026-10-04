@@ -32,7 +32,7 @@ export function SaveToListModal({ isOpen, onClose, challengeId, challengeTitle }
 
   const fetchLists = async () => {
     try {
-      const res = await apiClient.get<{ lists: CustomList[] }>("/api/lists");
+      const res = await apiClient.lists.getAll();
       setLists(res.lists || []);
     } catch (err) {
       setErrorMessage(getErrorMessage(err, getErrorMessage(ErrorCodes.UNKNOWN_ERROR)));
@@ -56,13 +56,13 @@ export function SaveToListModal({ isOpen, onClose, challengeId, challengeTitle }
     setCreating(true);
     setErrorMessage(null);
     try {
-      const created = await apiClient.post<CustomList>("/api/lists", {
+      const created = await apiClient.lists.create({
         name: newListName.trim(),
         isPublic: newListPublic,
       });
 
       // Add the challenge immediately to the new list
-      await apiClient.post(`/api/lists/${created.id}/items`, { challengeId });
+      await apiClient.lists.addItem(created.id, challengeId);
 
       setNewListName("");
       setNewListPublic(false);
@@ -81,9 +81,9 @@ export function SaveToListModal({ isOpen, onClose, challengeId, challengeTitle }
 
     try {
       if (isIncluded) {
-        await apiClient.delete(`/api/lists/${list.id}/items/${challengeId}`);
+        await apiClient.lists.removeItem(list.id, challengeId);
       } else {
-        await apiClient.post(`/api/lists/${list.id}/items`, { challengeId });
+        await apiClient.lists.addItem(list.id, challengeId);
       }
       await fetchLists();
     } catch (err) {

@@ -33,7 +33,7 @@ function ChallengeWorkspacePage({ params }: PageProps) {
     isLoading: challengeLoading,
     error: challengeError,
   } = useSWR<Challenge>(id ? API_ROUTES.challenges.byId(id) : null, () =>
-    apiClient.get<Challenge>(API_ROUTES.challenges.byId(id))
+    apiClient.challenge.getById(id)
   );
 
   const { data: history } = useSWR<any[]>(id ? API_ROUTES.challenges.history(id) : null, () =>
@@ -115,7 +115,7 @@ function ChallengeWorkspacePage({ params }: PageProps) {
   // Challenge interaction state
   const { data: interactions } = useSWR<{ likes: number; liked: boolean; saved: boolean }>(
     id ? `/api/challenges/${id}/interactions` : null,
-    () => apiClient.get<{ likes: number; liked: boolean; saved: boolean }>(`/api/challenges/${id}/interactions`)
+    () => apiClient.challenge.getInteractions(id)
   );
   const [likeCount, setLikeCount] = useState<number | null>(null);
   const [liked, setLiked] = useState<boolean | null>(null);
@@ -136,7 +136,7 @@ function ChallengeWorkspacePage({ params }: PageProps) {
     setLikeCount(prev.liked ? prev.likes - 1 : prev.likes + 1);
     setILiking(true);
     try {
-      const res = await apiClient.post<{ likes: number; liked: boolean }>(`/api/challenges/${id}/like`);
+      const res = await apiClient.challenge.like(id);
       setLiked(res.liked);
       setLikeCount(res.likes);
     } catch {
@@ -152,7 +152,7 @@ function ChallengeWorkspacePage({ params }: PageProps) {
     setSaved(!prev);
     setISaving(true);
     try {
-      const res = await apiClient.post<{ saved: boolean }>(`/api/challenges/${id}/bookmark`);
+      const res = await apiClient.challenge.save(id);
       setSaved(res.saved);
     } catch { setSaved(prev); } finally { setISaving(false); }
   }, [user, router, id, iSaving, currentSaved]);

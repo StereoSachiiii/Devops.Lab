@@ -21,7 +21,7 @@ interface OrgInfo {
 export default function TeamsPage() {
   const { data: org, error, isLoading } = useSWR<OrgInfo>(
     "/api/orgs/me",
-    () => apiClient.get<OrgInfo>("/api/orgs/me"),
+    () => apiClient.org.getMe(),
     {
       shouldRetryOnError: false,
       revalidateOnFocus: false,

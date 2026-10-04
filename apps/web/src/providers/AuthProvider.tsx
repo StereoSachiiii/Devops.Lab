@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     mutate,
   } = useSWR<UserSession>(
     API_ROUTES.auth.me,
-    () => apiClient.get<UserSession>(API_ROUTES.auth.me),
+    () => apiClient.auth.me(),
     {
       shouldRetryOnError: (err) => {
         // Do not retry 401 Unauthorized since unauthenticated is an expected state
@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      await apiClient.post("/api/auth/logout");
+      await apiClient.auth.logout();
     } catch {
       // Ignore failures on logout API call
     }

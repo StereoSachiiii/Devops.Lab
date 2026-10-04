@@ -62,8 +62,8 @@ export default function SharePage() {
   useEffect(() => {
     if (!token) return;
 
-    apiClient
-      .get<ShareData>(`/api/shares/${token}`)
+    apiClient.shares
+      .getByToken<ShareData>(token)
       .then((json) => {
         setData(json);
         setLoading(false);

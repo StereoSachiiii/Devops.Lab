@@ -25,7 +25,7 @@ export function TeamMembersList({ myRole }: { myRole?: string }) {
 
   const { data: members, error, isLoading } = useSWR<TeamMember[]>(
     "/api/orgs/me/members",
-    () => apiClient.get<TeamMember[]>("/api/orgs/me/members")
+    () => apiClient.org.getMembers()
   );
 
   const handleInviteSubmit = async (e: React.FormEvent) => {
@@ -35,9 +35,9 @@ export function TeamMembersList({ myRole }: { myRole?: string }) {
     setInviteMessage("");
 
     try {
-      await apiClient.post("/api/orgs/me/invites", {
+      await apiClient.org.invite({
         email: inviteEmail,
-        orgRole: inviteRole,
+        role: inviteRole,
       });
       setInviteMessage("Invitation sent successfully!");
       setInviteEmail("");

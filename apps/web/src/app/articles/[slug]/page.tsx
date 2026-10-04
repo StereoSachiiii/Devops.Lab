@@ -79,9 +79,7 @@ export default function ArticleDetailPage() {
     setLikeCount(prevLiked ? prevLikes - 1 : prevLikes + 1);
     setLikeLoading(true);
     try {
-      const res = await apiClient.post<{ likes: number; liked: boolean }>(
-        `/api/articles/${article.id}/like`
-      );
+      const res = await apiClient.articles.like(article.id);
       setLikeCount(res.likes);
       setLiked(res.liked);
     } catch {
@@ -99,9 +97,7 @@ export default function ArticleDetailPage() {
     setSaved(!prevSaved);
     setSaveLoading(true);
     try {
-      const res = await apiClient.post<{ saves: number; saved: boolean }>(
-        `/api/articles/${article.id}/bookmark`
-      );
+      const res = await apiClient.articles.save(article.id);
       setSaved(res.saved);
     } catch {
       setSaved(prevSaved);
@@ -130,7 +126,7 @@ export default function ArticleDetailPage() {
     if (!article || !reportReason || reportLoading) return;
     setReportLoading(true);
     try {
-      await apiClient.post(`/api/articles/${article.id}/report`, {
+      await apiClient.articles.report(article.id, {
         reason: reportReason,
         details: reportDetails || undefined,
       });

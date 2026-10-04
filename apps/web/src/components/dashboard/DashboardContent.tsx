@@ -13,7 +13,7 @@ export function DashboardContent() {
 
   const { data: dashboardData, error } = useSWR<DashboardData>(
     user ? "/api/me/dashboard" : null,
-    (url: string) => apiClient.get(url) as Promise<DashboardData>
+    () => apiClient.dashboard.get()
   );
 
   const greeting = getGreeting();

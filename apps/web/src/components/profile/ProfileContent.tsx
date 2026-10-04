@@ -2,7 +2,7 @@
 
 import useSWR from "swr";
 import { apiClient } from "@/lib/apiClient";
-import type { UserProfile, ActiveSession, SecurityLogResponse } from "@devops/types";
+
 import { useAuth } from "@/providers/AuthProvider";
 import {
   User,
@@ -38,19 +38,18 @@ export function ProfileContent() {
   }, [user, router]);
 
   // Use the extended user object which includes the new schema fields
-  // In a real app we'd fetch from `/api/auth/me` but `useAuth` might already provide it.
   const { data: profile, mutate } = useSWR(user ? "/api/auth/me" : null, () =>
-    apiClient.get<UserProfile>("/api/auth/me")
+    apiClient.auth.getProfile()
   );
 
   const { data: sessions } = useSWR(
     user && activeTab === "security" ? "/api/auth/sessions" : null,
-    () => apiClient.get<ActiveSession[]>("/api/auth/sessions")
+    () => apiClient.auth.getSessions()
   );
 
   const { data: securityLog } = useSWR(
     user && activeTab === "security" ? "/api/auth/security-log" : null,
-    () => apiClient.get<SecurityLogResponse>("/api/auth/security-log")
+    () => apiClient.auth.getSecurityLog()
   );
 
   if (!user || !profile)
@@ -323,7 +322,7 @@ export function ProfileContent() {
                       <button
                         onClick={async () => {
                           if (confirm("Revoke this session?")) {
-                            await apiClient.post(`/api/auth/sessions/${session.id}/revoke`);
+                            await apiClient.auth.revokeSession(session.id);
                             mutate();
                           }
                         }}

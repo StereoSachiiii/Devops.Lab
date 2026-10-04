@@ -34,7 +34,7 @@ export default function CommunityPage() {
 
   const { data, isLoading, mutate } = useSWR<{ users: DiscoverUser[] }>(
     `/api/users/discover${searchQuery ? `?q=${encodeURIComponent(searchQuery)}` : ""}`,
-    (url: string) => apiClient.get(url) as Promise<{ users: DiscoverUser[] }>
+    () => apiClient.users.discover(searchQuery || undefined) as Promise<{ users: DiscoverUser[] }>
   );
 
   const handleFollowToggle = async (targetId: string, currentStatus: boolean) => {
@@ -44,7 +44,7 @@ export default function CommunityPage() {
     setFollowingMap((prev) => ({ ...prev, [targetId]: newStatus }));
 
     try {
-      await apiClient.post(`/api/users/${targetId}/follow`);
+      await apiClient.users.follow(targetId);
       mutate();
     } catch {
       setFollowingMap((prev) => ({ ...prev, [targetId]: currentStatus }));

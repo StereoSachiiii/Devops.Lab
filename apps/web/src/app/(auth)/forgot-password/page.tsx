@@ -30,9 +30,7 @@ export default function ForgotPasswordPage() {
   const onForgotSubmit = async (data: ForgotFormInputs) => {
     setErrorMsg(null);
     try {
-      await apiClient.post("/api/auth/forgot-password", {
-        email: data.email,
-      });
+      await apiClient.auth.forgotPassword(data.email);
       setSuccess(true);
     } catch (err: unknown) {
       setErrorMsg(getErrorMessage(err, "Failed to send reset link"));

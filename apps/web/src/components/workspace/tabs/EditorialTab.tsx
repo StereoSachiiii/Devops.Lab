@@ -4,22 +4,9 @@ import { EyebrowHeader } from "@/components/ui/EyebrowHeader";
 import { Lightbulb, Sparkles } from "lucide-react";
 
 export function EditorialTab({ challengeId }: { challengeId: string }) {
-  const { data, error, isLoading } = useSWR<{
-    id: string;
-    title: string;
-    editorial: string;
-    authorNotes?: string;
-    code?: string;
-    canUnlock?: boolean;
-  }>(challengeId ? `/api/challenges/${challengeId}/editorial` : null, () =>
-    apiClient.get<{
-      id: string;
-      title: string;
-      editorial: string;
-      authorNotes?: string;
-      code?: string;
-      canUnlock?: boolean;
-    }>(`/api/challenges/${challengeId}/editorial`)
+  const { data, error, isLoading } = useSWR(
+    challengeId ? `/api/challenges/${challengeId}/editorial` : null,
+    () => apiClient.challenge.getEditorial(challengeId)
   );
 
   if (isLoading) {

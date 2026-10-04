@@ -24,8 +24,9 @@ function VerifyEmailForm() {
 
     let active = true;
     async function verify() {
+      if (!token) return;
       try {
-        await apiClient.post("/api/auth/verify-email", { token });
+        await apiClient.auth.verifyEmail(token);
         if (active) {
           setStatus("success");
         }

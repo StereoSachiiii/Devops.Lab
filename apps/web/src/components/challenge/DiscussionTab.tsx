@@ -42,7 +42,7 @@ export function DiscussionTab({ challengeId }: DiscussionTabProps) {
 
   const fetchComments = async () => {
     try {
-      const res = await apiClient.get<{ comments: CommentItem[] }>(`/api/challenges/${challengeId}/comments`);
+      const res = await apiClient.comments.getByChallenge(challengeId);
       setComments(res.comments || []);
     } catch (err) {
       setErrorMessage(getErrorMessage(err, getErrorMessage(ErrorCodes.UNKNOWN_ERROR)));
@@ -62,7 +62,7 @@ export function DiscussionTab({ challengeId }: DiscussionTabProps) {
     setSubmitting(true);
     setErrorMessage(null);
     try {
-      await apiClient.post(`/api/challenges/${challengeId}/comments`, {
+      await apiClient.comments.post(challengeId, {
         content: text.trim(),
         parentId,
       });
@@ -84,9 +84,7 @@ export function DiscussionTab({ challengeId }: DiscussionTabProps) {
   const handleVote = async (commentId: string, currentVote: number, targetVote: number) => {
     const nextVote = currentVote === targetVote ? 0 : targetVote;
     try {
-      const res = await apiClient.post<{ score: number; userVote: number }>(`/api/comments/${commentId}/vote`, {
-        vote: nextVote,
-      });
+      const res = await apiClient.comments.vote(commentId, nextVote);
 
       // Update state locally
       setComments((prev) =>
@@ -113,7 +111,7 @@ export function DiscussionTab({ challengeId }: DiscussionTabProps) {
   const handleDelete = async (commentId: string) => {
     if (!confirm("Are you sure you want to delete this comment?")) return;
     try {
-      await apiClient.delete(`/api/comments/${commentId}`);
+      await apiClient.comments.delete(commentId);
       await fetchComments();
     } catch (err) {
       setErrorMessage(getErrorMessage(err, getErrorMessage(ErrorCodes.UNKNOWN_ERROR)));

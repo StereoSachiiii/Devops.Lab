@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { apiClient } from "@/lib/apiClient";
-import { API_ROUTES } from "@/lib/api-routes";
+
 
 interface CatalogTourProps {
   show: boolean;
@@ -89,7 +89,7 @@ export function CatalogTour({ show, onDone }: CatalogTourProps) {
         allowClose: true, // Crucial: ensures it can be closed by clicking outside
 
         onDestroyStarted: () => {
-          apiClient.post(API_ROUTES.onboarding.complete).catch(() => {});
+          apiClient.onboarding.complete().catch(() => {});
           onDone();
           tourDriver.destroy();
         },

@@ -20,8 +20,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/apiClient";
-import { API_ROUTES } from "@/lib/api-routes";
-import type { SandboxHealth, CheckResult } from "@/lib/api-types";
+import type { CheckResult } from "@/lib/api-types";
 
 // ── State types ───────────────────────────────────────────────────────────────
 
@@ -205,21 +204,14 @@ export function useTerminalMachine(): TerminalMachineState {
       // This is the key distinction: Failure Mode A (WS dropped, sandbox alive)
       // vs. Failure Mode B (sandbox actually dead). Don't retry a dead sandbox.
       try {
-        const health = await apiClient.get<SandboxHealth>(
-          API_ROUTES.sessions.health(currentSession.sessionId)
-        );
+        const health = await apiClient.sessions.getHealth(currentSession.sessionId);
         if (!health.alive) {
           setState("SANDBOX_LOST");
           return;
         }
 
         // Also check if the sandbox worker itself is up (Kong returns 502 if down)
-        const sandboxHealthUrl = currentSession.terminalUrl
-          .replace("ws://", "http://")
-          .replace("wss://", "https://")
-          .replace("/terminal", "/health");
-        
-        await apiClient.get(sandboxHealthUrl);
+        await apiClient.sessions.checkWorkerHealth(currentSession.terminalUrl);
       } catch (err: any) {
         // If Kong returns 502 Bad Gateway, the sandbox service is completely down
         if (err?.response?.status === 502) {
@@ -244,19 +236,14 @@ export function useTerminalMachine(): TerminalMachineState {
       setIsolationDowngraded(false);
 
       try {
-        const res = await apiClient.post<SessionInfo>(API_ROUTES.challenges.start(challengeId));
+        const res = (await apiClient.challenge.start(challengeId)) as SessionInfo;
         setSession(res);
         sessionRef.current = res;
         setState("PROVISIONING");
 
         // Check if sandbox worker is up before connecting
-        const sandboxHealthUrl = res.terminalUrl
-          .replace("ws://", "http://")
-          .replace("wss://", "https://")
-          .replace("/terminal", "/health");
-        
         try {
-          await apiClient.get(sandboxHealthUrl);
+          await apiClient.sessions.checkWorkerHealth(res.terminalUrl);
         } catch (err: any) {
           if (err?.response?.status === 502) {
             setErrorMessage("Sandbox service is currently unavailable. Please try again later.");
@@ -291,13 +278,8 @@ export function useTerminalMachine(): TerminalMachineState {
         sessionRef.current = res as unknown as SessionInfo;
         setState("PROVISIONING");
 
-        const sandboxHealthUrl = res.terminalUrl!
-          .replace("ws://", "http://")
-          .replace("wss://", "https://")
-          .replace("/terminal", "/health");
-        
         try {
-          await apiClient.get(sandboxHealthUrl);
+          await apiClient.sessions.checkWorkerHealth(res.terminalUrl!);
         } catch (err: any) {
           if (err?.response?.status === 502) {
             setErrorMessage("Sandbox service is currently unavailable. Please try again later.");
@@ -332,7 +314,7 @@ export function useTerminalMachine(): TerminalMachineState {
     }
 
     try {
-      await apiClient.delete(API_ROUTES.sessions.byId(session.sessionId));
+      await apiClient.sessions.terminate(session.sessionId);
     } catch {
       // Best-effort - the session may already be gone
     }

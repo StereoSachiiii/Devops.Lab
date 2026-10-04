@@ -79,7 +79,7 @@ export default function PublicProfilePage() {
 
   const { data: profile, isLoading, error, mutate } = useSWR<PublicProfile>(
     username ? `/api/users/${username}/profile` : null,
-    () => apiClient.get<PublicProfile>(`/api/users/${username}/profile`)
+    () => apiClient.users.getPublicProfile(username)
   );
 
   // Follow state
@@ -94,9 +94,7 @@ export default function PublicProfilePage() {
     if (!selfUser || !profile) return;
     setFollowLoading(true);
     try {
-      const res = await apiClient.post<{ following: boolean; followingCount: number; followersCount: number }>(
-        `/api/users/${profile.id}/follow`
-      );
+      const res = await apiClient.users.follow(profile.id);
       setFollowing(res.following);
       setFollowerCount(res.followersCount);
       mutate();
