@@ -205,23 +205,23 @@ export const apiClient = {
         id: string;
         title: string;
         editorial: string;
-        authorNotes?: string;
-        code?: string;
-        canUnlock?: boolean;
+        authorNotes?: string | undefined;
+        code?: string | undefined;
+        canUnlock?: boolean | undefined;
       };
-      return engine.get<EditorialRes, EditorialRes>(`/api/challenges/${id}/editorial`);
+      return engine.get<EditorialRes, EditorialRes>(API_ROUTES.challenges.editorial(id));
     },
     getInteractions: (id: string) => {
       type InterRes = { likes: number; liked: boolean; saved: boolean };
-      return engine.get<InterRes, InterRes>(`/api/challenges/${id}/interactions`);
+      return engine.get<InterRes, InterRes>(API_ROUTES.challenges.interactions(id));
     },
     like: (id: string) => {
       type LikeRes = { likes: number; liked: boolean };
-      return engine.post<LikeRes, LikeRes>(`/api/challenges/${id}/like`);
+      return engine.post<LikeRes, LikeRes>(API_ROUTES.challenges.like(id));
     },
     save: (id: string) => {
       type SaveRes = { saved: boolean };
-      return engine.post<SaveRes, SaveRes>(`/api/challenges/${id}/bookmark`);
+      return engine.post<SaveRes, SaveRes>(API_ROUTES.challenges.bookmark(id));
     },
   },
 
@@ -235,17 +235,30 @@ export const apiClient = {
 
   quizzes: {
     getAll: () => engine.get<QuizNode[], QuizNode[]>(API_ROUTES.quizzes.base),
+    getById: (id: string) => engine.get<QuizNode, QuizNode>(API_ROUTES.quizzes.byId(id)),
     getBySlug: (slug: string) => engine.get<QuizNode, QuizNode>(API_ROUTES.quizzes.bySlug(slug)),
     submit: (slug: string, body: unknown) =>
       engine.post<SubmitResponse, SubmitResponse>(API_ROUTES.quizzes.submit(slug), body),
     getProgress: (slug: string) =>
       engine.get<QuizProgress, QuizProgress>(API_ROUTES.quizzes.progress(slug)),
     getHistory: (slug: string) =>
-      engine.get<HistoryItem[], HistoryItem[]>(API_ROUTES.quizzes.history(slug)),
+      engine.get<any, any>(API_ROUTES.quizzes.history(slug)),
+    getAllHistory: () =>
+      engine.get<any, any>(API_ROUTES.quizzes.allHistory),
+    getEditorial: (slug: string) =>
+      engine.get<any, any>(API_ROUTES.quizzes.editorial(slug)),
   },
 
   flashcards: {
     getAll: () => engine.get<FlashcardDeck[], FlashcardDeck[]>(API_ROUTES.flashcards.base),
+  },
+
+  nodes: {
+    getById: (id: string) => engine.get<any, any>(API_ROUTES.nodes.byId(id)),
+    getParents: (id: string) => engine.get<any, any>(API_ROUTES.nodes.parents(id)),
+    getChildren: (id: string) => engine.get<any, any>(API_ROUTES.nodes.children(id)),
+    getAncestors: (id: string) => engine.get<any, any>(API_ROUTES.nodes.ancestors(id)),
+    getUserFrontier: (userId: string) => engine.get<any, any>(API_ROUTES.nodes.userFrontier(userId)),
   },
 
   articles: {
@@ -269,11 +282,11 @@ export const apiClient = {
         body
       ),
     like: (id: string) =>
-      engine.post<{ likes: number; liked: boolean }, { likes: number; liked: boolean }>(`/api/articles/${id}/like`),
+      engine.post<{ likes: number; liked: boolean }, { likes: number; liked: boolean }>(API_ROUTES.articles.like(id)),
     save: (id: string) =>
-      engine.post<{ saves: number; saved: boolean }, { saves: number; saved: boolean }>(`/api/articles/${id}/bookmark`),
+      engine.post<{ saves: number; saved: boolean }, { saves: number; saved: boolean }>(API_ROUTES.articles.bookmark(id)),
     report: (id: string, body: { reason: string; details?: string | undefined }) =>
-      engine.post<StandardResponse, StandardResponse>(`/api/articles/${id}/report`, body),
+      engine.post<StandardResponse, StandardResponse>(API_ROUTES.articles.report(id), body),
   },
 
   assistant: {
@@ -292,10 +305,7 @@ export const apiClient = {
     getHealth: (sessionId: string) =>
       engine.get<import("@devops/types").SandboxHealth, import("@devops/types").SandboxHealth>(API_ROUTES.sessions.health(sessionId)),
     checkWorkerHealth: (terminalUrl: string) => {
-      const url = terminalUrl
-        .replace("ws://", "http://")
-        .replace("wss://", "https://")
-        .replace("/terminal", "/health");
+      const url = API_ROUTES.sandbox.workerHealth(terminalUrl);
       return engine.get<any, any>(url);
     },
     getCheckResults: (sessionId: string) =>
@@ -303,45 +313,57 @@ export const apiClient = {
   },
 
   auth: {
+    getPublicKey: () => engine.get<{ publicKey: string }, { publicKey: string }>(API_ROUTES.auth.publicKey),
+    getGuestToken: (guestId: string) => engine.post<any, any>(API_ROUTES.auth.guestToken, { guestId }),
     me: () => engine.get<UserSession, UserSession>(API_ROUTES.auth.me),
     getProfile: () => engine.get<import("@devops/types").UserProfile, import("@devops/types").UserProfile>(API_ROUTES.auth.me),
     updateProfile: (body: { name?: string | undefined; jobTitle?: string | undefined }) =>
       engine.put<import("@devops/types").UserProfile, import("@devops/types").UserProfile>(API_ROUTES.auth.me, body),
+    changePassword: (body: { currentPassword: string; newPassword: string }) =>
+      engine.post<StandardResponse, StandardResponse>(API_ROUTES.auth.changePassword, body),
     login: (body: unknown) => engine.post<UserSession, UserSession>(API_ROUTES.auth.login, body),
     register: (body: unknown) =>
       engine.post<UserSession, UserSession>(API_ROUTES.auth.register, body),
     loginMfa: (body: unknown) =>
       engine.post<UserSession, UserSession>(API_ROUTES.auth.loginMfa, body),
-    loginSso: (body: { email: string }) =>
-      engine.post<{ success: boolean; exchangeToken: string }, { success: boolean; exchangeToken: string }>(`/api/auth/login/sso`, body),
+    loginSso: (body: { email: string; orgSlug?: string | undefined; ssoId?: string | undefined; name?: string | undefined; avatarUrl?: string | undefined }) =>
+      engine.post<{ success: boolean; exchangeToken: string; org?: any }, { success: boolean; exchangeToken: string; org?: any }>(API_ROUTES.auth.loginSso, body),
+    exchange: (exchangeToken: string) =>
+      engine.post<any, any>(API_ROUTES.auth.exchange, { exchange_token: exchangeToken }),
+    refresh: () => engine.post<any, any>(API_ROUTES.auth.refresh),
     logout: () => engine.post<StandardResponse, StandardResponse>(API_ROUTES.auth.logout),
+    logoutAll: () => engine.post<StandardResponse, StandardResponse>(API_ROUTES.auth.logoutAll),
+    deleteAccount: () => engine.delete<StandardResponse, StandardResponse>(API_ROUTES.auth.me),
     getHistory: () => engine.get<HistoryItem[], HistoryItem[]>(API_ROUTES.auth.history),
-    getSessions: () => engine.get<import("@devops/types").ActiveSession[], import("@devops/types").ActiveSession[]>("/api/auth/sessions"),
+    getSessions: () => engine.get<import("@devops/types").ActiveSession[], import("@devops/types").ActiveSession[]>(API_ROUTES.auth.sessions),
     revokeSession: (sessionId: string) =>
-      engine.post<StandardResponse, StandardResponse>(`/api/auth/sessions/${sessionId}/revoke`),
-    getSecurityLog: () =>
-      engine.get<import("@devops/types").SecurityLogResponse, import("@devops/types").SecurityLogResponse>("/api/auth/security-log"),
+      engine.post<StandardResponse, StandardResponse>(API_ROUTES.auth.revokeSession(sessionId)),
+    getSecurityLog: (params?: { page?: number; limit?: number }) =>
+      engine.get<import("@devops/types").SecurityLogResponse, import("@devops/types").SecurityLogResponse>(API_ROUTES.auth.securityLog, { params }),
     setupMfa: () =>
-      engine.post<any, any>("/api/auth/mfa/setup"),
+      engine.post<any, any>(API_ROUTES.auth.mfaSetup),
     verifyMfa: (code: string) =>
-      engine.post<StandardResponse, StandardResponse>("/api/auth/mfa/verify", { code }),
+      engine.post<StandardResponse, StandardResponse>(API_ROUTES.auth.mfaVerify, { code }),
     verifyEmail: (token: string) =>
-      engine.post<StandardResponse, StandardResponse>("/api/auth/verify-email", { token }),
+      engine.post<StandardResponse, StandardResponse>(API_ROUTES.auth.verifyEmail, { token }),
     forgotPassword: (email: string) =>
-      engine.post<StandardResponse, StandardResponse>("/api/auth/forgot-password", { email }),
+      engine.post<StandardResponse, StandardResponse>(API_ROUTES.auth.forgotPassword, { email }),
     resetPassword: (body: { token: string; newPassword: string }) =>
-      engine.post<StandardResponse, StandardResponse>("/api/auth/reset-password", body),
+      engine.post<StandardResponse, StandardResponse>(API_ROUTES.auth.resetPassword, body),
   },
 
   dashboard: {
     get: () => engine.get<import("@devops/types").DashboardData, import("@devops/types").DashboardData>(API_ROUTES.auth.dashboard),
-    getLeaderboard: (params?: { category?: string; limit?: number }): Promise<any> => {
+    getLeaderboard: (params?: { category?: string; limit?: number; orgId?: string }): Promise<any> => {
       const sp = new URLSearchParams();
       if (params?.category && params.category !== "ALL") sp.set("category", params.category);
       if (params?.limit) sp.set("limit", String(params.limit));
+      if (params?.orgId) sp.set("orgId", params.orgId);
       const q = sp.toString() ? `?${sp.toString()}` : "";
-      return engine.get<any, any>(`/api/leaderboard${q}`);
+      return engine.get<any, any>(`${API_ROUTES.leaderboard.base}${q}`);
     },
+    getOrgLeaderboard: (orgId: string): Promise<any> =>
+      engine.get<any, any>(API_ROUTES.leaderboard.byOrg(orgId)),
   },
 
   users: {
@@ -349,28 +371,48 @@ export const apiClient = {
       engine.get<any, any>(API_ROUTES.users.profile(username)),
     follow: (userId: string) =>
       engine.post<{ following: boolean; followingCount: number; followersCount: number }, { following: boolean; followingCount: number; followersCount: number }>(API_ROUTES.users.follow(userId)),
-    getFeed: () => engine.get<{ feed: any[] }, { feed: any[] }>(API_ROUTES.users.feed),
-    discover: (q?: string) => {
-      const queryStr = q ? `?q=${encodeURIComponent(q)}` : "";
+    getFeed: (params?: { limit?: number }) =>
+      engine.get<{ feed: any[] }, { feed: any[] }>(API_ROUTES.users.feed, { params }),
+    getBookmarks: () =>
+      engine.get<any[], any[]>(API_ROUTES.users.bookmarks),
+    getFollowing: () =>
+      engine.get<any[], any[]>(API_ROUTES.users.following),
+    discover: (q?: string, limit?: number) => {
+      const sp = new URLSearchParams();
+      if (q) sp.set("q", q);
+      if (limit) sp.set("limit", String(limit));
+      const queryStr = sp.toString() ? `?${sp.toString()}` : "";
       return engine.get<{ users: any[] }, { users: any[] }>(`${API_ROUTES.users.discover}${queryStr}`);
     },
   },
 
   org: {
+    create: (body: { name: string; slug: string; planTier?: "FREE" | "PRO" | "TEAM" | undefined }) =>
+      engine.post<any, any>(API_ROUTES.orgs.base, body),
     getMe: () => engine.get<any, any>(API_ROUTES.orgs.me),
     getMembers: (orgId: string = "me") => engine.get<any[], any[]>(API_ROUTES.orgs.members(orgId)),
     getAnalytics: (orgId: string = "me") => engine.get<any, any>(API_ROUTES.orgs.analytics(orgId)),
     getScenarios: (orgId: string = "me") => engine.get<any[], any[]>(API_ROUTES.orgs.scenarios(orgId)),
-    getMatrix: () => engine.get<any[], any[]>("/api/orgs/me/assignments/matrix"),
-    invite: (body: { email: string; role: string }) =>
-      engine.post<any, any>(API_ROUTES.orgs.invites("me"), body),
+    createScenario: (orgId: string = "me", body: any) =>
+      engine.post<any, any>(API_ROUTES.orgs.scenarios(orgId), body),
+    getAssignments: (orgId: string = "me") => engine.get<any[], any[]>(API_ROUTES.orgs.assignments(orgId)),
+    createAssignment: (orgId: string = "me", body: { learningPathId: string; userId?: string | undefined }) =>
+      engine.post<any, any>(API_ROUTES.orgs.assignments(orgId), body),
+    getMatrix: (orgId: string = "me") => engine.get<any[], any[]>(API_ROUTES.orgs.matrix(orgId)),
+    getComplianceExportUrl: (orgId: string = "me") => API_ROUTES.orgs.complianceExport(orgId),
+    invite: (body: { email: string; role?: string | undefined; orgRole?: string | undefined }, orgId: string = "me") =>
+      engine.post<any, any>(API_ROUTES.orgs.invites(orgId), body),
+    join: (token: string) =>
+      engine.post<StandardResponse, StandardResponse>(API_ROUTES.orgs.join(token)),
   },
 
   lists: {
     getAll: () => engine.get<{ lists: any[] }, { lists: any[] }>(API_ROUTES.lists.base),
     getById: (id: string) => engine.get<any, any>(API_ROUTES.lists.byId(id)),
-    create: (body: { name: string; isPublic?: boolean }) =>
+    create: (body: { name: string; description?: string | undefined; isPublic?: boolean | undefined }) =>
       engine.post<any, any>(API_ROUTES.lists.base, body),
+    delete: (id: string) =>
+      engine.delete<any, any>(API_ROUTES.lists.byId(id)),
     addItem: (listId: string, challengeId: string) =>
       engine.post<any, any>(API_ROUTES.lists.addItem(listId), { challengeId }),
     removeItem: (listId: string, challengeId: string) =>
@@ -379,7 +421,7 @@ export const apiClient = {
 
   comments: {
     getByChallenge: (challengeId: string) =>
-      engine.get<{ comments: any[] }, { comments: any[] }>(API_ROUTES.comments.byChallenge(challengeId)),
+      engine.get<{ comments: any[]; total?: number }, { comments: any[]; total?: number }>(API_ROUTES.comments.byChallenge(challengeId)),
     post: (challengeId: string, body: { content: string; parentId?: string | undefined }) =>
       engine.post<any, any>(API_ROUTES.comments.byChallenge(challengeId), body),
     vote: (commentId: string, vote: number) =>
@@ -391,7 +433,7 @@ export const apiClient = {
   shares: {
     getByToken: <T = any>(token: string) =>
       engine.get<T, T>(API_ROUTES.shares.byToken(token)),
-    create: (body: { challengeId: string }) =>
+    create: (body: { challengeId?: string | undefined; type?: string | undefined; metadata?: Record<string, unknown> | undefined }) =>
       engine.post<{ token: string; shareUrl: string; type: string }, { token: string; shareUrl: string; type: string }>(API_ROUTES.shares.base, body),
   },
 
@@ -400,5 +442,10 @@ export const apiClient = {
       engine.get<import("@devops/types").OnboardingStatus, import("@devops/types").OnboardingStatus>(API_ROUTES.onboarding.status),
     complete: () =>
       engine.post<StandardResponse, StandardResponse>(API_ROUTES.onboarding.complete),
+  },
+
+  sandbox: {
+    validateSession: (sessionId: string) =>
+      engine.post<any, any>(API_ROUTES.sandbox.validate(sessionId)),
   },
 };
