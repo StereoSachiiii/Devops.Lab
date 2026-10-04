@@ -1,4 +1,4 @@
-import { PrismaClient } from "@devops/db";
+import { PrismaClient, createBypassClient } from "@devops/db";
 
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -13,6 +13,7 @@ const pool = new Pool({
   connectionTimeoutMillis: 10000,
 });
 const adapter = new PrismaPg(pool);
+const basePrisma = new PrismaClient({ adapter });
 
-/** Shared PrismaClient — single connection pool for the entire auth service. */
-export const prisma = new PrismaClient({ adapter });
+/** Shared PrismaClient — trusted bypass client for system/auth authentication and session management. */
+export const prisma = createBypassClient(basePrisma);

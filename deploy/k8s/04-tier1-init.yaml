@@ -122,16 +122,24 @@ spec:
               cd packages/db && npx prisma db push --accept-data-loss
 
               echo "⚙️ Configuring Citus distributed sharding and reference tables..."
-              # Enable distributed tables across the 2 worker shards for high-throughput multi-tenant models
-              # and reference tables for global lookup data.
-              psql "$DATABASE_URL" <<-EOSQL || true
-                -- Distribute tenant and submission data by orgId / userId across both shards
-                SELECT create_distributed_table('"OrgMember"', 'orgId') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"OrgMember"'::regclass);
-                SELECT create_distributed_table('"OrgScenario"', 'orgId') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"OrgScenario"'::regclass);
-                SELECT create_distributed_table('"Submission"', 'userId') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"Submission"'::regclass);
-                -- Reference tables replicate across all shards for fast local joins
-                SELECT create_reference_table('"Category"') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"Category"'::regclass);
+              # Replicate global lookup models across all shards for zero-latency local joins and RLS evaluations.
+              # Note: DDL propagation ensures schema & policy alterations sync to all Citus worker shards.
+              psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<-EOSQL
+                SET citus.enable_ddl_propagation = on;
+
+                -- Reference tables: Replicate global static & curriculum data across all worker nodes
+                SELECT create_reference_table('"Badge"') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"Badge"'::regclass);
+                SELECT create_reference_table('"Article"') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"Article"'::regclass);
+                SELECT create_reference_table('"Node"') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"Node"'::regclass);
+                SELECT create_reference_table('"Edge"') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"Edge"'::regclass);
+                SELECT create_reference_table('"Module"') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"Module"'::regclass);
+                SELECT create_reference_table('"Challenge"') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"Challenge"'::regclass);
+                SELECT create_reference_table('"IncidentMetadata"') WHERE NOT EXISTS (SELECT 1 FROM pg_dist_partition WHERE logicalrelid = '"IncidentMetadata"'::regclass);
               EOSQL
+
+              echo "🔒 Applying Enterprise Fail-Closed RLS & Performance Indexes..."
+              psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/migrations/20261004_fail_closed_rls.sql
+              psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/migrations/20260827_add_performance_indexes.sql
 
               echo "🌱 Executing Prisma Seed Scripts..."
               npx prisma db seed

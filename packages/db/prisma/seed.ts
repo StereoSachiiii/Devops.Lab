@@ -16,6 +16,7 @@ import {
 
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { createBypassClient } from "../index";
 
 const dbUrl = process.env['DATABASE_URL'];
 if (!dbUrl) {
@@ -24,7 +25,9 @@ if (!dbUrl) {
 const connectionString = dbUrl;
 const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+const basePrisma = new PrismaClient({ adapter });
+// Seed is trusted: bypass FORCE RLS (policies honour app.bypass_rls).
+const prisma = createBypassClient(basePrisma);
 
 // Real question bank for DevOps Quizzes
 const questionsPool = [
@@ -756,12 +759,36 @@ Log analysis requires extracting column 1 (IP address) from Apache/Nginx combine
     const qDef = quizDefinitions[i]!;
     const questions = questionsPool.slice(0, 5); // 5 distinct questions per quiz
 
+    const editorialContent = `Official Editorial for ${qDef.title}:
+This assessment benchmarks foundational and production incident handling skills in ${qDef.title}. 
+In real-world environments, deterministic CLI execution, automated health probes, and least-privilege configurations prevent cascading service disruptions.`;
+
+    const takeawaysContent = [
+      `Master deterministic configuration parsing for ${qDef.title}.`,
+      "Verify system status via structured telemetry and health probes before initiating service reload.",
+      "Adhere strictly to least-privilege RBAC principles in distributed production environments.",
+    ];
+
     const existing = await prisma.node.findFirst({
       where: { title: qDef.title, type: NodeType.QUIZ },
     });
 
     if (existing) {
-      seededQuizNodes.push(existing);
+      const updated = await prisma.node.update({
+        where: { id: existing.id },
+        data: {
+          metadata: {
+            ...((existing.metadata as Record<string, unknown>) || {}),
+            slug: qDef.slug,
+            questions,
+            timeEstimateMinutes: 15,
+            passingPercentage: 80,
+            editorial: editorialContent,
+            takeaways: takeawaysContent,
+          },
+        },
+      });
+      seededQuizNodes.push(updated);
     } else {
       const created = await prisma.node.create({
         data: {
@@ -773,6 +800,8 @@ Log analysis requires extracting column 1 (IP address) from Apache/Nginx combine
             questions,
             timeEstimateMinutes: 15,
             passingPercentage: 80,
+            editorial: editorialContent,
+            takeaways: takeawaysContent,
           },
         },
       });
@@ -1455,6 +1484,212 @@ Configured global Postgres \`lock_timeout = '2s'\` and migrated all batch data t
     });
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // 16. KNOWLEDGE GRAPH EDGES (Prerequisites & DAG unlocks)
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("🕸️ Seeding Knowledge Graph DAG Edges...");
+  if (seededQuizNodes.length >= 4) {
+    const dagEdges = [
+      // Linux Fundamentals unlocks Docker Essentials
+      { fromId: seededQuizNodes[0]!.id, toId: seededQuizNodes[1]!.id },
+      // Docker Essentials unlocks Kubernetes Operations
+      { fromId: seededQuizNodes[1]!.id, toId: seededQuizNodes[2]!.id },
+      // Kubernetes Operations unlocks SRE Metrics & Observability
+      { fromId: seededQuizNodes[2]!.id, toId: seededQuizNodes[4]!.id },
+      // Terraform Basics unlocks DevSecOps Security
+      { fromId: seededQuizNodes[3]!.id, toId: seededQuizNodes[5]!.id },
+    ];
+
+    for (const edge of dagEdges) {
+      await prisma.edge.upsert({
+        where: { fromId_toId: { fromId: edge.fromId, toId: edge.toId } },
+        update: {},
+        create: edge,
+      });
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 17. QUIZ ATTEMPTS (Historical assessment records)
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("📝 Seeding Quiz Attempts...");
+  if (seededQuizNodes.length >= 2) {
+    const quizAttemptsData = [
+      {
+        id: "qa-jane-01",
+        userId: jane.id,
+        nodeId: seededQuizNodes[0]!.id,
+        score: 5,
+        total: 5,
+        passed: true,
+        answers: { "q-1": 0, "q-2": 0, "q-3": 0, "q-4": 0, "q-5": 0 },
+        createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
+      },
+      {
+        id: "qa-jane-02",
+        userId: jane.id,
+        nodeId: seededQuizNodes[1]!.id,
+        score: 4,
+        total: 5,
+        passed: true,
+        answers: { "q-1": 0, "q-2": 0, "q-3": 0, "q-4": 1, "q-5": 0 },
+        createdAt: yesterday,
+      },
+      {
+        id: "qa-alex-01",
+        userId: alex.id,
+        nodeId: seededQuizNodes[0]!.id,
+        score: 3,
+        total: 5,
+        passed: false,
+        answers: { "q-1": 0, "q-2": 1, "q-3": 0, "q-4": 2, "q-5": 0 },
+        createdAt: threeDaysAgo,
+      },
+      {
+        id: "qa-sarah-01",
+        userId: sarah.id,
+        nodeId: seededQuizNodes[1]!.id,
+        score: 5,
+        total: 5,
+        passed: true,
+        answers: { "q-1": 0, "q-2": 0, "q-3": 0, "q-4": 0, "q-5": 0 },
+        createdAt: now,
+      },
+    ];
+
+    for (const qa of quizAttemptsData) {
+      await prisma.quizAttempt.upsert({
+        where: { id: qa.id },
+        update: {},
+        create: qa,
+      });
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 18. CHALLENGE BOOKMARKS (User saved challenges)
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("🔖 Seeding Challenge Bookmarks...");
+  if (seededChallenges.length >= 3) {
+    const bookmarksData = [
+      { id: "bm-jane-01", userId: jane.id, challengeId: seededChallenges[0]!.id, createdAt: threeDaysAgo },
+      { id: "bm-jane-02", userId: jane.id, challengeId: seededChallenges[1]!.id, createdAt: yesterday },
+      { id: "bm-alex-01", userId: alex.id, challengeId: seededChallenges[2]!.id, createdAt: twoDaysAgo },
+      { id: "bm-sarah-01", userId: sarah.id, challengeId: seededChallenges[0]!.id, createdAt: now },
+      { id: "bm-learner-01", userId: learner.id, challengeId: seededChallenges[0]!.id, createdAt: now },
+    ];
+
+    for (const bm of bookmarksData) {
+      await prisma.challengeBookmark.upsert({
+        where: { challengeId_userId: { challengeId: bm.challengeId, userId: bm.userId } },
+        update: {},
+        create: bm,
+      });
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 19. PATH ASSIGNMENTS (Enterprise organization curriculum assignments)
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("🎓 Seeding Enterprise Path Assignments...");
+  const pathAssignmentsData = [
+    {
+      id: "asg-acme-docker",
+      orgId: acmeOrg.id,
+      learningPathId: dockerPath.id,
+      userId: null, // Assigned to entire organization
+      assignedByUserId: jane.id,
+      assignedAt: fiveDaysAgo,
+    },
+    {
+      id: "asg-acme-k8s-alex",
+      orgId: acmeOrg.id,
+      learningPathId: k8sPath.id,
+      userId: alex.id, // Explicit engineer assignment
+      assignedByUserId: jane.id,
+      assignedAt: threeDaysAgo,
+    },
+    {
+      id: "asg-devsec-sre",
+      orgId: devSecOpsOrg.id,
+      learningPathId: srePath.id,
+      userId: null,
+      assignedByUserId: sarah.id,
+      assignedAt: twoDaysAgo,
+    },
+  ];
+
+  for (const asg of pathAssignmentsData) {
+    const existingAsg = await prisma.pathAssignment.findFirst({
+      where: {
+        orgId: asg.orgId,
+        learningPathId: asg.learningPathId,
+        userId: asg.userId,
+      },
+    });
+    if (!existingAsg) {
+      await prisma.pathAssignment.create({ data: asg });
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 20. CUSTOM CHALLENGE LISTS (Curated Collections)
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("📂 Seeding Custom Challenge Lists...");
+  const customListsData = [
+    {
+      id: "list-jane-interview",
+      userId: jane.id,
+      name: "SRE Interview Must-Haves",
+      description: "Core diagnostic drills for Senior SRE candidates.",
+      isPublic: true,
+      items: [seededChallenges[0]!.id, seededChallenges[1]!.id],
+    },
+    {
+      id: "list-alex-k8s",
+      userId: alex.id,
+      name: "Kubernetes Deep Dive",
+      description: "Networking, ingress, and controller troubleshooting.",
+      isPublic: false,
+      items: [seededChallenges[2]!.id],
+    },
+    {
+      id: "list-learner-starter",
+      userId: learner.id,
+      name: "DevOps Foundations",
+      description: "First step challenges to build container muscle memory.",
+      isPublic: true,
+      items: [seededChallenges[0]!.id],
+    },
+  ];
+
+  for (const l of customListsData) {
+    const listRecord = await prisma.challengeList.upsert({
+      where: { userId_name: { userId: l.userId, name: l.name } },
+      update: { description: l.description, isPublic: l.isPublic },
+      create: {
+        id: l.id,
+        userId: l.userId,
+        name: l.name,
+        description: l.description,
+        isPublic: l.isPublic,
+      },
+    });
+
+    for (let order = 0; order < l.items.length; order++) {
+      const challengeId = l.items[order]!;
+      await prisma.challengeListItem.upsert({
+        where: { listId_challengeId: { listId: listRecord.id, challengeId } },
+        update: { order },
+        create: {
+          listId: listRecord.id,
+          challengeId,
+          order,
+        },
+      });
+    }
+  }
+
   const counts = {
     Org: await prisma.org.count(),
     User: await prisma.user.count(),
@@ -1462,6 +1697,12 @@ Configured global Postgres \`lock_timeout = '2s'\` and migrated all batch data t
     Module: await prisma.module.count(),
     Challenge: await prisma.challenge.count(),
     Node: await prisma.node.count(),
+    Edge: await prisma.edge.count(),
+    QuizAttempt: await prisma.quizAttempt.count(),
+    ChallengeBookmark: await prisma.challengeBookmark.count(),
+    PathAssignment: await prisma.pathAssignment.count(),
+    ChallengeList: await prisma.challengeList.count(),
+    ChallengeListItem: await prisma.challengeListItem.count(),
     LabSession: await prisma.labSession.count(),
     Submission: await prisma.submission.count(),
     Completion: await prisma.completion.count(),

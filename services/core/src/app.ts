@@ -3,7 +3,7 @@ import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import cookie from "@fastify/cookie";
 import { TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
-import { PrismaClient } from "@devops/db";
+import { PrismaClient, createBypassClient } from "@devops/db";
 import { MessagingService, RabbitMQService } from "@devops/messaging";
 import type { ObservabilityConfig } from "@devops/observability";
 import { requireEnv } from "@devops/observability";
@@ -81,7 +81,8 @@ export async function buildApp(opts: AppOptions) {
   const connectionString = requireEnv("DATABASE_URL");
   const pool = new pg.Pool({ connectionString });
   const adapter = new PrismaPg(pool);
-  const prisma = new PrismaClient({ adapter });
+  const basePrisma = new PrismaClient({ adapter });
+  const prisma = createBypassClient(basePrisma);
   app.decorate("prisma", prisma);
 
   app.register(tenantPrismaPlugin);
