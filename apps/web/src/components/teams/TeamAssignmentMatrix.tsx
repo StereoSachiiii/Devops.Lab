@@ -27,19 +27,23 @@ interface EngineerMatrixRow {
   assignments: AssignmentProgress[];
 }
 
-export function TeamAssignmentMatrix() {
+import { Plus } from "lucide-react";
+import { CreateAssignmentModal } from "@/components/teams/CreateAssignmentModal";
+
+export function TeamAssignmentMatrix({ orgId = "me" }: { orgId?: string }) {
   const [downloading, setDownloading] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const { data: matrix, isLoading } = useSWR<EngineerMatrixRow[]>(
-    "/api/orgs/me/assignments/matrix",
-    () => apiClient.org.getMatrix()
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const { data: matrix, isLoading, mutate } = useSWR<EngineerMatrixRow[]>(
+    `/api/orgs/${orgId}/assignments/matrix`,
+    () => apiClient.org.getMatrix(orgId)
   );
 
   const handleExportCSV = async () => {
     setDownloading(true);
     setExportError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/orgs/me/compliance-export`, {
+      const response = await fetch(`${API_BASE_URL}/api/orgs/${orgId}/compliance-export`, {
         credentials: "include",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
@@ -81,15 +85,31 @@ export function TeamAssignmentMatrix() {
           </p>
         </div>
 
-        <button
-          onClick={handleExportCSV}
-          disabled={downloading}
-          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-panel-2 border border-panel-border hover:border-teal/50 text-panel-text font-medium text-xs transition-colors cursor-pointer disabled:opacity-50"
-        >
-          <FileSpreadsheet className="w-4 h-4 text-teal" />
-          {downloading ? "Generating CSV..." : "Export Compliance CSV"}
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={() => setShowAssignModal(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal text-[#04241d] font-semibold text-xs transition-transform hover:scale-[1.02] cursor-pointer shadow-sm border-none"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Assign Curriculum</span>
+          </button>
+          <button
+            onClick={handleExportCSV}
+            disabled={downloading}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-panel-2 border border-panel-border hover:border-teal/50 text-panel-text font-medium text-xs transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-teal" />
+            {downloading ? "Generating CSV..." : "Export Compliance CSV"}
+          </button>
+        </div>
       </div>
+
+      <CreateAssignmentModal
+        isOpen={showAssignModal}
+        orgId={orgId}
+        onClose={() => setShowAssignModal(false)}
+        onSuccess={() => mutate()}
+      />
 
       {exportError && (
         <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-400">

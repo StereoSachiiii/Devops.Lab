@@ -13,10 +13,14 @@ interface OrgScenario {
   status?: string;
 }
 
-export function CustomScenarios() {
-  const { data: scenarios, error, isLoading } = useSWR<OrgScenario[]>(
-    "/api/orgs/me/scenarios",
-    () => apiClient.org.getScenarios()
+import { useState } from "react";
+import { CreateScenarioModal } from "@/components/teams/CreateScenarioModal";
+
+export function CustomScenarios({ orgId = "me" }: { orgId?: string }) {
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const { data: scenarios, error, isLoading, mutate } = useSWR<OrgScenario[]>(
+    `/api/orgs/${orgId}/scenarios`,
+    () => apiClient.org.getScenarios(orgId)
   );
 
   const getIcon = (type: string) => {
@@ -37,11 +41,21 @@ export function CustomScenarios() {
           <h2 className="font-space font-semibold text-panel-text text-[18px] mb-1">Custom Scenarios</h2>
           <p className="text-[14px] text-panel-muted">Private challenges modeled after your organization's real incidents.</p>
         </div>
-        <button className="text-[13px] font-medium bg-panel-2 text-panel-text px-4 py-2 rounded-lg border border-panel-border hover:bg-panel hover:border-teal/50 transition-colors shadow-sm cursor-pointer flex items-center gap-1.5">
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="text-[13px] font-medium bg-panel-2 text-panel-text px-4 py-2 rounded-lg border border-panel-border hover:bg-panel hover:border-teal/50 transition-colors shadow-sm cursor-pointer flex items-center gap-1.5"
+        >
           <Plus className="w-4 h-4" />
           Create Scenario
         </button>
       </div>
+
+      <CreateScenarioModal
+        isOpen={showCreateModal}
+        orgId={orgId}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={() => mutate()}
+      />
 
       {isLoading ? (
         <div className="py-8 text-center text-[14px] text-panel-muted font-mono">
