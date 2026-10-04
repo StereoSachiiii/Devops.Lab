@@ -152,7 +152,7 @@ export function LeaderboardContent() {
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-panel-2 border border-panel-border flex items-center justify-center font-mono text-xs font-bold text-teal overflow-hidden">
                           {u.avatarUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
+                             
                             <img src={u.avatarUrl} alt={u.name} className="w-full h-full object-cover" />
                           ) : (
                             initials

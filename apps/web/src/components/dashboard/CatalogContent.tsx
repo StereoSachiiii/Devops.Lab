@@ -58,14 +58,14 @@ export function CatalogContent() {
     }));
   }, [rawChallenges]);
 
-  const state: CatalogState = {
+  const state: CatalogState = useMemo(() => ({
     q: searchParams.get("q") || "",
     sort: searchParams.get("sort") || "Recommended",
     difficulty: searchParams.getAll("difficulty"),
     time: searchParams.getAll("time"),
     type: searchParams.getAll("type"),
     view: (searchParams.get("view") as "grid" | "list") || "grid",
-  };
+  }), [searchParams]);
 
   const updateState = (newState: Partial<CatalogState>) => {
     const params = new URLSearchParams(searchParams);

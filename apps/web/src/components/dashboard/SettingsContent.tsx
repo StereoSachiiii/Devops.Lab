@@ -230,7 +230,7 @@ export function SettingsContent() {
                 </div>
                 <div className="flex flex-col sm:flex-row items-center gap-4 p-4 rounded-xl bg-panel-2 border border-panel-border">
                   <div className="w-36 h-36 bg-white p-2 rounded-xl border border-panel-border flex items-center justify-center shrink-0 shadow-md">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    { }
                     <img src={mfaSetup.qrCodeUrl} alt="MFA QR Code" className="w-full h-full object-contain" />
                   </div>
                   <div className="space-y-2 text-center sm:text-left">

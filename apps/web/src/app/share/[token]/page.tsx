@@ -140,7 +140,7 @@ export default function SharePage() {
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 rounded-full bg-panel border-2 border-teal overflow-hidden flex items-center justify-center font-space text-lg font-bold text-teal shadow-lg">
                 {solver.avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
+                   
                   <img src={solver.avatarUrl} alt={solver.name || solver.username} className="w-full h-full object-cover" />
                 ) : (
                   solver.username?.slice(0, 2).toUpperCase() || "US"
