@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bookmark, Plus, Check, X, FolderPlus, Lock, Globe, Loader2 } from "lucide-react";
+import { Bookmark, Plus, Check, X, FolderPlus, Lock, Globe, Loader2, Trash2 } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
 import { getErrorMessage, ErrorCodes } from "@/lib/errors";
 
@@ -28,7 +28,24 @@ export function SaveToListModal({ isOpen, onClose, challengeId, challengeTitle }
   const [newListName, setNewListName] = useState("");
   const [newListPublic, setNewListPublic] = useState(false);
   const [savingListId, setSavingListId] = useState<string | null>(null);
+  const [deletingListId, setDeletingListId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleDeleteList = async (e: React.MouseEvent, listId: string) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this custom challenge list?")) return;
+
+    setDeletingListId(listId);
+    setErrorMessage(null);
+    try {
+      await apiClient.lists.delete(listId);
+      await fetchLists();
+    } catch (err) {
+      setErrorMessage(getErrorMessage(err, getErrorMessage(ErrorCodes.UNKNOWN_ERROR)));
+    } finally {
+      setDeletingListId(null);
+    }
+  };
 
   const fetchLists = async () => {
     try {
@@ -172,7 +189,22 @@ export function SaveToListModal({ isOpen, onClose, challengeId, challengeTitle }
                     </div>
                   </div>
 
-                  {isProcessing && <Loader2 className="w-3.5 h-3.5 animate-spin text-teal" />}
+                  <div className="flex items-center gap-2">
+                    {isProcessing ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-teal" />
+                    ) : deletingListId === list.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteList(e, list.id)}
+                        className="p-1 rounded-lg text-panel-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer border-none bg-transparent"
+                        title="Delete List"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })
