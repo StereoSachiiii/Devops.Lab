@@ -1,0 +1,291 @@
+# =============================================================================
+# DEV TIER 0: Resemblance Stateful Infrastructure (Citus Sharding + Backing Services)
+# Replicas: 1 Coordinator, 1 Worker (Citus sharding architecture preserved)
+# Storage: 1Gi (low footprint)
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PostgreSQL (Citus Coordinator + Worker)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: devops-dev
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres-coordinator
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-worker-headless
+  namespace: devops-dev
+spec:
+  clusterIP: None
+  ports:
+    - port: 5432
+      name: postgres
+  selector:
+    app: postgres-worker
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-coordinator
+  namespace: devops-dev
+spec:
+  serviceName: "postgres"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-coordinator
+  template:
+    metadata:
+      labels:
+        app: postgres-coordinator
+    spec:
+      containers:
+        - name: postgres
+          image: citusdata/citus:12.1-alpine
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - configMapRef:
+                name: devops-config
+            - secretRef:
+                name: devops-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: coordinator-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d/init-wrapper.sh
+              subPath: init-wrapper.sh
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: postgres-init-script
+            defaultMode: 0755
+  volumeClaimTemplates:
+    - metadata:
+        name: coordinator-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-worker
+  namespace: devops-dev
+spec:
+  serviceName: "postgres-worker-headless"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-worker
+  template:
+    metadata:
+      labels:
+        app: postgres-worker
+    spec:
+      containers:
+        - name: postgres-worker
+          image: citusdata/citus:12.1-alpine
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - configMapRef:
+                name: devops-config
+            - secretRef:
+                name: devops-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: worker-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d/init-wrapper.sh
+              subPath: init-wrapper.sh
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: postgres-init-script
+            defaultMode: 0755
+  volumeClaimTemplates:
+    - metadata:
+        name: worker-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 2Gi
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Redis (1 Replica, matching prod service name & port)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: devops-dev
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: devops-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          command:
+            - "redis-server"
+            - "--requirepass"
+            - "redis_dev_password"
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# RabbitMQ (1 Replica, matching prod service name & ports)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: devops-dev
+spec:
+  ports:
+    - port: 5672
+      name: amqp
+    - port: 15672
+      name: management
+  selector:
+    app: rabbitmq
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: devops-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3-management-alpine
+          ports:
+            - containerPort: 5672
+            - containerPort: 15672
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              value: "guest"
+            - name: RABBITMQ_DEFAULT_PASS
+              value: "guest"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Redpanda / Kafka (1 Replica dev broker)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: redpanda
+  namespace: devops-dev
+spec:
+  ports:
+    - port: 9092
+      name: kafka
+  selector:
+    app: redpanda
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redpanda
+  namespace: devops-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redpanda
+  template:
+    metadata:
+      labels:
+        app: redpanda
+    spec:
+      containers:
+        - name: redpanda
+          image: docker.redpanda.com/redpandadata/redpanda:v24.1.1
+          command:
+            - redpanda
+            - start
+            - --smp=1
+            - --memory=768M
+            - --overprovisioned
+            - --reserve-memory=0M
+            - --node-id=0
+            - --check=false
+            - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+            - --advertise-kafka-addr=PLAINTEXT://redpanda.devops-dev.svc.cluster.local:9092
+          ports:
+            - containerPort: 9092
+          resources:
+            requests:
+              cpu: 150m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1024Mi

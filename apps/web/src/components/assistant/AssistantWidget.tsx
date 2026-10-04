@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageSquare, X, Send, Sparkles, AlertCircle } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
+import { getErrorMessage, ErrorCodes } from "@/lib/errors";
 
 interface Message {
   role: "user" | "model";
@@ -52,8 +53,8 @@ export function AssistantWidget() {
       });
 
       setMessages((prev) => [...prev, { role: "model", content: res.content }]);
-    } catch (err: any) {
-      setError(err?.message || "Failed to connect to assistant. Please try again.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, getErrorMessage(ErrorCodes.ASSISTANT_ERROR)));
     } finally {
       setIsLoading(false);
     }

@@ -46,7 +46,7 @@ describe("Frontend UI Design System & Component Library", () => {
       expect(element.props.children).toHaveLength(3);
     });
 
-    it("highlights active tab with distinct background and amber text", () => {
+    it("highlights active tab with distinct background and teal text", () => {
       const onChange = vi.fn();
       const element = SegmentTabs({
         options: tabs,
@@ -55,8 +55,8 @@ describe("Frontend UI Design System & Component Library", () => {
       });
 
       const discussionButton = element.props.children.find((c: any) => c.key === "discussion");
-      expect(discussionButton.props.className).toContain("text-amber");
-      expect(discussionButton.props.className).toContain("bg-panel-2");
+      expect(discussionButton.props.className).toContain("text-teal");
+      expect(discussionButton.props.className).toContain("border-teal/30");
     });
   });
 

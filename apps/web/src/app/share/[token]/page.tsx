@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { CheckCircle2, ShieldCheck, Terminal, Award, Calendar, Eye, Share2, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { getErrorMessage, ErrorCodes } from "@/lib/errors";
 
 interface VerifiedCheck {
   checkId: string;
@@ -63,7 +64,7 @@ export default function SharePage() {
     fetch(`/api/shares/${token}`)
       .then(async (res) => {
         if (!res.ok) {
-          throw new Error(res.status === 404 ? "Proof of skill not found or link has expired." : "Failed to load proof");
+          throw new Error(res.status === 404 ? getErrorMessage(ErrorCodes.SHARE_NOT_FOUND) : getErrorMessage(ErrorCodes.NOT_FOUND));
         }
         return res.json();
       })
@@ -72,7 +73,7 @@ export default function SharePage() {
         setLoading(false);
       })
       .catch((err) => {
-        setError(err.message);
+        setError(getErrorMessage(err, getErrorMessage(ErrorCodes.SHARE_NOT_FOUND)));
         setLoading(false);
       });
   }, [token]);

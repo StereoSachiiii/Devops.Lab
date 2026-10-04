@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devops-config
+  namespace: devops-dev
+data:
+  # Database Config
+  POSTGRES_DB: "appdb"
+  POSTGRES_USER: "postgres"
+  
+  # Message Broker Config (Dev internal endpoints)
+  KAFKA_BROKERS: "redpanda.devops-dev.svc.cluster.local:9092"
+  KAFKA_CLIENT_ID: "dev-client"
+  KAFKA_GROUP_ID: "sandbox-sessions-dev"
+  KAFKA_ADVERTISED_HOST: "redpanda"
+  
+  # Service Settings
+  NODE_ENV: "development"
+  LOG_LEVEL: "debug"
+  SERVICE_VERSION: "1.0.0-dev"
+  SESSION_TTL_MINS: "60"
+  MAX_MEMORY_MB: "256"
+  MAX_CPUS: "0.5"
+  DOCKER_NETWORK_MODE: "none"
+  SANDBOX_PROVIDER: "docker"
+  OUTBOX_INTERVAL_MS: "1000"
+  CORS_ORIGIN: "https://localhost,http://localhost,http://localhost:3000,http://127.0.0.1:3000"
+  ALLOWED_ORIGINS: "https://localhost,http://localhost,http://localhost:3000,http://127.0.0.1:3000"
+  DOMAIN: "localhost"
+  JWT_ISSUER: "devops-platform"
+  MFA_APP_NAME: "DevOps-Dev"
+  FRONTEND_URL: "http://localhost:3000"
+  WEB_APP_URL: "http://localhost:3000"
+  EXPIRY_MFA_TOKEN: "5m"
+  EXPIRY_REFRESH_TOKEN: "30d"
+  GUEST_TRIAL_TTL_MINS: "10"
+  DEFAULT_USER_ROLE: "LEARNER"
+  PUBLIC_GATEWAY_URL: "http://localhost:8000"
+  
+  # Internal Service Ports
+  POSTGRES_PORT: "5432"
+  REDIS_PORT: "6379"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_MGT_PORT: "15672"
+  API_GATEWAY_PORT: "8000"
+  API_GATEWAY_SECURE_PORT: "8443"
+  WEB_FRONTEND_PORT: "3000"
+  AUTH_SERVICE_PORT: "3002"
+  CORE_SERVICE_PORT: "3003"
+  NOTIFICATION_SERVICE_PORT: "3004"
+  SANDBOX_WORKER_PORT: "8090"
+  SANDBOX_ROUTER_PORT: "8080"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: devops-secrets
+  namespace: devops-dev
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: "postgres_dev_password"
+  APP_USER_PASSWORD: "app_dev_password"
+  REDIS_PASSWORD: "redis_dev_password"
+  RABBITMQ_PASSWORD: "guest"
+  RABBITMQ_ERLANG_COOKIE: "dev-erlang-cookie"
+  DATABASE_URL: "postgresql://app_user:app_dev_password@postgres.devops-dev.svc.cluster.local:5432/appdb?schema=public"
+  REDIS_URL: "redis://:redis_dev_password@redis.devops-dev.svc.cluster.local:6379"
+  RABBITMQ_URL: "amqp://guest:guest@rabbitmq.devops-dev.svc.cluster.local:5672"
+  JWT_PRIVATE_KEY: |
+    -----BEGIN PRIVATE KEY-----
+    MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCcmr2h4JugQmxg
+    9h7eg/jM1c6d8F4KE7Osr+Hjgg1i2y0SQrRWG+jq4+2RvND1DqFn7tyPDF/hP9JF
+    lhYZXelY7ievJZ6Ty7+eeugwmzKj5DFqM08NY+2LpTl++txN32wUoS5fd/+cVu1B
+    JAtxKl73wRzMlTZwkf7bjCskOZNF/TBhcP1KH+QsYfQIXkT7MaJEfBLDuzsy+U8o
+    DozIK9cF9DMy5nr4N0koNxKnmNz2MQqsniC0v/7bbNokC/dAtGnxjD0c2UW+143A
+    MmugvnMRQNXrg0Ey0zNSO4xt7jfQS0/H3kff9HMTqClEIg+T7Rg7UyqO2UBLnGgY
+    PM/ysYPnAgMBAAECggEAKbDMQRcRdzWXsqxzBVvu1WEqE0PVVStvjs53/WA2/hVJ
+    R244oh/l/vpU2ZKBsmuFrqyZTP/HWqjp6pqNIY2tvH4SVH9YWxJH3gHsZFw8vALY
+    4OPt7Kuopp+C0foowhZzqH5MYSAKDW3a1Zep8COOirh/WTtz9b34Mix7o7YsLdpR
+    9b/5jF2Qkg/JWEUqvUlM5GT6M1RSxixVYbW/AxHnysfLlYU/glWEFpIQW7NK/scS
+    nOLp0STq0LxZNPXBPwRappVkMi0/pqQqouMuhq981gfor8AECMXQ+zM2UdpeHi7i
+    kehdNxvkBPke1XnBRZ1NOLea9BuUd0/LbFBONQXpkQKBgQDJO2uJqoFLOu87uISW
+    vnm2Ba2UFXNjODlY3cdqsfbB5v+xmeew6IDhwP1zA4iT8a32yJDYg9jIX2wd68Jh
+    C8LTOlqmrDEWjB2pzk4+ASuTpGWVxdgcfXjvy8H0PF3H2PDlzaiJMs49s/N29I6n
+    6RoD88xl6oibeRIpv2cEk9pLLwKBgQDHOfK9O6aQ2WEP97d6Sb9cA54b9M5dQwcL
+    bu3d3CXAUMapk7NmITANOL0fyKJFfry447EnjrJrgMirpkbiRmkTb+WdMiw6tBJG
+    y9FJuV5hNw3kKsOxyuFNlzqNN500DFmnk+VhAvhae+A/tLVNpYio/XWqCz0Egbed
+    yxkMP+xEyQKBgAKR7LSsZcxVK1sC50aZlipZ9jaO85NP04OsCXD2ZuVhEuDsy0W6
+    InM/qL0ATY0+J++f7iGlxW4BsfrL2QauRMW32BKK3nGgRny1stAd6bWQAvAfv7vV
+    amb9njOFVdlIjwMQVleyO2oUU0awpuXEF133jiO7FBWQPUglNqabUM1nAoGAbiRT
+    VtsLkzkauEEzZqAu8yfs2XfWPyk3U9LYHrf/BvuhWU8W93eRoT2lEVVSoSkYHP+E
+    iWISsexZBMzAk4hpvx01zFpYqXu0Pv+fjSq2Svis7V/XIQwQ01ywOjJs7sGFL2hM
+    f/2sYBnsOEwnj+3cR9EYpBHiggNVCB+okWUlskECgYBf1yZUjpQxXTrb7GSHIcRR
+    42a9uuU0ptTuoUmHxxSyvlXzWL1ciBDdEDc8gF5rEYo8kwmvUephflLzfg9yJKmh
+    0zudS6+q6qoQvXVHy6GlRY6YItExH9Iq8Dim6Lw4y9dqnSGk1YlqbAzkYrzOcbD4
+    CEs+Xr1UVOa4oh7e/9ZPyw==
+    -----END PRIVATE KEY-----
+  JWT_PUBLIC_KEY: |
+    -----BEGIN PUBLIC KEY-----
+    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnJq9oeCboEJsYPYe3oP4
+    zNXOnfBeChOzrK/h44INYtstEkK0Vhvo6uPtkbzQ9Q6hZ+7cjwxf4T/SRZYWGV3p
+    WO4nryWek8u/nnroMJsyo+QxajNPDWPti6U5fvrcTd9sFKEuX3f/nFbtQSQLcSpe
+    98EczJU2cJH+24wrJDmTRf0wYXD9Sh/kLGH0CF5E+zGiRHwSw7s7MvlPKA6MyCvX
+    BfQzMuZ6+DdJKDcSp5jc9jEKrJ4gtL/+22zaJAv3QLRp8Yw9HNlFvteNwDJroL5z
+    EUDV64NBMtMzUjuMbe430EtPx95H3/RzE6gpRCIPk+0YO1MqjtlAS5xoGDzP8rGD
+    5wIDAQAB
+    -----END PUBLIC KEY-----
+  ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef"
+  GOOGLE_CLIENT_ID: "dev-dummy-google-client-id"
+  GOOGLE_CLIENT_SECRET: "dev-dummy-google-client-secret"
+  GITHUB_CLIENT_ID: "dev-dummy-github-client-id"
+  GITHUB_CLIENT_SECRET: "dev-dummy-github-client-secret"
+  GEMINI_API_KEY: "dev-dummy-gemini-key"
+  RESEND_API_KEY: "re_dev_dummy_resend_key"

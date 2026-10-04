@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { HelpCircle, CheckCircle2, XCircle, Calendar, ArrowRight, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { apiClient } from "@/lib/apiClient";
+import { getErrorMessage, ErrorCodes } from "@/lib/errors";
 
 interface QuizAttemptItem {
   id: string;
@@ -28,8 +29,7 @@ export function QuizHistoryView() {
         setLoading(false);
       })
       .catch((err) => {
-        console.error("Failed to load quiz history", err);
-        setError("Unable to load quiz history");
+        setError(getErrorMessage(err, getErrorMessage(ErrorCodes.QUIZZES_LOAD_FAILED)));
         setLoading(false);
       });
   }, []);

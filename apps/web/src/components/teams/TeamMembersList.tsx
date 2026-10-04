@@ -2,6 +2,7 @@ import { CheckCircle2, Circle, MoreVertical, TerminalSquare, Plus, Mail } from "
 import { useState } from "react";
 import useSWR from "swr";
 import { apiClient } from "@/lib/apiClient";
+import { getErrorMessage } from "@/lib/errors";
 
 interface TeamMember {
   id: string;
@@ -44,8 +45,8 @@ export function TeamMembersList({ myRole }: { myRole?: string }) {
         setShowInviteModal(false);
         setInviteMessage("");
       }, 2000);
-    } catch (err) {
-      setInviteMessage("Failed to send invitation. Please try again.");
+    } catch (err: unknown) {
+      setInviteMessage(getErrorMessage(err, "Failed to send invitation. Please try again."));
     } finally {
       setIsSubmitting(false);
     }

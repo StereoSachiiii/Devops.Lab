@@ -1,0 +1,223 @@
+# =============================================================================
+# DEV TIER 2: Stateless Application Microservices (Matches Prod Architecture)
+# Replicas: 1 per microservice (Down from 2+ in prod)
+# Limits: ~128Mi-192Mi (Conserves RAM while preserving exact ports and environment)
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Auth Service
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: devops-dev
+spec:
+  ports:
+    - port: 3002
+      targetPort: 3002
+  selector:
+    app: auth-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: devops-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+        - name: auth-service
+          image: devops/auth-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3002
+          envFrom:
+            - configMapRef:
+                name: devops-config
+            - secretRef:
+                name: devops-secrets
+          env:
+            - name: PORT
+              value: "3002"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Core Service
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: core-service
+  namespace: devops-dev
+spec:
+  ports:
+    - port: 3003
+      targetPort: 3003
+  selector:
+    app: core-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core-service
+  namespace: devops-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: core-service
+  template:
+    metadata:
+      labels:
+        app: core-service
+    spec:
+      containers:
+        - name: core-service
+          image: devops/core-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3003
+          envFrom:
+            - configMapRef:
+                name: devops-config
+            - secretRef:
+                name: devops-secrets
+          env:
+            - name: PORT
+              value: "3003"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Notification Service
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: devops-dev
+spec:
+  ports:
+    - port: 3004
+      targetPort: 3004
+  selector:
+    app: notification-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: devops-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+    spec:
+      containers:
+        - name: notification-service
+          image: devops/notification-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3004
+          envFrom:
+            - configMapRef:
+                name: devops-config
+            - secretRef:
+                name: devops-secrets
+          env:
+            - name: PORT
+              value: "3004"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Sandbox Router
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-router
+  namespace: devops-dev
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: sandbox-router
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox-router
+  namespace: devops-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sandbox-router
+  template:
+    metadata:
+      labels:
+        app: sandbox-router
+    spec:
+      containers:
+        - name: sandbox-router
+          image: devops/sandbox-router:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/sandbox-router"]
+          ports:
+            - containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          envFrom:
+            - configMapRef:
+                name: devops-config
+            - secretRef:
+                name: devops-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 192Mi

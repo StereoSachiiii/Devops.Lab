@@ -1,0 +1,20 @@
+# =============================================================================
+# KinD (Kubernetes in Docker) Cluster Configuration for DevOps.lab Dev
+# Usage:
+#   kind create cluster --config deploy/kind-dev-cluster.yaml --name devops-dev
+# =============================================================================
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # Map NodePort 30080 to localhost:3000 for direct browser access to Web Frontend
+      - containerPort: 30080
+        hostPort: 3000
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+      # Map NodePort 30005 to localhost:8000 for API access
+      - containerPort: 30005
+        hostPort: 8000
+        listenAddress: "127.0.0.1"
+        protocol: TCP

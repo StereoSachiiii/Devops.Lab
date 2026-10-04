@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { RoadmapCard } from "@/components/dashboard/RoadmapCard";
 import { apiClient } from "@/lib/apiClient";
 import type { Roadmap, RoadmapProgress } from "@/lib/api-types";
+import { getErrorMessage, ErrorCodes } from "@/lib/errors";
 import Link from "next/link";
 import { AlertCircle, RefreshCw } from "lucide-react";
 
@@ -76,8 +77,7 @@ export function RoadmapsContent() {
       );
       setProgressData(pMap);
     } catch (e) {
-      console.error("Failed to load roadmaps", e);
-      setError("Failed to load engineering roadmaps. Please try again.");
+      setError(getErrorMessage(e, getErrorMessage(ErrorCodes.ROADMAPS_LOAD_FAILED)));
     } finally {
       setLoading(false);
     }

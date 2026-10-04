@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { QuizCard } from "@/components/dashboard/QuizCard";
 import { apiClient } from "@/lib/apiClient";
 import type { QuizNode, QuizProgress, FlashcardDeck } from "@/lib/api-types";
+import { getErrorMessage, ErrorCodes } from "@/lib/errors";
 import { useAuth } from "@/providers/AuthProvider";
 import { AlertCircle, RefreshCw } from "lucide-react";
 
@@ -51,8 +52,7 @@ export function QuizzesContent() {
         setProgressData(pMap);
       }
     } catch (e) {
-      console.error("Failed to load quizzes", e);
-      setError("Failed to load quizzes. Please check your network connection.");
+      setError(getErrorMessage(e, getErrorMessage(ErrorCodes.QUIZZES_LOAD_FAILED)));
     } finally {
       setLoading(false);
     }
