@@ -6,10 +6,12 @@ import { apiClient } from "@/lib/apiClient";
 import type { QuizNode, QuizProgress, FlashcardDeck } from "@/lib/api-types";
 import { getErrorMessage, ErrorCodes } from "@/lib/errors";
 import { useAuth } from "@/providers/AuthProvider";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw, History, BookOpen } from "lucide-react";
+import { QuizHistoryTab } from "@/components/quiz/QuizHistoryTab";
 
 export function QuizzesContent() {
   const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<"browse" | "history">("browse");
   const [quizzes, setQuizzes] = useState<QuizNode[]>([]);
   const [progressData, setProgressData] = useState<Record<string, QuizProgress>>({});
   const [flashcardDecks, setFlashcardDecks] = useState<FlashcardDeck[]>([]);
@@ -207,10 +209,43 @@ export function QuizzesContent() {
         <h1 className="font-space text-[42px] font-bold tracking-[-0.015em] mb-4 text-panel-text">
           Check what actually stuck.
         </h1>
-        <p className="text-panel-muted text-base leading-[1.6] m-0">
+        <p className="text-panel-muted text-base leading-[1.6] m-0 mb-6">
           {quizzes.length} quizzes — quick, no-stakes checks tied to real challenge topics.
         </p>
+
+        {/* Tab Switcher */}
+        <div className="inline-flex p-1 bg-panel border border-panel-border rounded-xl">
+          <button
+            onClick={() => setActiveTab("browse")}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-mono transition-colors ${
+              activeTab === "browse"
+                ? "bg-teal/15 text-teal border border-teal/40 font-semibold"
+                : "text-panel-muted hover:text-panel-text"
+            }`}
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Browse Quizzes</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("history")}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-mono transition-colors ${
+              activeTab === "history"
+                ? "bg-teal/15 text-teal border border-teal/40 font-semibold"
+                : "text-panel-muted hover:text-panel-text"
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>Attempt History</span>
+          </button>
+        </div>
       </section>
+
+      {activeTab === "history" ? (
+        <section className="max-w-[900px]">
+          <QuizHistoryTab />
+        </section>
+      ) : (
+        <>
 
       {/* Flashcards Banner Feature */}
       {flashcardDecks.length > 0 && (
@@ -421,6 +456,8 @@ export function QuizzesContent() {
             </button>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

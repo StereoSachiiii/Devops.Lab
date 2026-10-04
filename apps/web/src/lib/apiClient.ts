@@ -244,9 +244,9 @@ export const apiClient = {
     getHistory: (slug: string) =>
       engine.get<any, any>(API_ROUTES.quizzes.history(slug)),
     getAllHistory: () =>
-      engine.get<any, any>(API_ROUTES.quizzes.allHistory),
+      engine.get<import("@devops/types").QuizHistoryResponse, import("@devops/types").QuizHistoryResponse>(API_ROUTES.quizzes.allHistory),
     getEditorial: (slug: string) =>
-      engine.get<any, any>(API_ROUTES.quizzes.editorial(slug)),
+      engine.get<import("@devops/types").QuizEditorialResponse, import("@devops/types").QuizEditorialResponse>(API_ROUTES.quizzes.editorial(slug)),
   },
 
   flashcards: {

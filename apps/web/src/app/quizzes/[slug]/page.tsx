@@ -61,6 +61,7 @@ function QuizDetailPage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [validating, setValidating] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
+  const [editorialData, setEditorialData] = useState<{ editorial: string; takeaways: string[] } | null>(null);
 
   const [streak, setStreak] = useState(0);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -78,8 +79,17 @@ function QuizDetailPage() {
     async function load() {
       try {
         setLoadError(null);
-        const q = await apiClient.quizzes.getBySlug(slug);
+        const [q, ed] = await Promise.all([
+          apiClient.quizzes.getBySlug(slug),
+          apiClient.quizzes.getEditorial(slug).catch(() => null),
+        ]);
         setQuiz(q);
+        if (ed) {
+          setEditorialData({
+            editorial: ed.editorial,
+            takeaways: ed.takeaways || [],
+          });
+        }
         if (user) {
           const p = await apiClient.quizzes.getProgress(slug).catch(() => null);
           setInitialProgress(p);
@@ -305,23 +315,23 @@ function QuizDetailPage() {
           </div>
 
           <div className="text-sm font-sans text-panel-muted leading-relaxed whitespace-pre-line">
-            {quiz.editorial || (quiz.metadata as any)?.editorial || (
+            {editorialData?.editorial || quiz.editorial || (quiz.metadata as any)?.editorial || (
               `This assessment tests core proficiency in ${quiz.title}. In production environments, deterministic command execution and least-privilege security configurations prevent catastrophic cascading outages.`
             )}
           </div>
 
-          {((quiz.metadata as any)?.takeaways || (quiz as any).takeaways) && (
+          {(editorialData?.takeaways?.length || ((quiz.metadata as any)?.takeaways || (quiz as any).takeaways)?.length) ? (
             <div className="mt-4 pt-4 border-t border-panel-border/60">
               <strong className="text-xs font-mono text-panel-text uppercase tracking-wider block mb-2">
                 Core SRE Takeaways:
               </strong>
               <ul className="space-y-1.5 ml-4 list-disc text-xs font-mono text-panel-muted marker:text-teal">
-                {((quiz.metadata as any)?.takeaways || (quiz as any).takeaways || []).map((t: string, idx: number) => (
+                {(editorialData?.takeaways?.length ? editorialData.takeaways : ((quiz.metadata as any)?.takeaways || (quiz as any).takeaways || [])).map((t: string, idx: number) => (
                   <li key={idx}>{t}</li>
                 ))}
               </ul>
             </div>
-          )}
+          ) : null}
 
           <div className="pt-2 flex items-center justify-between">
             <Link

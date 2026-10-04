@@ -56,6 +56,27 @@ export interface QuizMetadata {
   takeaways?: string[];
 }
 
+export interface QuizAttemptRecord {
+  id: string;
+  quizId: string;
+  quizTitle: string;
+  score: number;
+  total: number;
+  passed: boolean;
+  createdAt: string;
+}
+
+export interface QuizHistoryResponse {
+  attempts: QuizAttemptRecord[];
+}
+
+export interface QuizEditorialResponse {
+  id: string;
+  title: string;
+  editorial: string;
+  takeaways?: string[];
+}
+
 export interface QuizNode {
   id: string;
   slug: string;
