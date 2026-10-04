@@ -76,8 +76,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
         keysToRemove.forEach((k) => localStorage.removeItem(k));
-      } catch (e) {
-        console.warn("Failed to clear localStorage sessions on logout", e);
+      } catch {
+        // Ignore session clearing errors on logout
       }
     }
 
@@ -119,12 +119,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               // Fetch account's current roadmap progress
               const accountProg = await apiClient.roadmaps.getProgress(slug).catch(() => null);
               // Calculate merged progress
-              const merged = mergeRoadmapProgress(accountProg, guestEntry);
-              // Submit completions for any unrecorded nodes if endpoint exists,
-              // or log successful client-side resolution.
-              console.info(`[Roadmap Sync] Merged ${guestEntry.completedNodes.length} guest nodes for roadmap: ${slug}`, merged);
-            } catch (err) {
-              console.warn(`[Roadmap Sync] Failed to sync roadmap ${slug}`, err);
+              mergeRoadmapProgress(accountProg, guestEntry);
+            } catch {
+              // Ignore failure for individual roadmap sync
             }
           })
         ).finally(() => {

@@ -20,32 +20,17 @@ import { API_ROUTES } from "./api-routes";
 let refreshPromise: Promise<boolean> | null = null;
 
 async function refreshTokens(): Promise<boolean> {
-  if (typeof window !== "undefined") {
-    console.log(`[AUTH-DEBUG] refreshTokens() invoked. Existing refreshPromise? ${!!refreshPromise}`);
-  }
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
     try {
-      if (typeof window !== "undefined") {
-        console.log(`[AUTH-DEBUG] Initiating POST /api/auth/refresh`);
-        console.log(`[AUTH-DEBUG] Current document cookies: ${document.cookie}`);
-      }
       const res = await axios.post(
         `${API_BASE_URL}${API_ROUTES.auth.refresh}`,
         {},
         { withCredentials: true }
       );
-      if (typeof window !== "undefined") {
-        console.log(`[AUTH-DEBUG] /refresh success. Status: ${res.status}`);
-      }
       return res.status === 200;
-    } catch (err: any) {
-      if (typeof window !== "undefined") {
-        // Change from console.error to console.log to prevent Next.js from throwing an error overlay
-        // since a 401 on /refresh is perfectly normal for a logged-out user.
-        console.log(`[AUTH-DEBUG] /refresh failed! (Normal if logged out)`, err.message, err.response?.status);
-      }
+    } catch {
       return false;
     } finally {
       refreshPromise = null;
@@ -107,25 +92,15 @@ engine.interceptors.response.use(
     const isRefreshRoute = url.includes(API_ROUTES.auth.refresh);
     const isLoginRoute = url.includes(API_ROUTES.auth.login);
 
-    if (typeof window !== "undefined") {
-      console.log(`[AUTH-DEBUG] Request failed: ${url} with status ${error.response?.status}. _retry=${originalRequest._retry}, isRefresh=${isRefreshRoute}, isLogin=${isLoginRoute}`);
-    }
-
     if (
       error.response?.status === 401 &&
       !isRefreshRoute &&
       !isLoginRoute &&
       !originalRequest._retry
     ) {
-      if (typeof window !== "undefined") {
-        console.log(`[AUTH-DEBUG] Triggering refresh flow for 401 on ${url}`);
-      }
       originalRequest._retry = true;
 
       const refreshed = await refreshTokens();
-      if (typeof window !== "undefined") {
-        console.log(`[AUTH-DEBUG] refreshTokens() returned: ${refreshed}`);
-      }
       if (refreshed) {
         return engine(originalRequest);
       }
@@ -150,8 +125,6 @@ engine.interceptors.response.use(
 );
 
 export const apiClient = {
-  // Generic helpers using the typed axios instance. These keep callsites concise
-  // and strongly typed: `apiClient.get<T>(url)` -> Promise<T>
   get: <T = unknown>(url: string) => engine.get<T, T>(url),
   post: <T = unknown>(url: string, body?: unknown) => engine.post<T, T>(url, body),
   put: <T = unknown>(url: string, body?: unknown) => engine.put<T, T>(url, body),

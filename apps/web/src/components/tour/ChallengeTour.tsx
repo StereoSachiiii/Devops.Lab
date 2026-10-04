@@ -123,7 +123,7 @@ export default function ChallengeTour({ show, onDone }: ChallengeTourProps) {
       setTimeout(() => tourDriver.drive(), 400);
     }
 
-    startTour().catch(console.error);
+    startTour().catch(() => {});
   }, [show, onDone]);
 
   // Also inject custom CSS overrides for the Driver.js popover

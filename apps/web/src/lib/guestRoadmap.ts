@@ -19,8 +19,7 @@ export function getGuestRoadmapStore(): GuestRoadmapStore {
     const raw = localStorage.getItem(GUEST_ROADMAP_STORAGE_KEY);
     if (!raw) return {};
     return JSON.parse(raw);
-  } catch (e) {
-    console.warn("Failed to parse guest roadmap storage:", e);
+  } catch {
     return {};
   }
 }
@@ -56,8 +55,8 @@ export function saveGuestRoadmapProgress(
       updatedAt: Date.now(),
     };
     localStorage.setItem(GUEST_ROADMAP_STORAGE_KEY, JSON.stringify(store));
-  } catch (e) {
-    console.warn("Failed to save guest roadmap storage:", e);
+  } catch {
+    // Ignore storage write failure
   }
 }
 
@@ -68,8 +67,8 @@ export function clearGuestRoadmapStore(): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(GUEST_ROADMAP_STORAGE_KEY);
-  } catch (e) {
-    console.warn("Failed to clear guest roadmap storage:", e);
+  } catch {
+    // Ignore storage remove failure
   }
 }
 

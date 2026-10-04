@@ -171,7 +171,7 @@ export default function XtermTerminal({
       }
     }
 
-    init().catch(console.error);
+    init().catch(() => {});
 
     return () => {
       if (resizeObserverRef.current) resizeObserverRef.current.disconnect();

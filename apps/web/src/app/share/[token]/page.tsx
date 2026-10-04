@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { CheckCircle2, ShieldCheck, Terminal, Award, Calendar, Eye, Share2, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { getErrorMessage, ErrorCodes } from "@/lib/errors";
+import { apiClient } from "@/lib/apiClient";
 
 interface VerifiedCheck {
   checkId: string;
@@ -61,13 +62,8 @@ export default function SharePage() {
   useEffect(() => {
     if (!token) return;
 
-    fetch(`/api/shares/${token}`)
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error(res.status === 404 ? getErrorMessage(ErrorCodes.SHARE_NOT_FOUND) : getErrorMessage(ErrorCodes.NOT_FOUND));
-        }
-        return res.json();
-      })
+    apiClient
+      .get<ShareData>(`/api/shares/${token}`)
       .then((json) => {
         setData(json);
         setLoading(false);

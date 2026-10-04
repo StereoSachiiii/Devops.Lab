@@ -51,7 +51,9 @@ export const ErrorCodes = {
 
   // Curriculum & Roadmaps
   ROADMAPS_LOAD_FAILED: "ROADMAPS_LOAD_FAILED",
+  ROADMAP_NOT_FOUND: "ROADMAP_NOT_FOUND",
   QUIZZES_LOAD_FAILED: "QUIZZES_LOAD_FAILED",
+  QUIZ_NOT_FOUND: "QUIZ_NOT_FOUND",
   ASSISTANT_ERROR: "ASSISTANT_ERROR",
   SHARE_NOT_FOUND: "SHARE_NOT_FOUND",
 
@@ -229,10 +231,20 @@ const CODE_REGISTRY: Record<string, CodeConfig> = {
     severity: "error",
     retryable: true,
   },
+  [ErrorCodes.ROADMAP_NOT_FOUND]: {
+    message: "The requested roadmap could not be found or has been removed.",
+    severity: "error",
+    retryable: false,
+  },
   [ErrorCodes.QUIZZES_LOAD_FAILED]: {
     message: "Failed to load quizzes. Please check your network connection.",
     severity: "error",
     retryable: true,
+  },
+  [ErrorCodes.QUIZ_NOT_FOUND]: {
+    message: "The requested quiz could not be found or has been removed.",
+    severity: "error",
+    retryable: false,
   },
   [ErrorCodes.ASSISTANT_ERROR]: {
     message: "Failed to connect to assistant. Please try again.",

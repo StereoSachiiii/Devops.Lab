@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Bookmark, Plus, Check, X, FolderPlus, Lock, Globe, Loader2 } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
+import { getErrorMessage, ErrorCodes } from "@/lib/errors";
 
 interface CustomList {
   id: string;
@@ -27,13 +28,14 @@ export function SaveToListModal({ isOpen, onClose, challengeId, challengeTitle }
   const [newListName, setNewListName] = useState("");
   const [newListPublic, setNewListPublic] = useState(false);
   const [savingListId, setSavingListId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fetchLists = async () => {
     try {
       const res = await apiClient.get<{ lists: CustomList[] }>("/api/lists");
       setLists(res.lists || []);
     } catch (err) {
-      console.error("Failed to load custom lists", err);
+      setErrorMessage(getErrorMessage(err, getErrorMessage(ErrorCodes.UNKNOWN_ERROR)));
     } finally {
       setLoading(false);
     }
@@ -52,6 +54,7 @@ export function SaveToListModal({ isOpen, onClose, challengeId, challengeTitle }
     if (!newListName.trim()) return;
 
     setCreating(true);
+    setErrorMessage(null);
     try {
       const created = await apiClient.post<CustomList>("/api/lists", {
         name: newListName.trim(),
@@ -65,7 +68,7 @@ export function SaveToListModal({ isOpen, onClose, challengeId, challengeTitle }
       setNewListPublic(false);
       await fetchLists();
     } catch (err) {
-      console.error("Failed to create list", err);
+      setErrorMessage(getErrorMessage(err, getErrorMessage(ErrorCodes.UNKNOWN_ERROR)));
     } finally {
       setCreating(false);
     }
@@ -74,6 +77,7 @@ export function SaveToListModal({ isOpen, onClose, challengeId, challengeTitle }
   const handleToggleItem = async (list: CustomList) => {
     const isIncluded = list.items.some((i) => i.challengeId === challengeId);
     setSavingListId(list.id);
+    setErrorMessage(null);
 
     try {
       if (isIncluded) {
@@ -83,7 +87,7 @@ export function SaveToListModal({ isOpen, onClose, challengeId, challengeTitle }
       }
       await fetchLists();
     } catch (err) {
-      console.error("Failed to update list item", err);
+      setErrorMessage(getErrorMessage(err, getErrorMessage(ErrorCodes.UNKNOWN_ERROR)));
     } finally {
       setSavingListId(null);
     }
@@ -112,6 +116,12 @@ export function SaveToListModal({ isOpen, onClose, challengeId, challengeTitle }
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {errorMessage && (
+          <div className="mx-5 mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-400">
+            {errorMessage}
+          </div>
+        )}
 
         {/* Existing Lists */}
         <div className="p-5 space-y-3 max-h-60 overflow-y-auto">

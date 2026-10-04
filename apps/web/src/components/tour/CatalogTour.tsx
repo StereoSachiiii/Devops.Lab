@@ -114,7 +114,7 @@ export function CatalogTour({ show, onDone }: CatalogTourProps) {
       setTimeout(() => tourDriver.drive(), 1200);
     }
 
-    startTour().catch(console.error);
+    startTour().catch(() => {});
   }, [show, onDone]);
 
   return show ? (

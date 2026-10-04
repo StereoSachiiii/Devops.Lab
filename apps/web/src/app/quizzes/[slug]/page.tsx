@@ -9,6 +9,7 @@ import type { QuizNode, QuizProgress, ValidationResult } from "@/lib/api-types";
 import { useAuth } from "@/providers/AuthProvider";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { HistoryLog } from "@/components/dashboard/HistoryLog";
+import { getErrorMessage, ErrorCodes } from "@/lib/errors";
 
 const TOAST_MESSAGES_NORMAL = [
   "Nice — that's it.",
@@ -52,6 +53,7 @@ function QuizDetailPage() {
   const [quiz, setQuiz] = useState<QuizNode | null>(null);
   const [initialProgress, setInitialProgress] = useState<QuizProgress | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [mode, setMode] = useState<"play" | "finished" | "review">("play");
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -75,6 +77,7 @@ function QuizDetailPage() {
   useEffect(() => {
     async function load() {
       try {
+        setLoadError(null);
         const q = await apiClient.quizzes.getBySlug(slug);
         setQuiz(q);
         if (user) {
@@ -84,7 +87,7 @@ function QuizDetailPage() {
           setHistory(h);
         }
       } catch (e) {
-        console.error("Failed to load quiz", e);
+        setLoadError(getErrorMessage(e, getErrorMessage(ErrorCodes.QUIZZES_LOAD_FAILED)));
       } finally {
         setLoading(false);
       }
@@ -109,14 +112,31 @@ function QuizDetailPage() {
     if (!question) return;
 
     try {
+      let isCorrect = false;
+      let correctIdx = 0;
+      let explanation = "";
+
       if (user) {
         // Logged-in user: execute backend submission/XP flow
-        await apiClient.quizzes.submit(slug, { answers: { [question.id]: idx } });
+        const submitRes = await apiClient.quizzes.submit(slug, { answers: { [question.id]: idx } });
+        const questionResult = submitRes?.results?.find(
+          (r) => String(r.questionId) === String(question.id)
+        );
+        if (questionResult) {
+          isCorrect = !!questionResult.correct;
+          correctIdx = typeof questionResult.correctIndex === "number" ? questionResult.correctIndex : idx;
+          explanation = questionResult.explanation || (isCorrect ? "Correct!" : "Incorrect.");
+        } else {
+          isCorrect = !!submitRes?.passed;
+          correctIdx = idx;
+          explanation = isCorrect ? "Correct!" : "Incorrect.";
+        }
+      } else {
+        // Guest mode fallback: client-side evaluation
+        isCorrect = idx === 0;
+        correctIdx = 0;
+        explanation = isCorrect ? "You got it right!" : "That was incorrect. Here is why.";
       }
-
-      // Determine validation result (client-side evaluation)
-      const isCorrect = idx === 0;
-      const correctIdx = 0;
 
       const vResult: ValidationResult = {
         questionId: question.id,
@@ -124,7 +144,7 @@ function QuizDetailPage() {
         correctIndex: correctIdx,
         explanation:
           (user ? "This explanation is loaded from the backend. " : "") +
-          (isCorrect ? "You got it right!" : "That was incorrect. Here is why."),
+          explanation,
       };
 
       setResults((prev) => ({ ...prev, [question.id]: vResult }));
@@ -149,7 +169,7 @@ function QuizDetailPage() {
         setStreak(0);
       }
     } catch (e) {
-      console.error("Quiz submission error:", e);
+      showToast(getErrorMessage(e, getErrorMessage(ErrorCodes.UNKNOWN_ERROR)));
     } finally {
       setValidating(false);
     }
@@ -168,7 +188,13 @@ function QuizDetailPage() {
   };
 
   if (loading) return <div className="p-10 text-panel-muted font-mono">Loading...</div>;
-  if (!quiz) return <div className="p-10 text-red font-mono">Quiz not found</div>;
+  if (!quiz) {
+    return (
+      <div className="p-10 text-red font-mono">
+        {loadError || getErrorMessage(ErrorCodes.QUIZ_NOT_FOUND)}
+      </div>
+    );
+  }
 
   const totalQuestions = quiz.metadata.questions.length;
   const isRepeat = initialProgress?.status === "Completed";

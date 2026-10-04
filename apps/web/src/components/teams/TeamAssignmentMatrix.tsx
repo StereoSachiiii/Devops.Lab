@@ -5,6 +5,9 @@ import { apiClient } from "@/lib/apiClient";
 import { CheckCircle2, Clock, FileSpreadsheet } from "lucide-react";
 import { useState } from "react";
 
+import { API_BASE_URL } from "@/lib/apiBase";
+import { getErrorMessage, ErrorCodes } from "@/lib/errors";
+
 interface AssignmentProgress {
   pathId: string;
   pathTitle: string;
@@ -26,6 +29,7 @@ interface EngineerMatrixRow {
 
 export function TeamAssignmentMatrix() {
   const [downloading, setDownloading] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const { data: matrix, isLoading } = useSWR<EngineerMatrixRow[]>(
     "/api/orgs/me/assignments/matrix",
     () => apiClient.get<EngineerMatrixRow[]>("/api/orgs/me/assignments/matrix")
@@ -33,13 +37,17 @@ export function TeamAssignmentMatrix() {
 
   const handleExportCSV = async () => {
     setDownloading(true);
+    setExportError(null);
     try {
-      const response = await fetch("/api/orgs/me/compliance-export", {
+      const response = await fetch(`${API_BASE_URL}/api/orgs/me/compliance-export`, {
+        credentials: "include",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
         },
       });
-      if (!response.ok) throw new Error("Export failed");
+      if (!response.ok) {
+        throw new Error(getErrorMessage(ErrorCodes.UNKNOWN_ERROR));
+      }
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -50,7 +58,7 @@ export function TeamAssignmentMatrix() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err) {
-      console.error(err);
+      setExportError(getErrorMessage(err, getErrorMessage(ErrorCodes.UNKNOWN_ERROR)));
     } finally {
       setDownloading(false);
     }
@@ -82,6 +90,12 @@ export function TeamAssignmentMatrix() {
           {downloading ? "Generating CSV..." : "Export Compliance CSV"}
         </button>
       </div>
+
+      {exportError && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-400">
+          {exportError}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="py-8 text-center text-panel-muted font-mono text-sm">

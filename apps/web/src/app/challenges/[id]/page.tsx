@@ -248,8 +248,8 @@ function ChallengeWorkspacePage({ params }: PageProps) {
       if (challenge) {
         await startSession(challenge.id);
       }
-    } catch (e) {
-      console.error("Failed to terminate active sessions", e);
+    } catch {
+      // Handled silently or state reset via useTerminalMachine
     }
   }, [startSession, challenge]);
 

@@ -22,7 +22,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
           })
         )
       )
-      .catch((err) => console.warn("[MSW] failed to start:", err));
+      .catch(() => {});
   }, []);
 
   // Never block rendering — router context must be available immediately.

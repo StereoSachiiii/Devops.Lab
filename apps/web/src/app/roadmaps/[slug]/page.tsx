@@ -15,6 +15,8 @@ import {
   saveGuestRoadmapProgress,
 } from "@/lib/guestRoadmap";
 
+import { getErrorMessage, ErrorCodes } from "@/lib/errors";
+
 // Helper to determine node status
 function getNodeState(nodeId: string, progress: RoadmapProgress | null, roadmap: Roadmap) {
   if (!progress) return "locked"; // Default if no progress exists
@@ -39,6 +41,7 @@ function RoadmapDetailPage() {
   const [progress, setProgress] = useState<RoadmapProgress | null>(null);
   const [relatedRoadmaps, setRelatedRoadmaps] = useState<Roadmap[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [selectedNode, setSelectedNode] = useState<RoadmapNode | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
@@ -47,6 +50,7 @@ function RoadmapDetailPage() {
   useEffect(() => {
     async function load() {
       try {
+        setLoadError(null);
         const [rm, all] = await Promise.all([
           apiClient.roadmaps.getBySlug(slug),
           apiClient.roadmaps.getAll(),
@@ -80,7 +84,7 @@ function RoadmapDetailPage() {
           setShowCompletionModal(true);
         }
       } catch (e) {
-        console.error("Failed to load roadmap", e);
+        setLoadError(getErrorMessage(e, getErrorMessage(ErrorCodes.ROADMAPS_LOAD_FAILED)));
       } finally {
         setLoading(false);
       }
@@ -166,7 +170,11 @@ function RoadmapDetailPage() {
   }
 
   if (!roadmap) {
-    return <div className="p-10 text-red font-mono">Roadmap not found.</div>;
+    return (
+      <div className="p-10 text-red font-mono">
+        {loadError || getErrorMessage(ErrorCodes.ROADMAP_NOT_FOUND)}
+      </div>
+    );
   }
 
   return (

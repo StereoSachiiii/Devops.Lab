@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { MessageSquare, ThumbsUp, ThumbsDown, Send, CornerDownRight, Pin, Trash2 } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
+import { getErrorMessage, ErrorCodes } from "@/lib/errors";
 
 interface CommentAuthor {
   id: string;
@@ -37,13 +38,14 @@ export function DiscussionTab({ challengeId }: DiscussionTabProps) {
   const [submitting, setSubmitting] = useState(false);
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   const [replyContent, setReplyContent] = useState("");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fetchComments = async () => {
     try {
       const res = await apiClient.get<{ comments: CommentItem[] }>(`/api/challenges/${challengeId}/comments`);
       setComments(res.comments || []);
     } catch (err) {
-      console.error("Failed to load comments", err);
+      setErrorMessage(getErrorMessage(err, getErrorMessage(ErrorCodes.UNKNOWN_ERROR)));
     } finally {
       setLoading(false);
     }
@@ -58,6 +60,7 @@ export function DiscussionTab({ challengeId }: DiscussionTabProps) {
     if (!text.trim()) return;
 
     setSubmitting(true);
+    setErrorMessage(null);
     try {
       await apiClient.post(`/api/challenges/${challengeId}/comments`, {
         content: text.trim(),
@@ -72,7 +75,7 @@ export function DiscussionTab({ challengeId }: DiscussionTabProps) {
       }
       await fetchComments();
     } catch (err) {
-      console.error("Failed to post comment", err);
+      setErrorMessage(getErrorMessage(err, getErrorMessage(ErrorCodes.UNKNOWN_ERROR)));
     } finally {
       setSubmitting(false);
     }
@@ -103,7 +106,7 @@ export function DiscussionTab({ challengeId }: DiscussionTabProps) {
         })
       );
     } catch (err) {
-      console.error("Failed to vote", err);
+      setErrorMessage(getErrorMessage(err, getErrorMessage(ErrorCodes.UNKNOWN_ERROR)));
     }
   };
 
@@ -113,7 +116,7 @@ export function DiscussionTab({ challengeId }: DiscussionTabProps) {
       await apiClient.delete(`/api/comments/${commentId}`);
       await fetchComments();
     } catch (err) {
-      console.error("Failed to delete comment", err);
+      setErrorMessage(getErrorMessage(err, getErrorMessage(ErrorCodes.UNKNOWN_ERROR)));
     }
   };
 
@@ -129,6 +132,12 @@ export function DiscussionTab({ challengeId }: DiscussionTabProps) {
           </span>
         </div>
       </div>
+
+      {errorMessage && (
+        <div className="mx-4 mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-400">
+          {errorMessage}
+        </div>
+      )}
 
       {/* Post Top-Level Comment */}
       <div className="p-4 border-b border-panel-border bg-panel-2/30">
