@@ -43,6 +43,7 @@ type Config struct {
 	// Provider selection
 	FlintlockAddress string
 	WorkerAddr       string
+	ChallengeImageRegistry string
 
 	// HTTP / WebSocket
 	AllowedOrigins string // comma-separated list of allowed CORS origins
@@ -53,20 +54,21 @@ func Load() (*Config, error) {
 	keyStr := getEnv("ENCRYPTION_KEY", "")
 
 	cfg := &Config{
-		HTTPPort:       getEnv("HTTP_PORT",""),
-		KafkaBrokers:   getEnv("KAFKA_BROKERS",""),
-		KafkaClientID:  getEnv("KAFKA_CLIENT_ID", ""),
-		KafkaGroupID:   getEnv("KAFKA_GROUP_ID", ""),
-		RedisURL:       getEnv("REDIS_URL", ""),
-		RabbitMQURL:    getEnv("RABBITMQ_URL", "amqp://localhost:5672"),
-		DatabaseURL:    getEnv("DATABASE_URL", ""),
-		SessionTTLMins: getEnvInt("SESSION_TTL_MINS", 60),
-		MaxMemoryMB:    getEnvInt("MAX_MEMORY_MB", 512),
-		MaxCPUs:        getEnvFloat("MAX_CPUS", 1.0),
-		NetworkMode:    getEnv("DOCKER_NETWORK_MODE", "none"),
-		FlintlockAddress: getEnv("FLINTLOCK_ADDRESS", "localhost:9090"),
-		WorkerAddr:       getEnv("WORKER_ADDR", "sandbox-worker:8090"),
-		AllowedOrigins:   getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173"),
+		HTTPPort:               getEnv("HTTP_PORT",""),
+		KafkaBrokers:           getEnv("KAFKA_BROKERS",""),
+		KafkaClientID:          getEnv("KAFKA_CLIENT_ID", ""),
+		KafkaGroupID:           getEnv("KAFKA_GROUP_ID", ""),
+		RedisURL:               getEnv("REDIS_URL", ""),
+		RabbitMQURL:            getEnv("RABBITMQ_URL", "amqp://localhost:5672"),
+		DatabaseURL:            getEnv("DATABASE_URL", ""),
+		SessionTTLMins:         getEnvInt("SESSION_TTL_MINS", 60),
+		MaxMemoryMB:            getEnvInt("MAX_MEMORY_MB", 512),
+		MaxCPUs:                getEnvFloat("MAX_CPUS", 1.0),
+		NetworkMode:            getEnv("DOCKER_NETWORK_MODE", "none"),
+		FlintlockAddress:       getEnv("FLINTLOCK_ADDRESS", "localhost:9090"),
+		WorkerAddr:             getEnv("WORKER_ADDR", "sandbox-worker:8090"),
+		ChallengeImageRegistry: getEnv("CHALLENGE_IMAGE_REGISTRY", ""),
+		AllowedOrigins:         getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173"),
 	}
 	if cfg.RedisURL == "" {
 		return nil, fmt.Errorf("REDIS_URL is required")

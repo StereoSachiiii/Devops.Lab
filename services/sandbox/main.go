@@ -53,7 +53,7 @@ func main() {
 	var isolationDowngraded bool
 
 	// 1. Standard Docker Provider (Always initialized as baseline / fallback)
-	dockerProv, err := sandbox.NewDockerProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
+	dockerProv, err := sandbox.NewDockerProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, cfg.ChallengeImageRegistry, log)
 	if err != nil {
 		log.Error("Docker provider init failed", "error", err)
 		os.Exit(1)
@@ -61,7 +61,7 @@ func main() {
 	providers["docker"] = dockerProv
 
 	// 2. gVisor Provider
-	gvisorProv, err := sandbox.NewGVisorProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
+	gvisorProv, err := sandbox.NewGVisorProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, cfg.ChallengeImageRegistry, log)
 	if err != nil {
 		log.Warn("gVisor provider init unavailable on this host, aliasing 'gvisor' to Docker with downgraded isolation", "error", err)
 		providers["gvisor"] = dockerProv
@@ -71,7 +71,7 @@ func main() {
 	}
 
 	// 3. Kata Containers Provider
-	kataProv, err := sandbox.NewKataProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, log)
+	kataProv, err := sandbox.NewKataProvider(cfg.NetworkMode, cfg.MaxMemoryMB, cfg.MaxCPUs, cfg.ChallengeImageRegistry, log)
 	if err != nil {
 		log.Warn("Kata provider init unavailable on this host, aliasing 'kata' to Docker fallback", "error", err)
 		providers["kata"] = dockerProv

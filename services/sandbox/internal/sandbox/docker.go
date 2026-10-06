@@ -18,35 +18,37 @@ import (
 
 // DockerProvider implements SandboxProvider using the Docker Engine API.
 type DockerProvider struct {
-	client      *client.Client
-	networkMode string
-	memoryBytes int64
-	nanoCPUs    int64
-	runtime     string
-	log         *slog.Logger
+	client        *client.Client
+	networkMode   string
+	memoryBytes   int64
+	nanoCPUs      int64
+	runtime       string
+	imageRegistry string
+	log           *slog.Logger
 }
 
 // NewDockerProvider connects to the local Docker daemon and returns a provider
 // that uses the standard (insecure) runc runtime.
-func NewDockerProvider(networkMode string, memoryMB int, maxCPUs float64, log *slog.Logger) (*DockerProvider, error) {
-	return newDockerProviderWithRuntime(networkMode, memoryMB, maxCPUs, "", log)
+func NewDockerProvider(networkMode string, memoryMB int, maxCPUs float64, imageRegistry string, log *slog.Logger) (*DockerProvider, error) {
+	return newDockerProviderWithRuntime(networkMode, memoryMB, maxCPUs, "", imageRegistry, log)
 }
 
 // newDockerProviderWithRuntime connects to the local Docker daemon and uses the specified runtime.
 // Used internally by explicit providers (like kata.go, gvisor.go).
-func newDockerProviderWithRuntime(networkMode string, memoryMB int, maxCPUs float64, runtime string, log *slog.Logger) (*DockerProvider, error) {
+func newDockerProviderWithRuntime(networkMode string, memoryMB int, maxCPUs float64, runtime, imageRegistry string, log *slog.Logger) (*DockerProvider, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("docker: client init failed: %w", err)
 	}
 
 	return &DockerProvider{
-		client:      cli,
-		networkMode: networkMode,
-		memoryBytes: int64(memoryMB) * 1024 * 1024,
-		nanoCPUs:    int64(maxCPUs * 1_000_000_000),
-		runtime:     runtime,
-		log:         log,
+		client:        cli,
+		networkMode:   networkMode,
+		memoryBytes:   int64(memoryMB) * 1024 * 1024,
+		nanoCPUs:      int64(maxCPUs * 1_000_000_000),
+		runtime:       runtime,
+		imageRegistry: strings.TrimSpace(imageRegistry),
+		log:           log,
 	}, nil
 }
 
@@ -54,13 +56,14 @@ func newDockerProviderWithRuntime(networkMode string, memoryMB int, maxCPUs floa
 // The container runs `sleep infinity` — it stays alive until Remove() is called.
 // Labels are added so the reaper can identify orphaned containers on restart.
 func (d *DockerProvider) Provision(ctx context.Context, imageName string) (string, error) {
-	if err := d.ensureImage(ctx, imageName); err != nil {
+	resolvedImage, err := d.ensureImage(ctx, imageName)
+	if err != nil {
 		return "", fmt.Errorf("docker: image pull failed: %w", err)
 	}
 
 	pidsLimit := int64(256)
 	resp, err := d.client.ContainerCreate(ctx, &container.Config{
-		Image: imageName,
+		Image: resolvedImage,
 		Cmd:   []string{"sleep", "infinity"}, // stays alive waiting for exec
 		Labels: map[string]string{
 			"managed-by": "devops-platform-sandbox",
@@ -219,20 +222,42 @@ func (d *DockerProvider) IsRunning(ctx context.Context, containerID string) (boo
 	return c.State.Running, nil
 }
 
-// ensureImage pulls the image if not already cached.
-func (d *DockerProvider) ensureImage(ctx context.Context, imageName string) error {
-	// Check if image exists locally first
+// ensureImage checks if imageName exists locally. If not, it attempts to pull
+// from the configured registry (e.g. GHCR) or fallback to imageName directly.
+func (d *DockerProvider) ensureImage(ctx context.Context, imageName string) (string, error) {
+	// 1. Check if the image name exists locally as-is
 	if _, _, err := d.client.ImageInspectWithRaw(ctx, imageName); err == nil {
-		return nil
+		return imageName, nil
 	}
 
-	reader, err := d.client.ImagePull(ctx, imageName, image.PullOptions{})
+	// 2. Resolve registry candidate name
+	resolvedName := imageName
+	if d.imageRegistry != "" && !strings.Contains(imageName, "/") {
+		resolvedName = fmt.Sprintf("%s/%s", strings.TrimRight(d.imageRegistry, "/"), imageName)
+		if _, _, err := d.client.ImageInspectWithRaw(ctx, resolvedName); err == nil {
+			return resolvedName, nil
+		}
+	}
+
+	// 3. Attempt pull with resolvedName
+	d.log.Info("Pulling image from registry", "image", resolvedName)
+	reader, err := d.client.ImagePull(ctx, resolvedName, image.PullOptions{})
 	if err != nil {
-		return err
+		// If resolvedName differed from imageName, attempt fallback pull directly
+		if resolvedName != imageName {
+			d.log.Warn("Pull with registry prefix failed, attempting fallback", "resolved", resolvedName, "original", imageName, "error", err)
+			reader, err = d.client.ImagePull(ctx, imageName, image.PullOptions{})
+			if err != nil {
+				return "", err
+			}
+			resolvedName = imageName
+		} else {
+			return "", err
+		}
 	}
 	defer reader.Close()
 	_, _ = io.Copy(io.Discard, reader)
-	return nil
+	return resolvedName, nil
 }
 
 // EnforceDiskQuotas checks all managed containers for disk usage exceeding maxBytes.

@@ -15,7 +15,7 @@ type KataProvider struct {
 
 // NewKataProvider verifies that a Kata runtime is available on the Docker daemon,
 // and returns a provider that enforces its use. Returns an error if not found.
-func NewKataProvider(networkMode string, memoryMB int, maxCPUs float64, log *slog.Logger) (*KataProvider, error) {
+func NewKataProvider(networkMode string, memoryMB int, maxCPUs float64, imageRegistry string, log *slog.Logger) (*KataProvider, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("kata: client init failed: %w", err)
@@ -37,7 +37,7 @@ func NewKataProvider(networkMode string, memoryMB int, maxCPUs float64, log *slo
 		return nil, fmt.Errorf("kata: secure runtime (kata-fc or kata-qemu) not found in docker daemon runtimes")
 	}
 
-	dp, err := newDockerProviderWithRuntime(networkMode, memoryMB, maxCPUs, runtime, log)
+	dp, err := newDockerProviderWithRuntime(networkMode, memoryMB, maxCPUs, runtime, imageRegistry, log)
 	if err != nil {
 		return nil, err
 	}

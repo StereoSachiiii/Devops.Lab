@@ -21,7 +21,7 @@ func TestDockerIntegration(t *testing.T) {
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	
-	provider, err := sandbox.NewDockerProvider("bridge", 128, 1.0, log)
+	provider, err := sandbox.NewDockerProvider("bridge", 128, 1.0, "", log)
 	if err != nil {
 		t.Fatalf("Failed to initialize Docker provider: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestKataIntegration(t *testing.T) {
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	provider, err := sandbox.NewKataProvider("bridge", 128, 1.0, log)
+	provider, err := sandbox.NewKataProvider("bridge", 128, 1.0, "", log)
 	if err != nil {
 		t.Fatalf("Kata initialization failed: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestGVisorIntegration(t *testing.T) {
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	provider, err := sandbox.NewGVisorProvider("bridge", 128, 1.0, log)
+	provider, err := sandbox.NewGVisorProvider("bridge", 128, 1.0, "", log)
 	if err != nil {
 		t.Fatalf("gVisor initialization failed: %v", err)
 	}
