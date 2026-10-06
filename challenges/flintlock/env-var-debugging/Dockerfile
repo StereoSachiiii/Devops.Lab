@@ -27,6 +27,6 @@ Your tasks:\n\
 \n\
 Click 'Validate Solution' when ready." > /etc/motd
 
-RUN echo "cat /etc/motd" >> /root/.bashrc
+RUN sed -i 's/\r$//' /app/start.sh /validator.sh 2>/dev/null || true
 
-ENTRYPOINT ["/bin/bash", "-c", "/app/start.sh && sleep infinity"]
+ENTRYPOINT ["/bin/bash", "-c", "/app/start.sh || true; exec sleep infinity"]
