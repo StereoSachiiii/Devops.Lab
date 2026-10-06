@@ -14,7 +14,7 @@ if ($RecreateCluster) {
     kind create cluster --config deploy/kind-dev-cluster.yaml --name devops-dev
 }
 
-Write-Host "`nApplying Kubernetes Manifests (01 to 09)..." -ForegroundColor Yellow
+Write-Host "`nApplying Kubernetes Manifests 01 to 09..." -ForegroundColor Yellow
 kubectl apply -f deploy/k8s/dev/01-namespace.yaml
 kubectl apply -f deploy/k8s/dev/02-config.yaml
 
