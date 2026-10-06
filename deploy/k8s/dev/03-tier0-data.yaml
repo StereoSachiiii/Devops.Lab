@@ -270,16 +270,16 @@ spec:
         - name: redpanda
           image: docker.redpanda.com/redpandadata/redpanda:v24.1.1
           command:
+            - /usr/bin/rpk
             - redpanda
             - start
-            - --smp=1
-            - --memory=768M
-            - --overprovisioned
-            - --reserve-memory=0M
-            - --node-id=0
+            - --mode
+            - dev-container
             - --check=false
-            - --kafka-addr=PLAINTEXT://0.0.0.0:9092
-            - --advertise-kafka-addr=PLAINTEXT://redpanda.devops-dev.svc.cluster.local:9092
+            - --kafka-addr
+            - PLAINTEXT://0.0.0.0:9092
+            - --advertise-kafka-addr
+            - PLAINTEXT://redpanda.devops-dev.svc.cluster.local:9092
           ports:
             - containerPort: 9092
           resources:
@@ -289,3 +289,18 @@ spec:
             limits:
               cpu: 1000m
               memory: 1024Mi
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Persistent Volume Claim for Blob / Image / Media Storage
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-pvc
+  namespace: devops-dev
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

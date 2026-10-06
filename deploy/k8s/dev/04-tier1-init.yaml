@@ -49,19 +49,43 @@ spec:
           args:
             - |
               set -e
-              echo "Waiting for Citus coordinator..."
+              export PGPASSWORD="$POSTGRES_PASSWORD"
+              echo "Waiting for Citus coordinator and worker..."
               until pg_isready -h postgres.devops-dev.svc.cluster.local -p 5432 -U postgres; do
                 sleep 2
               done
-              echo "Adding Citus worker..."
-              psql -h postgres.devops-dev.svc.cluster.local -U postgres -d appdb -c "
+              until pg_isready -h postgres-worker-0.postgres-worker-headless.devops-dev.svc.cluster.local -p 5432 -U postgres; do
+                sleep 2
+              done
+
+              echo "Registering Citus coordinator and worker node..."
+              psql -h postgres.devops-dev.svc.cluster.local -U postgres -d appdb -v ON_ERROR_STOP=1 <<-EOSQL
+                CREATE EXTENSION IF NOT EXISTS citus;
+                SELECT citus_set_coordinator_host('postgres.devops-dev.svc.cluster.local', 5432);
                 SELECT citus_add_node('postgres-worker-0.postgres-worker-headless.devops-dev.svc.cluster.local', 5432)
                 WHERE NOT EXISTS (
                   SELECT 1 FROM pg_dist_node 
                   WHERE nodename = 'postgres-worker-0.postgres-worker-headless.devops-dev.svc.cluster.local'
                 );
-              "
-              echo "Citus shard registration complete."
+
+                SET citus.enable_ddl_propagation = on;
+
+                DO \$\$
+                BEGIN
+                   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'app_user') THEN
+                      CREATE ROLE app_user LOGIN PASSWORD '$APP_USER_PASSWORD';
+                   ELSE
+                      ALTER ROLE app_user WITH PASSWORD '$APP_USER_PASSWORD';
+                   END IF;
+                END \$\$;
+
+                GRANT ALL PRIVILEGES ON DATABASE appdb TO app_user;
+                GRANT ALL ON SCHEMA public TO app_user;
+                ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app_user;
+                ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO app_user;
+                ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO app_user;
+              EOSQL
+              echo "Citus shard and role registration complete."
           envFrom:
             - configMapRef:
                 name: devops-config
@@ -80,8 +104,8 @@ spec:
       containers:
         - name: rpk-init
           image: docker.redpanda.com/redpandadata/redpanda:v24.1.1
-          entrypoint: ["/bin/bash", "-c"]
-          command:
+          command: ["/bin/bash", "-c"]
+          args:
             - |
               set -e
               BROKERS="redpanda.devops-dev.svc.cluster.local:9092"
@@ -100,3 +124,44 @@ spec:
               create_topic sandbox.session.ended 2
               create_topic sandbox.challenge.solved 2
               create_topic sandbox.challenge.failed 2
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  namespace: devops-dev
+spec:
+  template:
+    spec:
+      containers:
+        - name: db-migrate
+          image: devops/core-service:latest
+          imagePullPolicy: Never
+          command:
+            - "sh"
+            - "-c"
+            - |
+              set -e
+              echo "⏳ Waiting for PostgreSQL Citus coordinator..."
+              until nc -z -v -w5 postgres.devops-dev.svc.cluster.local 5432 2>/dev/null; do
+                sleep 2
+              done
+
+              echo "🚀 Pushing Prisma database schema..."
+              cd packages/db
+              npx prisma db push --accept-data-loss
+
+              echo "🔒 Applying fail-closed RLS policies..."
+              if [ -f "./prisma/migrations/20261004_fail_closed_rls.sql" ]; then
+                npx prisma db execute --file ./prisma/migrations/20261004_fail_closed_rls.sql
+              fi
+
+              echo "🌱 Executing Prisma Seed Scripts..."
+              npx prisma db seed
+              echo "✅ Database migration and seeding complete!"
+          envFrom:
+            - configMapRef:
+                name: devops-config
+            - secretRef:
+                name: devops-secrets
+      restartPolicy: OnFailure

@@ -7,6 +7,7 @@ data:
   # Database Config
   POSTGRES_DB: "appdb"
   POSTGRES_USER: "postgres"
+  POSTGRES_HOST_AUTH_METHOD: "trust"
   
   # Message Broker Config (Dev internal endpoints)
   KAFKA_BROKERS: "redpanda.devops-dev.svc.cluster.local:9092"
@@ -35,7 +36,8 @@ data:
   EXPIRY_REFRESH_TOKEN: "30d"
   GUEST_TRIAL_TTL_MINS: "10"
   DEFAULT_USER_ROLE: "LEARNER"
-  PUBLIC_GATEWAY_URL: "http://localhost:8000"
+  PUBLIC_GATEWAY_URL: "http://localhost:8005"
+  CHALLENGE_IMAGE_REGISTRY: "ghcr.io/stereosachiiii/devops-lab"
   
   # Internal Service Ports
   POSTGRES_PORT: "5432"
@@ -50,6 +52,11 @@ data:
   NOTIFICATION_SERVICE_PORT: "3004"
   SANDBOX_WORKER_PORT: "8090"
   SANDBOX_ROUTER_PORT: "8080"
+  
+  # Observability
+  LOKI_URL: "http://localhost:3100"
+  OTEL_TRACES_ENDPOINT: "http://localhost:4318/v1/traces"
+  TEMPO_URL: "http://localhost:3200"
 ---
 apiVersion: v1
 kind: Secret
@@ -105,7 +112,7 @@ stringData:
     EUDV64NBMtMzUjuMbe430EtPx95H3/RzE6gpRCIPk+0YO1MqjtlAS5xoGDzP8rGD
     5wIDAQAB
     -----END PUBLIC KEY-----
-  ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef"
+  ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
   GOOGLE_CLIENT_ID: "dev-dummy-google-client-id"
   GOOGLE_CLIENT_SECRET: "dev-dummy-google-client-secret"
   GITHUB_CLIENT_ID: "dev-dummy-github-client-id"

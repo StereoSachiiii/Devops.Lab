@@ -86,6 +86,10 @@ spec:
       labels:
         app: core-service
     spec:
+      securityContext:
+        fsGroup: 1001
+        runAsUser: 1001
+        runAsGroup: 1001
       containers:
         - name: core-service
           image: devops/core-service:latest
@@ -100,6 +104,11 @@ spec:
           env:
             - name: PORT
               value: "3003"
+            - name: MEDIA_DIR
+              value: "/data/media"
+          volumeMounts:
+            - name: media-storage
+              mountPath: /data/media
           resources:
             requests:
               cpu: 100m
@@ -107,6 +116,10 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: media-storage
+          persistentVolumeClaim:
+            claimName: media-pvc
 ---
 # ─────────────────────────────────────────────────────────────────────────────
 # Notification Service
