@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { API_BASE_URL } from "@/lib/apiBase";
 
+import { CommandHighlight } from "@/components/CommandHighlight";
+
 interface SystemUrls {
   gatewayUrl?: string;
   prometheusUrl?: string;
@@ -83,17 +85,33 @@ export default function TelemetryPage() {
             <p style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "16px" }}>
               {item.description}
             </p>
-            <a
-              href={item.url}
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn-primary btn-sm"
-              style={{ display: "inline-flex" }}
-            >
-              Open Tool ↗
-            </a>
+            {item.url ? (
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-primary btn-sm"
+                style={{ display: "inline-flex" }}
+              >
+                Open Tool ↗
+              </a>
+            ) : (
+              <span className="badge badge-neutral">Not configured in cluster</span>
+            )}
           </div>
         ))}
+      </div>
+
+      <div className="card" style={{ marginBottom: "24px" }}>
+        <h2 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>
+          Common Cluster CLI Commands
+        </h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <CommandHighlight
+            code={`kubectl get pods -n devops-dev -o wide\nkubectl logs -f deployment/api-gateway -n devops-dev\nkubectl rollout restart deployment/auth-service -n devops-dev`}
+            showPrompt
+          />
+        </div>
       </div>
 
       <div className="card">
@@ -104,27 +122,27 @@ export default function TelemetryPage() {
           <table className="admin-table">
             <thead>
               <tr>
-                <th>Metric Objective</th>
+                <th style={{ width: "240px" }}>Metric Objective</th>
                 <th>PromQL Expression</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td style={{ fontWeight: 600 }}>Active Sandbox Containers</td>
-                <td style={{ fontFamily: "var(--font-mono)", color: "var(--color-primary)" }}>
-                  sum(sandbox_active_containers&#123;status=&quot;running&quot;&#125;)
+                <td>
+                  <CommandHighlight code={`sum(sandbox_active_containers{status="running"})`} />
                 </td>
               </tr>
               <tr>
                 <td style={{ fontWeight: 600 }}>Worker Pod CPU Saturation</td>
-                <td style={{ fontFamily: "var(--font-mono)", color: "var(--color-primary)" }}>
-                  sum(rate(container_cpu_usage_seconds_total&#123;namespace=&quot;devops-dev&quot;&#125;[1m])) by (pod)
+                <td>
+                  <CommandHighlight code={`sum(rate(container_cpu_usage_seconds_total{namespace="devops-dev"}[1m])) by (pod)`} />
                 </td>
               </tr>
               <tr>
                 <td style={{ fontWeight: 600 }}>API HTTP 5xx Error Rate</td>
-                <td style={{ fontFamily: "var(--font-mono)", color: "var(--color-primary)" }}>
-                  sum(rate(http_requests_total&#123;status=~&quot;5..&quot;&#125;[5m])) / sum(rate(http_requests_total[5m])) * 100
+                <td>
+                  <CommandHighlight code={`sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100`} />
                 </td>
               </tr>
             </tbody>

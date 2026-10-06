@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: admin-frontend
-          image: devops/admin-frontend:latest
+          image: devops/admin-frontend:v1.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3001
