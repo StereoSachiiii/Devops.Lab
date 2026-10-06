@@ -156,22 +156,34 @@ export function FamousOutages() {
                   href={`/articles/${featuredArticle.slug}`}
                   className={`lg:col-span-5 bg-panel border border-panel-border rounded-2xl p-7 relative overflow-hidden flex flex-col justify-between transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-1 hover:shadow-[0_16px_32px_-12px_var(--theme-shadow)] hover:border-panel-border/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] ${theme.topAccent} group`}
                 >
-                  <div>
+                  {/* Fading Thumbnail Backdrop */}
+                  {featuredArticle.thumbnailUrl && (
+                    <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden opacity-25 group-hover:opacity-40 transition-opacity duration-500">
+                      <img
+                        src={featuredArticle.thumbnailUrl}
+                        alt=""
+                        className="w-full h-full object-cover object-center scale-105 group-hover:scale-100 transition-transform duration-700 blur-[1px]"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-panel via-panel/85 to-panel/40" />
+                    </div>
+                  )}
+
+                  <div className="relative z-10">
                     {/* Top Meta Bar with Chip and Featured Pill */}
                     <div className="flex items-center justify-between mb-6">
                       <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-medium px-2.5 py-1 rounded-md border bg-panel-2 border-panel-border text-panel-text">
+                        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-medium px-2.5 py-1 rounded-md border bg-panel-2/90 backdrop-blur-sm border-panel-border text-panel-text">
                           <span className={`w-1.5 h-1.5 rounded-full ${theme.iconColor.replace('text-', 'bg-')}`} />
                           {featuredArticle.badge || featuredArticle.category}
                         </span>
-                        <span className="inline-flex items-center gap-1 font-mono text-[10.5px] uppercase tracking-wider text-amber bg-amber-dim/20 border border-amber/30 px-2 py-0.5 rounded">
+                        <span className="inline-flex items-center gap-1 font-mono text-[10.5px] uppercase tracking-wider text-amber bg-amber-dim/20 backdrop-blur-sm border border-amber/30 px-2 py-0.5 rounded">
                           <Sparkles size={11} />
                           Featured
                         </span>
                       </div>
 
                       {/* Icon Chip */}
-                      <div className={`w-9 h-9 rounded-lg border flex items-center justify-center shrink-0 ${theme.chipBg}`}>
+                      <div className={`w-9 h-9 rounded-lg border flex items-center justify-center shrink-0 ${theme.chipBg} backdrop-blur-sm`}>
                         <IconComp size={18} className={theme.iconColor} />
                       </div>
                     </div>
@@ -188,7 +200,7 @@ export function FamousOutages() {
                   </div>
 
                   {/* Footer */}
-                  <div className="pt-4 border-t border-panel-border/60 flex items-center justify-between font-mono text-[12px] text-panel-muted">
+                  <div className="relative z-10 pt-4 border-t border-panel-border/60 flex items-center justify-between font-mono text-[12px] text-panel-muted">
                     <span className="flex items-center gap-1.5 text-panel-muted-dim">
                       <Clock size={13} />
                       {featuredArticle.readTime}
@@ -213,15 +225,27 @@ export function FamousOutages() {
                     href={`/articles/${art.slug}`}
                     className={`bg-panel border border-panel-border rounded-2xl p-5 relative overflow-hidden flex flex-col justify-between transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-1 hover:shadow-[0_14px_28px_-10px_var(--theme-shadow)] hover:border-panel-border/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-[2px] ${theme.topAccent} group min-h-[220px]`}
                   >
-                    <div>
+                    {/* Fading Thumbnail Backdrop */}
+                    {art.thumbnailUrl && (
+                      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden opacity-20 group-hover:opacity-35 transition-opacity duration-500">
+                        <img
+                          src={art.thumbnailUrl}
+                          alt=""
+                          className="w-full h-full object-cover object-center scale-105 group-hover:scale-100 transition-transform duration-700 blur-[1px]"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-panel via-panel/90 to-panel/50" />
+                      </div>
+                    )}
+
+                    <div className="relative z-10">
                       {/* Top Bar */}
                       <div className="flex items-center justify-between mb-3.5">
-                        <span className="font-mono text-[10.5px] font-medium text-panel-text border border-panel-border bg-panel-2 px-2.5 py-1 rounded-[5px]">
+                        <span className="font-mono text-[10.5px] font-medium text-panel-text border border-panel-border bg-panel-2/90 backdrop-blur-sm px-2.5 py-1 rounded-[5px]">
                           {art.badge || art.category}
                         </span>
 
                         {/* Icon Chip */}
-                        <div className={`w-7 h-7 rounded-md border flex items-center justify-center shrink-0 ${theme.chipBg}`}>
+                        <div className={`w-7 h-7 rounded-md border flex items-center justify-center shrink-0 ${theme.chipBg} backdrop-blur-sm`}>
                           <IconComp size={14} className={theme.iconColor} />
                         </div>
                       </div>
@@ -238,7 +262,7 @@ export function FamousOutages() {
                     </div>
 
                     {/* Footer */}
-                    <div className="pt-3 border-t border-panel-border/50 flex items-center justify-between font-mono text-[11px] text-panel-muted">
+                    <div className="relative z-10 pt-3 border-t border-panel-border/50 flex items-center justify-between font-mono text-[11px] text-panel-muted">
                       <span className="flex items-center gap-1 text-panel-muted-dim">
                         <Clock size={11} />
                         {art.readTime}

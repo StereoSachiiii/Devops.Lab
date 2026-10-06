@@ -36,45 +36,69 @@ export function B2bSection() {
           </div>
 
           {/* Right Side: Bento Grid layout */}
-          <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-6 gap-4">
-            {/* Private Sandboxes Card (span 3) */}
-            <div className="sm:col-span-3 bg-panel/30 backdrop-blur-md border border-panel-border rounded-xl p-6 relative overflow-hidden group hover:border-amber/40 hover:shadow-[0_12px_24px_-10px_rgba(255,157,92,0.15)] transition-all duration-300">
-              <div className="absolute inset-0 bg-gradient-to-br from-amber/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="w-10 h-10 rounded-lg bg-panel-2 border border-panel-border flex items-center justify-center mb-4 transition-transform duration-300 group-hover:scale-110">
-                <Shield className="text-amber w-5 h-5" />
+          <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Private Sandboxes Card */}
+            <div className="bg-panel border border-panel-border rounded-2xl p-6 relative overflow-hidden flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_32px_-10px_var(--theme-shadow)] hover:border-amber/50 group before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-[2.5px] before:bg-amber before:opacity-80">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber/5 rounded-full blur-2xl pointer-events-none group-hover:bg-amber/10 transition-colors duration-500" />
+              <div>
+                <div className="w-11 h-11 rounded-xl bg-amber-dim/20 border border-amber/30 flex items-center justify-center mb-5 transition-transform duration-300 group-hover:scale-110 shadow-sm">
+                  <Shield className="text-amber w-5 h-5" />
+                </div>
+                <h3 className="font-heading font-bold text-[18px] text-panel-text mb-2.5 group-hover:text-amber transition-colors">
+                  Private Sandboxes
+                </h3>
+                <p className="text-panel-muted text-[14px] leading-[1.6]">
+                  Isolated cloud nodes provisioned per engineer. No shared state, no cross-contamination, and automatic lifecycle management.
+                </p>
               </div>
-              <h3 className="font-space font-bold text-[17px] text-panel-text mb-2">Private Sandboxes</h3>
-              <p className="text-panel-muted text-[13.5px] leading-[1.5]">Isolated cloud nodes provisioned per engineer. No shared state, no cross-contamination.</p>
             </div>
 
-            {/* Custom Scenarios Card (span 3) */}
-            <div className="sm:col-span-3 bg-panel/30 backdrop-blur-md border border-panel-border rounded-xl p-6 relative overflow-hidden group hover:border-teal/40 hover:shadow-[0_12px_24px_-10px_rgba(53,214,180,0.15)] transition-all duration-300">
-              <div className="absolute inset-0 bg-gradient-to-br from-teal/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="w-10 h-10 rounded-lg bg-panel-2 border border-panel-border flex items-center justify-center mb-4 transition-transform duration-300 group-hover:scale-110">
-                <Cpu className="text-teal w-5 h-5" />
+            {/* Custom Scenarios Card */}
+            <div className="bg-panel border border-panel-border rounded-2xl p-6 relative overflow-hidden flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_32px_-10px_var(--theme-shadow)] hover:border-teal/50 group before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-[2.5px] before:bg-teal before:opacity-80">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-teal/5 rounded-full blur-2xl pointer-events-none group-hover:bg-teal/10 transition-colors duration-500" />
+              <div>
+                <div className="w-11 h-11 rounded-xl bg-teal-dim/20 border border-teal/30 flex items-center justify-center mb-5 transition-transform duration-300 group-hover:scale-110 shadow-sm">
+                  <Cpu className="text-teal w-5 h-5" />
+                </div>
+                <h3 className="font-heading font-bold text-[18px] text-panel-text mb-2.5 group-hover:text-teal transition-colors">
+                  Custom Scenarios
+                </h3>
+                <p className="text-panel-muted text-[14px] leading-[1.6]">
+                  Recreate your own past Sev-1 postmortems into interactive labs so new engineers never repeat the same outage in production.
+                </p>
               </div>
-              <h3 className="font-space font-bold text-[17px] text-panel-text mb-2">Custom Scenarios</h3>
-              <p className="text-panel-muted text-[13.5px] leading-[1.5]">Recreate your own past Sev-1 postmortems so new engineers never repeat the same outage.</p>
             </div>
 
-            {/* Onboard Faster Card (span 6 or split) */}
-            <div className="sm:col-span-3 bg-panel/30 backdrop-blur-md border border-panel-border rounded-xl p-6 relative overflow-hidden group hover:border-[#3b82f6]/40 hover:shadow-[0_12px_24px_-10px_rgba(59,130,246,0.15)] transition-all duration-300">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#3b82f6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="w-10 h-10 rounded-lg bg-panel-2 border border-panel-border flex items-center justify-center mb-4 transition-transform duration-300 group-hover:scale-110">
-                <Users className="text-[#3b82f6] w-5 h-5" />
+            {/* Onboard Faster Card */}
+            <div className="bg-panel border border-panel-border rounded-2xl p-6 relative overflow-hidden flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_32px_-10px_var(--theme-shadow)] hover:border-term-blue/50 group before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-[2.5px] before:bg-term-blue before:opacity-80">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-term-blue/5 rounded-full blur-2xl pointer-events-none group-hover:bg-term-blue/10 transition-colors duration-500" />
+              <div>
+                <div className="w-11 h-11 rounded-xl bg-term-blue/15 border border-term-blue/30 flex items-center justify-center mb-5 transition-transform duration-300 group-hover:scale-110 shadow-sm">
+                  <Users className="text-term-blue w-5 h-5" />
+                </div>
+                <h3 className="font-heading font-bold text-[18px] text-panel-text mb-2.5 group-hover:text-term-blue transition-colors">
+                  Onboard Faster
+                </h3>
+                <p className="text-panel-muted text-[14px] leading-[1.6]">
+                  Cut time-to-first-on-call. Give engineers real terminal muscle memory and verified problem solving before they touch prod.
+                </p>
               </div>
-              <h3 className="font-space font-bold text-[17px] text-panel-text mb-2">Onboard Faster</h3>
-              <p className="text-panel-muted text-[13.5px] leading-[1.5]">Cut time-to-first-on-call. Give engineers real terminal muscle memory before they touch prod.</p>
             </div>
 
-            {/* Skill Analytics Card (span 3) */}
-            <div className="sm:col-span-3 bg-panel/30 backdrop-blur-md border border-panel-border rounded-xl p-6 relative overflow-hidden group hover:border-[#8b5cf6]/40 hover:shadow-[0_12px_24px_-10px_rgba(139,92,246,0.15)] transition-all duration-300">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#8b5cf6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="w-10 h-10 rounded-lg bg-panel-2 border border-panel-border flex items-center justify-center mb-4 transition-transform duration-300 group-hover:scale-110">
-                <TrendingUp className="text-[#8b5cf6] w-5 h-5" />
+            {/* Skill Analytics Card */}
+            <div className="bg-panel border border-panel-border rounded-2xl p-6 relative overflow-hidden flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_32px_-10px_var(--theme-shadow)] hover:border-red-auth/50 group before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-[2.5px] before:bg-red-auth before:opacity-80">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-red-auth/5 rounded-full blur-2xl pointer-events-none group-hover:bg-red-auth/10 transition-colors duration-500" />
+              <div>
+                <div className="w-11 h-11 rounded-xl bg-red-auth/15 border border-red-auth/30 flex items-center justify-center mb-5 transition-transform duration-300 group-hover:scale-110 shadow-sm">
+                  <TrendingUp className="text-red-auth w-5 h-5" />
+                </div>
+                <h3 className="font-heading font-bold text-[18px] text-panel-text mb-2.5 group-hover:text-red-auth transition-colors">
+                  Skill Analytics
+                </h3>
+                <p className="text-panel-muted text-[14px] leading-[1.6]">
+                  Measure how engineers actually triage issues—command efficiency, time to root-cause, and real verification check accuracy.
+                </p>
               </div>
-              <h3 className="font-space font-bold text-[17px] text-panel-text mb-2">Skill Analytics</h3>
-              <p className="text-panel-muted text-[13.5px] leading-[1.5]">Measure how engineers actually triage issues—command efficiency, time to root-cause, and fix accuracy.</p>
             </div>
           </div>
           

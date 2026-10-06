@@ -8,7 +8,7 @@ import { apiClient } from "@/lib/apiClient";
 import { useAuth } from "@/providers/AuthProvider";
 import { API_ROUTES } from "@/lib/api-routes";
 import { CheckCircle, XCircle, Terminal, Play, Heart, Bookmark, Share2, Check } from "lucide-react";
-import { useTerminalMachine } from "@/lib/useTerminalMachine";
+import { useSandboxObserver } from "@/lib/useSandboxObserver";
 import type { Challenge, CheckResult } from "@/lib/api-types";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { WorkspaceHeader } from "@/components/workspace/WorkspaceHeader";
@@ -16,6 +16,7 @@ import { WorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 import { WorkspaceTerminal } from "@/components/workspace/WorkspaceTerminal";
 import { EyebrowHeader } from "@/components/ui/EyebrowHeader";
 import { SaveToListModal } from "@/components/challenge/SaveToListModal";
+import { SandboxObserverPanel } from "@/components/workspace/SandboxObserverPanel";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -27,6 +28,7 @@ function ChallengeWorkspacePage({ params }: PageProps) {
   const { user } = useAuth();
 
   const [listModalOpen, setListModalOpen] = useState(false);
+  const [telemetryOpen, setTelemetryOpen] = useState(false);
 
   const {
     data: challenge,
@@ -40,6 +42,7 @@ function ChallengeWorkspacePage({ params }: PageProps) {
     apiClient.challenge.getHistory(id)
   );
 
+  const observer = useSandboxObserver();
   const {
     state,
     session,
@@ -56,7 +59,7 @@ function ChallengeWorkspacePage({ params }: PageProps) {
     startTrial,
     terminateSession,
     validateSolution,
-  } = useTerminalMachine();
+  } = observer;
 
   // Guest trial status check
   const { data: trialStatus, mutate: mutateTrialStatus } = useSWR<{ eligible: boolean; trialUsed: boolean }>(
@@ -315,18 +318,20 @@ function ChallengeWorkspacePage({ params }: PageProps) {
         isGuestTrial={session?.isGuestTrial || isGuest}
         trialSecondsLeft={trialSecondsLeft}
         trialExpired={trialExpired}
+        telemetryOpen={telemetryOpen}
+        onToggleTelemetry={() => setTelemetryOpen(!telemetryOpen)}
       />
 
       {/* ── 3-column workspace ── */}
       <div className="grid grid-cols-[380px_1fr_300px] gap-5 flex-1 min-h-0 py-5 max-xl:grid-cols-[340px_1fr_260px] max-lg:grid-cols-[340px_1fr] max-md:flex max-md:flex-col">
         {/* LEFT COLUMN: Challenge Brief & Tabs */}
-        <div className="flex flex-col gap-4 bg-[#0d1118]/80 backdrop-blur-xl border border-panel-border/80 rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.3)] overflow-y-auto dark-scrollbar max-h-[calc(100vh-140px)] max-md:order-2 max-md:max-h-[350px] relative">
-          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-teal/20 to-transparent" />
-          <div className="pb-3 border-b border-panel-border/60">
+        <div className="flex flex-col gap-4 bg-panel border border-panel-border rounded-2xl p-5 shadow-[0_8px_32px_var(--theme-shadow)] overflow-y-auto dark-scrollbar max-h-[calc(100vh-140px)] max-md:order-2 max-md:max-h-[350px] relative">
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-teal/30 to-transparent" />
+          <div className="pb-3 border-b border-panel-border">
             <EyebrowHeader dotColor="teal" className="mb-2 tracking-wider text-[11px] font-mono">
               {challenge.category?.toUpperCase()} &middot; ~15 MIN
             </EyebrowHeader>
-            <h1 className="m-0 text-[22px] font-space font-extrabold text-panel-text tracking-[-0.02em] leading-tight bg-gradient-to-r from-white via-panel-text to-panel-muted bg-clip-text">
+            <h1 className="m-0 text-[22px] font-space font-extrabold text-panel-text tracking-[-0.02em] leading-tight">
               {challenge.title}
             </h1>
           </div>
@@ -627,6 +632,13 @@ function ChallengeWorkspacePage({ params }: PageProps) {
         onClose={() => setListModalOpen(false)}
         challengeId={id}
         challengeTitle={challenge?.title}
+      />
+
+      {/* Sandbox Telemetry Observer Side Drawer */}
+      <SandboxObserverPanel
+        observer={observer}
+        open={telemetryOpen}
+        onClose={() => setTelemetryOpen(false)}
       />
     </div>
   );

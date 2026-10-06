@@ -1,12 +1,22 @@
 function getApiBaseUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (envUrl) {
+    if (typeof window !== "undefined" && (envUrl.includes("localhost") || envUrl.includes("127.0.0.1"))) {
+      try {
+        const parsed = new URL(envUrl);
+        const hostname = window.location.hostname || parsed.hostname;
+        return `${parsed.protocol}//${hostname}${parsed.port ? `:${parsed.port}` : ""}`;
+      } catch {
+        return envUrl;
+      }
+    }
+    return envUrl;
+  }
   if (typeof window !== "undefined") {
-    // If the page is visited at http://127.0.0.1:3000, call http://127.0.0.1:8005
-    // If the page is visited at http://localhost:3000, call http://localhost:8005
-    const hostname = window.location.hostname || "127.0.0.1";
+    const hostname = window.location.hostname || "localhost";
     return `http://${hostname}:8005`;
   }
-  return envUrl || "http://127.0.0.1:8005";
+  return "http://localhost:8005";
 }
 
 export const API_BASE_URL = getApiBaseUrl();

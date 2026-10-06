@@ -80,6 +80,7 @@ export function Navbar() {
             </>
           )}
           <NavLink href="/challenges">Challenges</NavLink>
+          <NavLink href="/articles">Postmortems</NavLink>
           <NavLink href="/roadmaps">Roadmaps</NavLink>
           <NavLink href="/quizzes">Quizzes</NavLink>
           <NavLink href="/leaderboard">Leaderboard</NavLink>
@@ -150,6 +151,13 @@ export function Navbar() {
             className={mobileLinkClass("/challenges")}
           >
             Challenges
+          </Link>
+          <Link
+            href="/articles"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className={mobileLinkClass("/articles")}
+          >
+            Postmortems
           </Link>
           <Link
             href="/roadmaps"

@@ -153,6 +153,46 @@ export default function ArticleDetailPage() {
     return <Terminal size={16} className="text-teal" />;
   };
 
+  const parseInlineFormatting = (text: string): React.ReactNode => {
+    // Splits text across inline `code` and **bold** patterns
+    const parts: React.ReactNode[] = [];
+    // Regex matching either **bold** or `code`
+    const regex = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+      // Text before match
+      if (match.index > lastIndex) {
+        parts.push(text.substring(lastIndex, match.index));
+      }
+      const token = match[0];
+      if (token.startsWith("**") && token.endsWith("**")) {
+        parts.push(
+          <strong key={`b-${match.index}`} className="font-semibold text-panel-text">
+            {token.slice(2, -2)}
+          </strong>
+        );
+      } else if (token.startsWith("`") && token.endsWith("`")) {
+        parts.push(
+          <code
+            key={`c-${match.index}`}
+            className="px-1.5 py-0.5 mx-0.5 rounded bg-panel-2 border border-panel-border text-teal font-mono text-[13px]"
+          >
+            {token.slice(1, -1)}
+          </code>
+        );
+      }
+      lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : text;
+  };
+
   const renderMarkdownContent = (content: string) => {
     const lines = content.split("\n");
     const elements: React.ReactNode[] = [];
@@ -184,32 +224,32 @@ export default function ArticleDetailPage() {
       if (line.startsWith("# ")) {
         elements.push(
           <h1 key={idx} className="font-space text-2xl sm:text-3xl font-extrabold text-panel-text mt-8 mb-4 border-b border-panel-border pb-3">
-            {line.replace("# ", "")}
+            {parseInlineFormatting(line.replace("# ", ""))}
           </h1>
         );
       } else if (line.startsWith("## ")) {
         elements.push(
           <h2 key={idx} className="font-space text-xl sm:text-2xl font-bold text-panel-text mt-7 mb-3 text-teal flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-teal shrink-0" />
-            {line.replace("## ", "")}
+            {parseInlineFormatting(line.replace("## ", ""))}
           </h2>
         );
       } else if (line.startsWith("### ")) {
         elements.push(
           <h3 key={idx} className="font-space text-lg font-bold text-panel-text mt-5 mb-2">
-            {line.replace("### ", "")}
+            {parseInlineFormatting(line.replace("### ", ""))}
           </h3>
         );
       } else if (line.startsWith("- ")) {
         elements.push(
           <li key={idx} className="ml-5 list-disc text-panel-muted text-sm sm:text-base leading-relaxed my-1 marker:text-teal">
-            {line.replace("- ", "")}
+            {parseInlineFormatting(line.replace("- ", ""))}
           </li>
         );
       } else if (/^\d+\.\s/.test(line)) {
         elements.push(
-          <li key={idx} className="ml-5 list-decimal text-panel-muted text-sm sm:text-base leading-relaxed my-1 marker:text-teal font-medium">
-            {line.replace(/^\d+\.\s/, "")}
+          <li key={idx} className="ml-5 list-decimal text-panel-muted text-sm sm:text-base leading-relaxed my-1 marker:text-teal font-normal">
+            {parseInlineFormatting(line.replace(/^\d+\.\s/, ""))}
           </li>
         );
       } else if (line.trim() === "") {
@@ -217,7 +257,7 @@ export default function ArticleDetailPage() {
       } else {
         elements.push(
           <p key={idx} className="text-panel-muted text-sm sm:text-base leading-relaxed my-2">
-            {line}
+            {parseInlineFormatting(line)}
           </p>
         );
       }
