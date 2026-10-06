@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { API_BASE_URL } from "@/lib/apiBase";
 
 interface OrgItem {
   id: string;
@@ -15,32 +16,23 @@ interface OrgItem {
 }
 
 export default function OrgsPage() {
-  const [orgs, setOrgs] = useState<OrgItem[]>([
-    {
-      id: "org_acme",
-      name: "Acme Infrastructure Engineering",
-      slug: "acme-corp",
-      planTier: "TEAM",
-      ssoProvider: "OKTA",
-      ssoDomain: "acme.corp",
-      ssoMetadataUrl: "https://dev-okta.acme.corp/metadata",
-      seatsPurchased: 50,
-      _count: { members: 12, users: 12, scenarios: 4 },
-    },
-  ]);
+  const [orgs, setOrgs] = useState<OrgItem[]>([]);
   const [editingOrg, setEditingOrg] = useState<OrgItem | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchOrgs = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch("http://localhost:8005/api/admin/orgs");
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data) setOrgs(json.data);
+      const res = await fetch(`${API_BASE_URL}/api/admin/orgs`);
+      if (!res.ok) {
+        throw new Error(`Failed to load organizations: HTTP ${res.status}`);
       }
-    } catch {
-      // fallback
+      const json = await res.json();
+      setOrgs(json.data || []);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load organizations");
     } finally {
       setLoading(false);
     }
@@ -51,7 +43,7 @@ export default function OrgsPage() {
     if (!editingOrg) return;
 
     try {
-      const res = await fetch(`http://localhost:8005/api/admin/orgs/${editingOrg.id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/orgs/${editingOrg.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -61,12 +53,13 @@ export default function OrgsPage() {
           planTier: editingOrg.planTier,
         }),
       });
-      if (res.ok) {
-        setOrgs((prev) => prev.map((o) => (o.id === editingOrg.id ? editingOrg : o)));
-        setEditingOrg(null);
+      if (!res.ok) {
+        throw new Error(`Failed to update organization: HTTP ${res.status}`);
       }
-    } catch {
-      // fallback
+      setOrgs((prev) => prev.map((o) => (o.id === editingOrg.id ? editingOrg : o)));
+      setEditingOrg(null);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error saving SSO configuration");
     }
   };
 

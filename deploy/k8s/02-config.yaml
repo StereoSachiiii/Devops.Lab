@@ -36,6 +36,7 @@ data:
   GUEST_TRIAL_TTL_MINS: "10"
   DEFAULT_USER_ROLE: "LEARNER"
   PUBLIC_GATEWAY_URL: "http://localhost:8005"
+  NEXT_PUBLIC_API_BASE_URL: "http://localhost:8005"
   
   # Ports (used by the services internally to bind)
   POSTGRES_PORT: "5432"
@@ -53,8 +54,10 @@ data:
   SANDBOX_WORKER_PORT: "8090"
   SANDBOX_ROUTER_PORT: "8080"
   
-  # Note: Observability ports (Grafana, Prometheus, etc.) can be added here if needed, 
-  # but they are usually decoupled from the core application namespace.
+  # Observability & Cluster Service URLs
+  PROMETHEUS_URL: "http://prometheus.observability.svc.cluster.local:9090"
+  GRAFANA_URL: "http://grafana.observability.svc.cluster.local:3000"
+  REDPANDA_CONSOLE_URL: "http://redpanda.devops-platform.svc.cluster.local:8080"
   OTEL_TRACES_ENDPOINT: "http://otel-collector.observability.svc.cluster.local:4318/v1/traces"
   LOKI_URL: "http://loki.observability.svc.cluster.local:3100"
 

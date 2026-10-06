@@ -1,33 +1,65 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { API_BASE_URL } from "@/lib/apiBase";
+
+interface SystemUrls {
+  gatewayUrl?: string;
+  prometheusUrl?: string;
+  grafanaUrl?: string;
+  redpandaUrl?: string;
+}
+
 export default function TelemetryPage() {
+  const [system, setSystem] = useState<SystemUrls | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadSystem() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/admin/overview`);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch system endpoints: HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        setSystem(data.system || {});
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to load cluster endpoints");
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadSystem();
+  }, []);
+
   const telemetryLinks = [
     {
       name: "Grafana Dashboards",
-      url: "http://localhost:3000",
+      url: system?.grafanaUrl,
       description: "Visual panels for cluster CPU, container network I/O, and sandbox latency.",
-      badge: "Port 3000",
+      badge: "Grafana",
       color: "badge-success",
     },
     {
       name: "Prometheus Metric Explorer",
-      url: "http://localhost:9090",
-      description: "Raw PromQL queries for `sandbox_active_containers` and `container_cpu_usage_seconds_total`.",
-      badge: "Port 9090",
+      url: system?.prometheusUrl,
+      description: "Raw PromQL queries for sandbox_active_containers and container_cpu_usage_seconds_total.",
+      badge: "Prometheus",
       color: "badge-info",
     },
     {
       name: "Redpanda Kafka Console",
-      url: "http://localhost:8080",
-      description: "Message broker inspection for `lab.session.events`, `challenge.checks`, and DLQ topics.",
-      badge: "Port 8080",
+      url: system?.redpandaUrl,
+      description: "Message broker inspection for lab.session.events, challenge.checks, and DLQ topics.",
+      badge: "Redpanda",
       color: "badge-warning",
     },
     {
       name: "API Gateway Metrics Endpoint",
-      url: "http://localhost:8005/metrics",
+      url: system?.gatewayUrl ? `${system.gatewayUrl}/metrics` : undefined,
       description: "Kong / Fastify API gateway Prometheus scraping target with request rates and error codes.",
-      badge: "Port 8005",
+      badge: "Gateway",
       color: "badge-neutral",
     },
   ];

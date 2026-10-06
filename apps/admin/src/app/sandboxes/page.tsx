@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { API_BASE_URL } from "@/lib/apiBase";
 
 interface SandboxSession {
   id: string;
@@ -11,32 +12,22 @@ interface SandboxSession {
 }
 
 export default function SandboxesPage() {
-  const [sessions, setSessions] = useState<SandboxSession[]>([
-    {
-      id: "14c2aa24-c6dc-4bdd-92b7-8019874c6973",
-      status: "ACTIVE",
-      startedAt: new Date(Date.now() - 15 * 60000).toISOString(),
-      user: { id: "usr_alex", email: "alex.rivera@acme.corp", name: "Alex Rivera" },
-      challenge: {
-        id: "cmutffkyb000p3e9qmwt75seq",
-        title: "Environment Variable Debugging",
-        slug: "env-var-debugging",
-        dockerImage: "ghcr.io/stereosachiiii/devops-lab/env-var-debug:latest",
-      },
-    },
-  ]);
-  const [loading, setLoading] = useState(false);
+  const [sessions, setSessions] = useState<SandboxSession[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchSandboxes = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch("http://localhost:8005/api/admin/sandboxes");
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data) setSessions(json.data);
+      const res = await fetch(`${API_BASE_URL}/api/admin/sandboxes`);
+      if (!res.ok) {
+        throw new Error(`Failed to load active sandboxes: HTTP ${res.status}`);
       }
-    } catch {
-      // fallback
+      const json = await res.json();
+      setSessions(json.data || []);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load active sandboxes");
     } finally {
       setLoading(false);
     }
@@ -45,12 +36,15 @@ export default function SandboxesPage() {
   const handleTerminate = async (sessionId: string) => {
     if (!confirm(`Force kill sandbox container for session ${sessionId}?`)) return;
     try {
-      await fetch(`http://localhost:8005/api/admin/sandboxes/${sessionId}/terminate`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/sandboxes/${sessionId}/terminate`, {
         method: "POST",
       });
+      if (!res.ok) {
+        throw new Error(`Failed to terminate sandbox: HTTP ${res.status}`);
+      }
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-    } catch {
-      // fallback
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error terminating sandbox session");
     }
   };
 

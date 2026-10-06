@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { API_BASE_URL } from "@/lib/apiBase";
 
 interface StatsData {
   totalUsers: number;
@@ -13,26 +14,29 @@ interface StatsData {
 
 export default function OverviewPage() {
   const [stats, setStats] = useState<StatsData>({
-    totalUsers: 4,
-    totalOrgs: 4,
-    totalChallenges: 18,
-    activeSandboxes: 1,
-    totalSubmissions: 32,
+    totalUsers: 0,
+    totalOrgs: 0,
+    totalChallenges: 0,
+    activeSandboxes: 0,
+    totalSubmissions: 0,
   });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchStats = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch("http://localhost:8005/api/admin/overview", {
+      const res = await fetch(`${API_BASE_URL}/api/admin/overview`, {
         headers: { "Content-Type": "application/json" },
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.stats) setStats(data.stats);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch overview metrics: HTTP ${res.status}`);
       }
-    } catch {
-      // Fallback to cached default indicators
+      const data = await res.json();
+      if (data.stats) setStats(data.stats);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load dashboard metrics");
     } finally {
       setLoading(false);
     }

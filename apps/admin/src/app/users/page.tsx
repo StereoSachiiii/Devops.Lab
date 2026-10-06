@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { API_BASE_URL } from "@/lib/apiBase";
 
 interface UserItem {
   id: string;
@@ -14,46 +15,28 @@ interface UserItem {
 }
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<UserItem[]>([
-    {
-      id: "usr_alex",
-      email: "alex.rivera@acme.corp",
-      name: "Alex Rivera",
-      username: "alexr",
-      role: "LEARNER",
-      xp: 450,
-      org: { id: "org_acme", name: "Acme Infrastructure Engineering", slug: "acme-corp" },
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "usr_admin",
-      email: "admin@devops.lab",
-      name: "Platform Admin",
-      username: "superadmin",
-      role: "ADMIN",
-      xp: 9999,
-      org: null,
-      createdAt: new Date().toISOString(),
-    },
-  ]);
+  const [users, setUsers] = useState<UserItem[]>([]);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchUsers = async () => {
     setLoading(true);
+    setError(null);
     try {
       const q = new URLSearchParams({
         search,
         role: roleFilter,
       });
-      const res = await fetch(`http://localhost:8005/api/admin/users?${q.toString()}`);
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data) setUsers(json.data);
+      const res = await fetch(`${API_BASE_URL}/api/admin/users?${q.toString()}`);
+      if (!res.ok) {
+        throw new Error(`Failed to load users: HTTP ${res.status}`);
       }
-    } catch {
-      // Keep state
+      const json = await res.json();
+      setUsers(json.data || []);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load user accounts");
     } finally {
       setLoading(false);
     }
@@ -61,28 +44,34 @@ export default function UsersPage() {
 
   const handleRoleChange = async (userId: string, newRole: UserItem["role"]) => {
     try {
-      await fetch(`http://localhost:8005/api/admin/users/${userId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/users/${userId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: newRole }),
       });
+      if (!res.ok) {
+        throw new Error(`Failed to update user role: HTTP ${res.status}`);
+      }
       setUsers((prev) =>
         prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
       );
-    } catch {
-      // optimistic fallback
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error updating role");
     }
   };
 
   const handleDeleteUser = async (userId: string) => {
     if (!confirm("Are you sure you want to delete this user?")) return;
     try {
-      await fetch(`http://localhost:8005/api/admin/users/${userId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/users/${userId}`, {
         method: "DELETE",
       });
+      if (!res.ok) {
+        throw new Error(`Failed to delete user: HTTP ${res.status}`);
+      }
       setUsers((prev) => prev.filter((u) => u.id !== userId));
-    } catch {
-      // fallback
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error deleting user");
     }
   };
 

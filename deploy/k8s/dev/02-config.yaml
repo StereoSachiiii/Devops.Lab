@@ -37,6 +37,7 @@ data:
   GUEST_TRIAL_TTL_MINS: "10"
   DEFAULT_USER_ROLE: "LEARNER"
   PUBLIC_GATEWAY_URL: "http://localhost:8005"
+  NEXT_PUBLIC_API_BASE_URL: "http://localhost:8005"
   CHALLENGE_IMAGE_REGISTRY: "ghcr.io/stereosachiiii/devops-lab"
   
   # Internal Service Ports
@@ -47,13 +48,18 @@ data:
   API_GATEWAY_PORT: "8000"
   API_GATEWAY_SECURE_PORT: "8443"
   WEB_FRONTEND_PORT: "3000"
+  ADMIN_FRONTEND_PORT: "3001"
+  ADMIN_APP_URL: "http://localhost:3001"
   AUTH_SERVICE_PORT: "3002"
   CORE_SERVICE_PORT: "3003"
   NOTIFICATION_SERVICE_PORT: "3004"
   SANDBOX_WORKER_PORT: "8090"
   SANDBOX_ROUTER_PORT: "8080"
   
-  # Observability
+  # Observability & Cluster Endpoints
+  PROMETHEUS_URL: "http://prometheus.devops-dev.svc.cluster.local:9090"
+  GRAFANA_URL: "http://grafana.devops-dev.svc.cluster.local:3000"
+  REDPANDA_CONSOLE_URL: "http://redpanda.devops-dev.svc.cluster.local:8080"
   LOKI_URL: "http://localhost:3100"
   OTEL_TRACES_ENDPOINT: "http://localhost:4318/v1/traces"
   TEMPO_URL: "http://localhost:3200"

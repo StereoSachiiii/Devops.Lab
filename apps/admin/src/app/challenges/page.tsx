@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { API_BASE_URL } from "@/lib/apiBase";
 
 interface ChallengeItem {
   id: string;
@@ -14,29 +15,9 @@ interface ChallengeItem {
 }
 
 export default function ChallengesPage() {
-  const [challenges, setChallenges] = useState<ChallengeItem[]>([
-    {
-      id: "cmutffkyb000p3e9qmwt75seq",
-      title: "Environment Variable Debugging",
-      slug: "env-var-debugging",
-      difficulty: "JUNIOR",
-      category: "DOCKER",
-      dockerImage: "env-var-debug:latest",
-      xp: 100,
-      _count: { sessions: 14, submissions: 8, comments: 2 },
-    },
-    {
-      id: "cmutffkza000s3e9qy37l0g33",
-      title: "Kubernetes Pod CrashLoopBackOff",
-      slug: "k8s-pod-crashloop",
-      difficulty: "MID",
-      category: "KUBERNETES",
-      dockerImage: "k8s-pod-crashloop:latest",
-      xp: 150,
-      _count: { sessions: 9, submissions: 5, comments: 0 },
-    },
-  ]);
-  const [loading, setLoading] = useState(false);
+  const [challenges, setChallenges] = useState<ChallengeItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newChallenge, setNewChallenge] = useState({
     title: "",
@@ -50,14 +31,16 @@ export default function ChallengesPage() {
 
   const fetchChallenges = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch("http://localhost:8005/api/admin/challenges");
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data) setChallenges(json.data);
+      const res = await fetch(`${API_BASE_URL}/api/admin/challenges`);
+      if (!res.ok) {
+        throw new Error(`Failed to load challenges: HTTP ${res.status}`);
       }
-    } catch {
-      // fallback
+      const json = await res.json();
+      setChallenges(json.data || []);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load challenges catalog");
     } finally {
       setLoading(false);
     }
@@ -66,29 +49,34 @@ export default function ChallengesPage() {
   const handleCreateChallenge = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("http://localhost:8005/api/admin/challenges", {
+      const res = await fetch(`${API_BASE_URL}/api/admin/challenges`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newChallenge),
       });
-      if (res.ok) {
-        setShowCreateModal(false);
-        fetchChallenges();
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to create challenge: HTTP ${res.status}`);
       }
-    } catch {
-      // fallback
+      setShowCreateModal(false);
+      fetchChallenges();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error creating challenge");
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this challenge?")) return;
     try {
-      await fetch(`http://localhost:8005/api/admin/challenges/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/challenges/${id}`, {
         method: "DELETE",
       });
+      if (!res.ok) {
+        throw new Error(`Failed to delete challenge: HTTP ${res.status}`);
+      }
       setChallenges((prev) => prev.filter((c) => c.id !== id));
-    } catch {
-      // fallback
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error deleting challenge");
     }
   };
 

@@ -46,6 +46,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
       request.prisma.submission.count(),
     ]);
 
+    const gatewayUrl = process.env["PUBLIC_GATEWAY_URL"] || process.env["API_GATEWAY_URL"] || undefined;
+    const prometheusUrl = process.env["PROMETHEUS_URL"] || undefined;
+    const grafanaUrl = process.env["GRAFANA_URL"] || undefined;
+    const redpandaUrl = process.env["REDPANDA_CONSOLE_URL"] || process.env["REDPANDA_URL"] || undefined;
+
     return reply.send({
       stats: {
         totalUsers,
@@ -55,10 +60,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
         totalSubmissions,
       },
       system: {
-        gatewayUrl: "http://localhost:8005",
-        prometheusUrl: "http://localhost:9090",
-        grafanaUrl: "http://localhost:3000",
-        redpandaUrl: "http://localhost:8080",
+        gatewayUrl,
+        prometheusUrl,
+        grafanaUrl,
+        redpandaUrl,
       },
     });
   });
