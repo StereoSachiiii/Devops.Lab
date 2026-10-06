@@ -17,11 +17,13 @@ function Start-Forwarder($svc, $localPort, $remotePort, $namespace) {
     Start-Job -ScriptBlock {
         param($svc, $localPort, $remotePort, $namespace)
         while ($true) {
-            # Kill anything lingering on this local port before binding
+            # Kill non-system process lingering on this local port before binding
             $connections = Get-NetTCPConnection -LocalPort $localPort -ErrorAction SilentlyContinue
             if ($connections) {
                 foreach ($conn in $connections) {
-                    Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
+                    if ($conn.OwningProcess -gt 4 -and $conn.OwningProcess -ne $PID) {
+                        Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
+                    }
                 }
             }
             Write-Host "[Watchdog] Forwarding $localPort -> ${svc}:${remotePort}"
@@ -50,9 +52,18 @@ Write-Host "`nPress Ctrl+C to stop all forwarding.`n" -ForegroundColor Yellow
 
 try {
     while ($true) {
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds 3
         foreach ($key in @($jobs.Keys)) {
-            if ($jobs[$key].State -ne "Running") {
+            $job = $jobs[$key]
+            $output = Receive-Job -Job $job -ErrorAction SilentlyContinue
+            if ($output) {
+                foreach ($line in $output) {
+                    Write-Host "[$key] $line" -ForegroundColor DarkGray
+                }
+            }
+            if ($job.State -ne "Running") {
+                Write-Host "[Watchdog] Forwarder for $key stopped. Restarting..." -ForegroundColor Yellow
+                Remove-Job $job -Force -ErrorAction SilentlyContinue
                 if ($key -eq "web-frontend") { $jobs[$key] = Start-Forwarder "web-frontend" 3000 3000 "devops-dev" }
                 if ($key -eq "admin-frontend") { $jobs[$key] = Start-Forwarder "admin-frontend" 3001 3001 "devops-dev" }
                 if ($key -eq "grafana") { $jobs[$key] = Start-Forwarder "grafana" 3005 3000 "devops-dev" }
