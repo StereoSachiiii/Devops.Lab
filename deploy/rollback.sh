@@ -24,7 +24,7 @@ usage() {
   echo "Example: ./deploy/rollback.sh core-service 1.0.4"
   echo "Example: ./deploy/rollback.sh web-frontend devops/web-frontend:sha-abc1234"
   echo ""
-  echo "Allowed rollback services: auth-service, core-service, notification-service, sandbox-router, sandbox-worker, web-frontend, api-gateway"
+  echo "Allowed rollback services: auth-service, core-service, notification-service, sandbox-router, sandbox-worker, web-frontend, admin-frontend, api-gateway"
   exit 1
 }
 
@@ -66,6 +66,10 @@ case "$SERVICE_NAME" in
   web-frontend)
     ENV_VAR_NAME="WEB_FRONTEND_IMAGE"
     DEFAULT_BASE="devops/web-frontend"
+    ;;
+  admin-frontend)
+    ENV_VAR_NAME="ADMIN_FRONTEND_IMAGE"
+    DEFAULT_BASE="devops/admin-frontend"
     ;;
   api-gateway)
     echo "ℹ️ Gateway rollback: Restarting api-gateway..."

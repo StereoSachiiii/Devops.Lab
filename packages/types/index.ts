@@ -149,6 +149,7 @@ export interface Article {
   authorName: string;
   authorRole: string;
   authorAvatar?: string | null;
+  thumbnailUrl?: string | null;
   readTime: string;
   tags: string[];
   featured?: boolean;

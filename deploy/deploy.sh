@@ -84,13 +84,14 @@ docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d api-gateway
 wait_for_healthy api-gateway 60
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TIER 4: Client Web Application
+# TIER 4: Client & Admin Web Applications
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "🚀 [Tier 4] Starting Web Frontend (web-frontend)..."
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d web-frontend
+echo "🚀 [Tier 4] Starting Web Frontend & Admin Portal (web-frontend, admin-frontend)..."
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d web-frontend admin-frontend
 
 wait_for_healthy web-frontend 60
+wait_for_healthy admin-frontend 60
 
 # ─────────────────────────────────────────────────────────────────────────────
 # POST-DEPLOY: Smoke Testing
@@ -104,4 +105,5 @@ echo "================================================================="
 echo "🎉 ALL TIERS DEPLOYED AND HEALTHY!"
 echo "   Gateway: http://localhost:8005"
 echo "   Frontend: http://localhost:3000"
+echo "   Admin:    http://localhost:3001"
 echo "================================================================="

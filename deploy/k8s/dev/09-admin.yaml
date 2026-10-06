@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-frontend
+  namespace: devops-dev
+  labels:
+    app: admin-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: admin-frontend
+  template:
+    metadata:
+      labels:
+        app: admin-frontend
+    spec:
+      containers:
+        - name: admin-frontend
+          image: devops/admin-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3001
+              name: http
+          env:
+            - name: NEXT_PUBLIC_API_BASE_URL
+              value: "http://localhost:8005"
+            - name: PORT
+              value: "3001"
+            - name: HOSTNAME
+              value: "0.0.0.0"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-frontend
+  namespace: devops-dev
+  labels:
+    app: admin-frontend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3001
+      targetPort: 3001
+      name: http
+  selector:
+    app: admin-frontend

@@ -16,6 +16,7 @@ import { nodeRoutes } from "./modules/content/node.routes";
 import { quizRoutes } from "./modules/content/quiz.routes";
 import { roadmapRoutes } from "./modules/content/roadmap.routes";
 import { articleRoutes } from "./modules/content/article.routes";
+import { mediaRoutes } from "./modules/content/media.routes";
 import { challengeRoutes } from "./modules/challenge/challenge.routes";
 import { assistantRoutes } from "./modules/assistant/assistant.routes";
 import { leaderboardRoutes } from "./modules/user/leaderboard.routes";
@@ -24,6 +25,7 @@ import { orgRoutes } from "./modules/org/org.routes";
 import { shareRoutes } from "./modules/social/share.routes";
 import { commentRoutes } from "./modules/social/comment.routes";
 import { challengeListRoutes } from "./modules/content/list.routes";
+import { adminRoutes } from "./modules/admin/admin.routes";
 import { registerProgressConsumers } from "./modules/progress/consumers";
 import { registerHealthChecks } from "./utils/health";
 import { metricsPlugin } from "./plugins/metrics";
@@ -129,6 +131,9 @@ export async function buildApp(opts: AppOptions) {
   await app.register(articleRoutes, { prefix: "/api/content" });
   await app.register(articleRoutes, { prefix: "/api" });
 
+  await app.register(mediaRoutes);
+  await app.register(mediaRoutes, { prefix: "/api" });
+
   // Kong uses strip_path=false, so routes include /api prefix
   await app.register(challengeRoutes, { prefix: "/api" });
   await app.register(assistantRoutes, { prefix: "/api" });
@@ -141,6 +146,8 @@ export async function buildApp(opts: AppOptions) {
   await app.register(commentRoutes, { prefix: "/api" });
   await app.register(challengeListRoutes);
   await app.register(challengeListRoutes, { prefix: "/api" });
+  await app.register(adminRoutes);
+  await app.register(adminRoutes, { prefix: "/api" });
 
 
   registerHealthChecks(app as unknown as FastifyInstance, prisma, kafka);

@@ -22,6 +22,8 @@ spec:
     - fromEndpoints:
         - matchLabels:
             app: web-frontend
+        - matchLabels:
+            app: admin-frontend
       toPorts:
         - ports:
             - port: "8000"

@@ -127,56 +127,89 @@ async function main() {
   console.log("📦 Seeding Organizations...");
   const acmeOrg = await prisma.org.upsert({
     where: { slug: "acme-corp" },
-    update: {},
+    update: {
+      ssoProvider: "OKTA",
+      ssoDomain: "acme.corp",
+      ssoMetadataUrl: "https://acme.okta.com/app/exk12345/sso/saml/metadata",
+    },
     create: {
       name: "Acme Infrastructure Engineering",
       slug: "acme-corp",
       planTier: PlanTier.TEAM,
       seatsPurchased: 50,
+      ssoProvider: "OKTA",
+      ssoDomain: "acme.corp",
+      ssoMetadataUrl: "https://acme.okta.com/app/exk12345/sso/saml/metadata",
     },
   });
 
   const cloudScaleOrg = await prisma.org.upsert({
     where: { slug: "cloudscale-tech" },
-    update: {},
+    update: {
+      ssoProvider: "AZURE_AD",
+      ssoDomain: "cloudscale.io",
+      ssoMetadataUrl: "https://login.microsoftonline.com/cloudscale.io/federationmetadata/2007-06/federationmetadata.xml",
+    },
     create: {
       name: "CloudScale Technologies",
       slug: "cloudscale-tech",
       planTier: PlanTier.PRO,
       seatsPurchased: 10,
+      ssoProvider: "AZURE_AD",
+      ssoDomain: "cloudscale.io",
+      ssoMetadataUrl: "https://login.microsoftonline.com/cloudscale.io/federationmetadata/2007-06/federationmetadata.xml",
     },
   });
 
   const devSecOpsOrg = await prisma.org.upsert({
     where: { slug: "devsecops-global" },
-    update: {},
+    update: {
+      ssoProvider: "SAML",
+      ssoDomain: "devsecops.org",
+      ssoMetadataUrl: "https://auth.devsecops.org/saml/metadata",
+    },
     create: {
       name: "DevSecOps Global Labs",
       slug: "devsecops-global",
       planTier: PlanTier.TEAM,
       seatsPurchased: 100,
+      ssoProvider: "SAML",
+      ssoDomain: "devsecops.org",
+      ssoMetadataUrl: "https://auth.devsecops.org/saml/metadata",
     },
   });
 
   const finTechOrg = await prisma.org.upsert({
     where: { slug: "fintech-ops" },
-    update: {},
+    update: {
+      ssoProvider: "OKTA",
+      ssoDomain: "fintech.com",
+      ssoMetadataUrl: "https://fintech.okta.com/app/saml/metadata",
+    },
     create: {
       name: "FinTech Systems & Reliability",
       slug: "fintech-ops",
       planTier: PlanTier.PRO,
       seatsPurchased: 15,
+      ssoProvider: "OKTA",
+      ssoDomain: "fintech.com",
+      ssoMetadataUrl: "https://fintech.okta.com/app/saml/metadata",
     },
   });
 
   const openSourceOrg = await prisma.org.upsert({
     where: { slug: "opensource-cloud" },
-    update: {},
+    update: {
+      ssoProvider: null,
+      ssoDomain: "opensource.net",
+    },
     create: {
       name: "OpenSource Cloud Guild",
       slug: "opensource-cloud",
       planTier: PlanTier.FREE,
       seatsPurchased: 5,
+      ssoProvider: null,
+      ssoDomain: "opensource.net",
     },
   });
 
@@ -1198,6 +1231,7 @@ In real-world environments, deterministic CLI execution, automated health probes
       summary: "How an engineer accidentally deleted the production release branch during peak checkout traffic, and how reflog surgery saved millions.",
       category: "Postmortem",
       badge: "Version Control",
+      thumbnailUrl: "https://images.unsplash.com/photo-1618401471353-b98afee0b2eb?auto=format&fit=crop&w=800&q=80",
       authorName: "Alex Vance",
       authorRole: "Principal Site Reliability Engineer",
       readTime: "4 min read",
@@ -1231,6 +1265,7 @@ The deployment script lacked branch protection checks and permitted unilateral \
       summary: "Deep dive into uncollected EventEmitters and circular closures that quietly brought down a Kubernetes microservice cluster under load.",
       category: "Performance",
       badge: "Memory Profiling",
+      thumbnailUrl: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=800&q=80",
       authorName: "Elena Rostova",
       authorRole: "Staff Infrastructure Engineer",
       readTime: "6 min read",
@@ -1265,6 +1300,7 @@ Because the listener held a closure reference to the incoming \`req\` object (wh
       summary: "Why automated certificate renewal scripts failed silently across 4 regions, and how to build self-healing TLS automation.",
       category: "Security",
       badge: "TLS & Security",
+      thumbnailUrl: "https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=800&q=80",
       authorName: "Marcus Brody",
       authorRole: "Head of Infrastructure & Security",
       readTime: "5 min read",
@@ -1292,6 +1328,7 @@ At 03:02 UTC on Sunday, the wildcard TLS certificate for \`*.api.domain.com\` re
       summary: "A breakdown of how a single syntax error in /etc/nginx/nginx.conf slipped through review and blackholed multi-million dollar shopping traffic.",
       category: "Configuration",
       badge: "Configuration Tuning",
+      thumbnailUrl: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=800&q=80",
       authorName: "Sarah Chen",
       authorRole: "DevOps Tech Lead",
       readTime: "3 min read",
@@ -1327,6 +1364,7 @@ This exact scenario is modeled in our interactive sandbox: **"Fix the Broken Ngi
       summary: "An in-depth postmortem on thread-pool starvation and thundering herd effects when a centralized cache replica fell off the network.",
       category: "Performance",
       badge: "Distributed Systems",
+      thumbnailUrl: "https://images.unsplash.com/photo-1544197150-b99a580bb7a8?auto=format&fit=crop&w=800&q=80",
       authorName: "Liam O'Connor",
       authorRole: "Principal Systems Architect",
       readTime: "7 min read",
@@ -1347,6 +1385,7 @@ Implemented client-side resilience with Hedged Requests, exponential backoff wit
       summary: "When an unmonitored analytics cron job missed an index lock and locked the customer balances table for 45 minutes straight.",
       category: "Configuration",
       badge: "Database Reliability",
+      thumbnailUrl: "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=800&q=80",
       authorName: "Maya Lin",
       authorRole: "Database Administrator & SRE",
       readTime: "4 min read",
@@ -1688,6 +1727,97 @@ Configured global Postgres \`lock_timeout = '2s'\` and migrated all batch data t
         },
       });
     }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 21. POSTMORTEM ARTICLES (Deep-dive incident analyses)
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("📰 Seeding Postmortem Articles...");
+  const articlesData = [
+    {
+      slug: "crowdstrike-falcon-null-pointer-incident",
+      title: "Root Cause Analysis: CrowdStrike Falcon Channel File 291 Panic",
+      summary: "In-depth technical breakdown of the logic error in Channel File 291 that caused 8.5 million Windows hosts to crash into bugcheck 0x50 (PAGE_FAULT_IN_NONPAGED_AREA).",
+      category: "Postmortem",
+      badge: "Kernel Outage",
+      thumbnailUrl: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=800&q=80",
+      authorName: "Sarah Chen",
+      authorRole: "Lead Security Architect",
+      readTime: "8 min read",
+      tags: ["kernel", "windows", "incident", "driver", "reliability"],
+      featured: true,
+      likes: 42,
+      content: `# Root Cause Analysis: CrowdStrike Falcon Channel File 291
+
+## Executive Summary
+On July 19, 2024, CrowdStrike triggered global IT outages when an update to Channel File 291 was distributed to Windows hosts running sensor version 7.11 and above.
+
+## Root Cause
+The Content Validator accepted a configuration template containing an out-of-bounds pointer read expectation. When the kernel driver attempted to parse entry 21 in the array, it encountered an unmapped memory address triggering a PAGE_FAULT_IN_NONPAGED_AREA.
+
+## Technical Takeaways
+- Kernel drivers must validate configuration arrays against rigid bounds before dereferencing.
+- Staged deployment rings (canary deployment) must be mandatory for all dynamic definitions.`,
+    },
+    {
+      slug: "aws-s3-us-east-1-outage-breakdown",
+      title: "The Typo That Took Down S3 in us-east-1",
+      summary: "How an authorized command executed with an incorrect parameter removed more billing sub-system capacity than intended, triggering a cascading index restart.",
+      category: "Postmortem",
+      badge: "Cloud Infrastructure",
+      thumbnailUrl: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=800&q=80",
+      authorName: "Jane Doe",
+      authorRole: "Staff Platform Engineer",
+      readTime: "6 min read",
+      tags: ["aws", "s3", "distributed-systems", "sre"],
+      featured: true,
+      likes: 87,
+      content: `# Anatomy of the S3 us-east-1 Cascading Failure
+
+## Incident Background
+An engineer executed a routine playbook command to remove servers from the S3 subsystem. A typo in the command arguments removed servers beyond the threshold, including servers powering the central index registry.
+
+## Cascading Collapse
+Because other S3 dependent subsystems in us-east-1 (EC2, Lambda, EBS) depended on index lookup availability, the sudden drop in index capacity triggered client retry storms, saturating network interfaces and prolonging system recovery.
+
+## Preventive Measures
+- Hard rate-limiting and percentage caps on destructive infrastructure removal commands.
+- Circuit breakers designed into dependency call graphs.`,
+    },
+    {
+      slug: "gitlab-database-incident-and-backup-restore",
+      title: "GitLab.com Database Outage & Live Recovery Lessons",
+      summary: "When primary PostgreSQL replication lagged and 300GB of production data was accidentally removed, why 5 backup mechanisms failed before manual recovery succeeded.",
+      category: "Postmortem",
+      badge: "Database Recovery",
+      thumbnailUrl: "https://images.unsplash.com/photo-1544383835-bda2bc66a55d?auto=format&fit=crop&w=800&q=80",
+      authorName: "Marcus Vance",
+      authorRole: "Site Reliability Engineer",
+      readTime: "7 min read",
+      tags: ["postgresql", "replication", "backups", "disaster-recovery"],
+      featured: false,
+      likes: 31,
+      content: `# GitLab Database Incident Analysis
+
+## Chronology of Events
+During an ongoing replication desynchronization incident, an operator mistakenly executed rm -rf on the wrong cluster directory on the primary PostgreSQL node.
+
+## Why Backups Failed
+1. Scheduled LVM snapshots were only capturing the secondary node storage, which had been frozen.
+2. WAL-E archiving silently failed due to an outdated Python client library version.
+3. Automated backup notifications had been disabled due to alert fatigue.
+
+## SRE Core Axiom
+Untested backups are not backups. Automated restore drills must run continuously in staging environments to verify data integrity.`,
+    },
+  ];
+
+  for (const art of articlesData) {
+    await prisma.article.upsert({
+      where: { slug: art.slug },
+      update: art,
+      create: art,
+    });
   }
 
   const counts = {

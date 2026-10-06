@@ -241,6 +241,7 @@ model Article {
   title       String
   summary     String
   content     String    @db.Text
+  thumbnailUrl String?  // URL to media/thumbnail image
   category    String    // e.g., "Postmortem", "Architecture", "Incident Analysis", "Security"
   badge       String    // e.g., "Outage Analysis", "Performance", "Security"
   authorName  String    @default("DevOps.lab SRE Team")
@@ -260,6 +261,19 @@ model Article {
   @@index([slug])
   @@index([category])
   @@index([publishedAt])
+}
+
+model Media {
+  id          String    @id @default(cuid())
+  filename    String
+  mimeType    String
+  sizeBytes   Int
+  storagePath String
+  url         String
+  uploadedBy  String?
+  createdAt   DateTime  @default(now())
+
+  @@index([createdAt(sort: Desc)])
 }
 
 model ArticleLike {

@@ -1,0 +1,117 @@
+# =============================================================================
+# TIER 4: Admin Portal Frontend (Production)
+# =============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-frontend
+  namespace: devops-platform
+  labels:
+    app: admin-frontend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3001
+      targetPort: 3001
+      name: http
+  selector:
+    app: admin-frontend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-frontend
+  namespace: devops-platform
+  labels:
+    app: admin-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: admin-frontend
+  template:
+    metadata:
+      labels:
+        app: admin-frontend
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: admin-frontend
+                topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: admin-frontend
+          image: docker.io/devops/admin-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3001
+              name: http
+          envFrom:
+            - configMapRef:
+                name: devops-config
+            - secretRef:
+                name: devops-secrets
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3001"
+            - name: HOSTNAME
+              value: "0.0.0.0"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3001
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: admin-frontend-pdb
+  namespace: devops-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: admin-frontend
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: admin-frontend-hpa
+  namespace: devops-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: admin-frontend
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75

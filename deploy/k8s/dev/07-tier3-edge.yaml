@@ -23,6 +23,8 @@ data:
           origins:
             - http://localhost:3000
             - http://127.0.0.1:3000
+            - http://localhost:3001
+            - http://127.0.0.1:3001
             - http://localhost
             - http://127.0.0.1
           methods:
@@ -52,7 +54,7 @@ data:
           redis:
             host: redis.devops-dev.svc.cluster.local
             port: 6379
-            password: ${REDIS_PASSWORD}
+            password: redis_dev_password
             database: 1
 
     services:
@@ -74,16 +76,50 @@ data:
           - name: user-routes
             paths: [ /api/users ]
             strip_path: false
-          - name: leaderboards-routes
-            paths: [ /api/leaderboards ]
+          - name: me-routes
+            paths: [ /api/me ]
             strip_path: false
+          - name: article-routes
+            paths: [ /api/articles ]
+            strip_path: false
+          - name: leaderboard-routes
+            paths: [ /api/leaderboard, /api/leaderboards ]
+            strip_path: false
+          - name: assistant-routes
+            paths: [ /api/assistant ]
+            strip_path: false
+          - name: shares-routes
+            paths: [ /api/shares ]
+            strip_path: false
+          - name: comments-routes
+            paths: [ /api/comments ]
+            strip_path: false
+          - name: lists-routes
+            paths: [ /api/lists ]
+            strip_path: false
+          - name: media-routes
+            paths: [ /api/media ]
+            strip_path: false
+          - name: admin-routes
+            paths: [ /api/admin ]
+            strip_path: false
+          - name: core-health-routes
+            paths: [ /api/core ]
+            strip_path: true
 
       - name: auth-service
         url: http://auth-service.devops-dev.svc.cluster.local:3002
         routes:
           - name: auth-routes
             paths: [ /api/auth ]
-            strip_path: false
+            strip_path: true
+
+      - name: notification-service
+        url: http://notification-service.devops-dev.svc.cluster.local:3004
+        routes:
+          - name: notify-routes
+            paths: [ /api/notify ]
+            strip_path: true
 
       - name: sandbox-router
         url: http://sandbox-router.devops-dev.svc.cluster.local:8080

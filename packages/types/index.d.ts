@@ -47,6 +47,24 @@ export interface QuizMetadata {
     editorial?: string;
     takeaways?: string[];
 }
+export interface QuizAttemptRecord {
+    id: string;
+    quizId: string;
+    quizTitle: string;
+    score: number;
+    total: number;
+    passed: boolean;
+    createdAt: string;
+}
+export interface QuizHistoryResponse {
+    attempts: QuizAttemptRecord[];
+}
+export interface QuizEditorialResponse {
+    id: string;
+    title: string;
+    editorial: string;
+    takeaways?: string[];
+}
 export interface QuizNode {
     id: string;
     slug: string;
@@ -64,6 +82,23 @@ export interface QuizProgress {
     status: "Not started" | "Completed";
     score?: number;
     total?: number;
+}
+export interface KnowledgeNode {
+    id: string;
+    type: "CHALLENGE" | "INCIDENT" | "QUIZ";
+    title: string;
+    description: string;
+    metadata?: Record<string, unknown> | null;
+    createdAt: string;
+    outgoing?: Array<{
+        toId: string;
+    }>;
+    incoming?: Array<{
+        fromId: string;
+    }>;
+}
+export interface NodeFrontierResponse {
+    nodes: KnowledgeNode[];
 }
 export type ApiSuccess<T> = {
     ok: true;
@@ -104,9 +139,12 @@ export interface Article {
     authorName: string;
     authorRole: string;
     authorAvatar?: string | null;
+    thumbnailUrl?: string | null;
     readTime: string;
     tags: string[];
     featured?: boolean;
+    trendingRank?: number;
+    likes?: number;
     publishedAt: string;
 }
 export interface Challenge {
@@ -121,7 +159,8 @@ export interface Challenge {
     templateCode?: string;
     editorLanguage?: string;
     editorial?: string | null;
-    authorNotes?: string | null;
+    requiredProvider?: string;
+    guestTrialEligible?: boolean;
     moduleId?: string;
     module?: {
         title: string;
@@ -134,14 +173,19 @@ export interface Session {
     sessionId: string;
     status: string;
     challengeTitle: string;
-    dockerImage: string;
-    userId: string;
-    challengeId: string;
-    sandboxId: string | null;
-    host: string | null;
-    sshPort: number | null;
-    httpPort: number | null;
-    expiresAt: string | null;
+    dockerImage?: string;
+    userId?: string;
+    challengeId?: string;
+    sandboxId?: string | null;
+    host?: string | null;
+    sshPort?: number | null;
+    httpPort?: number | null;
+    expiresAt?: string | null;
+    terminalUrl?: string;
+    validateUrl?: string;
+    ttlMins?: number;
+    isGuestTrial?: boolean;
+    token?: string;
 }
 export interface RoadmapNode {
     id: string;
@@ -162,6 +206,8 @@ export interface Roadmap {
     icon: string;
     nodeCount: number;
     timeEstimate: string;
+    category?: string | null;
+    tags?: string[];
     nodes?: RoadmapNode[];
 }
 export interface RoadmapProgress {
@@ -309,4 +355,20 @@ export interface UserProfile {
 export interface MfaSetupResponse {
     secret: string;
     qrCode: string;
+}
+export interface FollowedUser {
+    id: string;
+    name: string | null;
+    username?: string | null;
+    avatarUrl?: string | null;
+    jobTitle?: string | null;
+    xp?: number;
+}
+export interface BookmarkedChallenge {
+    id: string;
+    title: string;
+    difficulty: "EASY" | "MEDIUM" | "HARD";
+    category: string;
+    tags?: string[];
+    xp: number;
 }
