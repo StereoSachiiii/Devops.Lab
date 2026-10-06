@@ -119,6 +119,75 @@ export async function oauthRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.redirect(`${config.frontendUrl}/auth/callback?exchange_token=${exchangeToken}`);
   });
 
+  // ── Enterprise SSO Discovery ──────────────────────────────────────────────
+  fastify.get("/login/sso/discovery", async (req: FastifyRequest, reply: FastifyReply) => {
+    const { domain, orgSlug } = (req.query || {}) as { domain?: string; orgSlug?: string };
+
+    if (!domain && !orgSlug) {
+      return reply.status(400).send({ error: "Domain or organization slug is required for SSO discovery." });
+    }
+
+    const org = await req.prisma.org.findFirst({
+      where: {
+        OR: [
+          ...(orgSlug ? [{ slug: orgSlug }] : []),
+          ...(domain ? [{ ssoDomain: domain }] : []),
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        ssoDomain: true,
+        ssoProvider: true,
+        ssoMetadataUrl: true,
+      },
+    });
+
+    if (!org || (!org.ssoDomain && !org.ssoProvider)) {
+      return reply.status(404).send({
+        error: "SSO is not configured for this domain or organization.",
+        code: "SSO_NOT_CONFIGURED",
+      });
+    }
+
+    return reply.send({
+      enabled: true,
+      org: {
+        id: org.id,
+        name: org.name,
+        slug: org.slug,
+        provider: org.ssoProvider || "SAML",
+        domain: org.ssoDomain,
+      },
+    });
+  });
+
+  // ── SAML 2.0 Service Provider Metadata XML ─────────────────────────────────
+  fastify.get("/login/sso/saml/metadata/:orgSlug", async (req: FastifyRequest, reply: FastifyReply) => {
+    const { orgSlug } = req.params as { orgSlug: string };
+    const org = await req.prisma.org.findUnique({ where: { slug: orgSlug } });
+
+    if (!org) {
+      return reply.status(404).send({ error: "Organization not found" });
+    }
+
+    const gateway = process.env['PUBLIC_GATEWAY_URL'] || config.frontendUrl || "http://localhost:8005";
+    const entityId = `${gateway}/api/auth/sso/saml/${org.slug}`;
+    const acsUrl = `${gateway}/api/auth/login/sso/saml/acs`;
+
+    const metadataXml = `<?xml version="1.0" encoding="UTF-8"?>
+<md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" entityID="${entityId}">
+  <md:SPSSODescriptor AuthnRequestsSigned="false" WantAssertionsSigned="true" protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>
+    <md:AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="${acsUrl}" index="1"/>
+  </md:SPSSODescriptor>
+</md:EntityDescriptor>`;
+
+    reply.header("Content-Type", "application/xml");
+    return reply.send(metadataXml);
+  });
+
   // ── Enterprise SSO Login (Okta / SAML / Azure AD Domain Flow) ─────────────
   fastify.post("/login/sso", async (req: FastifyRequest, reply: FastifyReply) => {
     const { email, orgSlug, ssoId, name, avatarUrl } = (req.body || {}) as {
@@ -129,15 +198,15 @@ export async function oauthRoutes(fastify: FastifyInstance): Promise<void> {
       avatarUrl?: string;
     };
 
-    if (!email || (!orgSlug && !ssoId)) {
+    if (!email && !orgSlug && !ssoId) {
       return reply.status(400).send({
-        error: "Work email and organization domain/slug are required for SSO sign-in.",
+        error: "Work email, organization slug, or SSO subject ID is required.",
         code: "INVALID_SSO_PAYLOAD",
       });
     }
 
     // Verify organization exists and has SSO enabled
-    const domain = email.split("@")[1];
+    const domain = email && email.includes("@") ? email.split("@")[1] : undefined;
     const org = await req.prisma.org.findFirst({
       where: {
         OR: [
@@ -149,18 +218,19 @@ export async function oauthRoutes(fastify: FastifyInstance): Promise<void> {
 
     if (!org) {
       return reply.status(404).send({
-        error: `No organization configured for SSO with domain @${domain || orgSlug}.`,
+        error: `No organization configured for SSO with domain @${domain || orgSlug || "unknown"}.`,
         code: "SSO_ORG_NOT_FOUND",
       });
     }
 
-    const providerId = ssoId || `sso_${org.id}_${email}`;
+    const resolvedEmail = email || `user@${org.ssoDomain || org.slug + ".internal"}`;
+    const providerId = ssoId || `sso_${org.id}_${resolvedEmail}`;
 
     const user = await findOrCreateOAuthUser({
       provider: "sso",
       providerId,
-      email,
-      name: name || email.split("@")[0] || "Enterprise User",
+      email: resolvedEmail,
+      name: name || resolvedEmail.split("@")[0] || "Enterprise User",
       avatarUrl: avatarUrl || null,
       emailVerified: true,
       orgId: org.id,
