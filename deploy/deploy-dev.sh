@@ -21,6 +21,25 @@ echo ""
 echo "Applying Kubernetes Manifests (01 to 09)..."
 kubectl apply -f deploy/k8s/dev/01-namespace.yaml
 kubectl apply -f deploy/k8s/dev/02-config.yaml
+
+if [ -f ".env" ]; then
+    echo "🔐 Injecting local secrets from uncommitted .env into devops-secrets..."
+    SECRET_ARGS=()
+    while IFS='=' read -r key val || [ -n "$key" ]; do
+        [[ "$key" =~ ^#.*$ ]] && continue
+        [[ -z "$key" ]] && continue
+        val=$(echo "$val" | tr -d '"' | tr -d "'")
+        case "$key" in
+            GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|GITHUB_CLIENT_ID|GITHUB_CLIENT_SECRET|GEMINI_API_KEY|ENCRYPTION_KEY|RESEND_API_KEY)
+                SECRET_ARGS+=("--from-literal=$key=$val")
+                ;;
+        esac
+    done < .env
+    if [ ${#SECRET_ARGS[@]} -gt 0 ]; then
+        kubectl create secret generic devops-secrets -n devops-dev "${SECRET_ARGS[@]}" --dry-run=client -o yaml | kubectl apply -f -
+    fi
+fi
+
 kubectl apply -f deploy/k8s/dev/03-tier0-data.yaml
 kubectl apply -f deploy/k8s/dev/04-tier1-init.yaml
 kubectl apply -f deploy/k8s/dev/05-tier2-microservices.yaml

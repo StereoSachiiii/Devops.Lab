@@ -17,6 +17,24 @@ if ($RecreateCluster) {
 Write-Host "`nApplying Kubernetes Manifests (01 to 09)..." -ForegroundColor Yellow
 kubectl apply -f deploy/k8s/dev/01-namespace.yaml
 kubectl apply -f deploy/k8s/dev/02-config.yaml
+
+if (Test-Path ".env") {
+    Write-Host "🔐 Injecting local secrets from uncommitted .env into devops-secrets..." -ForegroundColor Cyan
+    $envLines = Get-Content ".env" | Where-Object { $_ -match "^[A-Za-z_][A-Za-z0-9_]*=" }
+    $secretArgs = @()
+    foreach ($line in $envLines) {
+        $idx = $line.IndexOf("=")
+        $key = $line.Substring(0, $idx).Trim()
+        $val = $line.Substring($idx + 1).Trim().Trim('"')
+        if ($key -in @("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "GEMINI_API_KEY", "ENCRYPTION_KEY", "RESEND_API_KEY")) {
+            $secretArgs += "--from-literal=$key=$val"
+        }
+    }
+    if ($secretArgs.Count -gt 0) {
+        kubectl create secret generic devops-secrets -n devops-dev @secretArgs --dry-run=client -o yaml | kubectl apply -f -
+    }
+}
+
 kubectl apply -f deploy/k8s/dev/03-tier0-data.yaml
 kubectl apply -f deploy/k8s/dev/04-tier1-init.yaml
 kubectl apply -f deploy/k8s/dev/05-tier2-microservices.yaml
